@@ -1,5 +1,8 @@
 <!-- UPCOMING:
 
+- add `color.channel($color, $channel, $space: null)` for the legacy rgb/hsl/hwb spaces
+- accept the `$space` argument to `color.adjust()`, `color.change()`, and `color.scale()` (rgb/hsl/hwb only)
+
 - error when `@extend` is used across `@media` boundaries
 - more robust support for NaN in builtin functions
 

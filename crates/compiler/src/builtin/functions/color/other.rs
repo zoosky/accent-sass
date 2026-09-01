@@ -11,6 +11,68 @@ enum UpdateComponents {
     Scale,
 }
 
+fn assert_legacy_space(args: &mut ArgumentResult, position: usize) -> SassResult<()> {
+    if let Some(space) = args.get(position, "space") {
+        let (space_name, _) = space.node.assert_string_with_name("space", space.span)?;
+        match space_name.to_ascii_lowercase().as_str() {
+            "rgb" | "hsl" | "hwb" => Ok(()),
+            _ => Err((
+                format!(
+                    "$space: Color space {} is not supported by this implementation (rgb, hsl, and hwb are).",
+                    space_name
+                ),
+                space.span,
+            )
+                .into()),
+        }
+    } else {
+        Ok(())
+    }
+}
+
+pub(crate) fn channel(mut args: ArgumentResult, visitor: &mut Visitor) -> SassResult<Value> {
+    args.max_args(3)?;
+    let span = args.span();
+    let color = args
+        .get_err(0, "color")?
+        .assert_color_with_name("color", span)?;
+    let (channel_name, _) = args
+        .get_err(1, "channel")?
+        .assert_string_with_name("channel", span)?;
+    assert_legacy_space(&mut args, 2)?;
+
+    let percent = |num| {
+        Value::Dimension(SassNumber {
+            num,
+            unit: Unit::Percent,
+            as_slash: None,
+        })
+    };
+
+    Ok(match channel_name.to_ascii_lowercase().as_str() {
+        "red" => Value::Dimension(SassNumber::new_unitless(color.red())),
+        "green" => Value::Dimension(SassNumber::new_unitless(color.green())),
+        "blue" => Value::Dimension(SassNumber::new_unitless(color.blue())),
+        "hue" => Value::Dimension(SassNumber {
+            num: color.hue(),
+            unit: Unit::Deg,
+            as_slash: None,
+        }),
+        "saturation" => percent(color.saturation()),
+        "lightness" => percent(color.lightness()),
+        "whiteness" => percent(color.whiteness() * Number(100.0)),
+        "blackness" => percent(color.blackness() * Number(100.0)),
+        "alpha" => Value::Dimension(SassNumber::new_unitless(color.alpha())),
+        _ => {
+            return Err((
+                format!("$channel: Unknown channel name \"{}\".", channel_name),
+                span,
+            )
+                .into())
+        }
+    })
+}
+
 fn update_components(
     mut args: ArgumentResult,
     visitor: &mut Visitor,
@@ -20,6 +82,8 @@ fn update_components(
     let color = args
         .get_err(0, "color")?
         .assert_color_with_name("color", args.span())?;
+
+    assert_legacy_space(&mut args, usize::MAX)?;
 
     // todo: what if color is also passed by name
     if args.positional.len() > 1 {
