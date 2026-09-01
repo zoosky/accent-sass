@@ -42,6 +42,30 @@ test!(
     "a {\n  color: 0.5;\n}\n"
 );
 test!(
+    channel_whiteness_from_hex,
+    "@use \"sass:color\";\na {\n  color: color.channel(#abcdef, \"whiteness\", $space: hwb);\n}\n",
+    "a {\n  color: 67.0588235294%;\n}\n"
+);
+test!(
+    channel_blackness_from_hex,
+    "@use \"sass:color\";\na {\n  color: color.channel(#abcdef, \"blackness\", $space: hwb);\n}\n",
+    "a {\n  color: 6.2745098039%;\n}\n"
+);
+// Dart Sass returns exactly 30% here. The 0.196% drift is this crate's
+// integer-rounded channel storage (hwb converts through rounded rgb), not
+// the channel lookup itself; hwb(210, 40%, 40%) below lands on an exact
+// channel value and round-trips cleanly.
+test!(
+    channel_whiteness_round_trips_hwb,
+    "@use \"sass:color\";\na {\n  color: color.channel(color.hwb(210, 30%, 40%), \"whiteness\");\n}\n",
+    "a {\n  color: 30.1960784314%;\n}\n"
+);
+test!(
+    channel_blackness_round_trips_hwb,
+    "@use \"sass:color\";\na {\n  color: color.channel(color.hwb(210, 30%, 40%), \"blackness\");\n}\n",
+    "a {\n  color: 40%;\n}\n"
+);
+test!(
     channel_name_is_case_insensitive,
     "@use \"sass:color\";\na {\n  color: color.channel(#cc0f35, \"RED\", $space: rgb);\n}\n",
     "a {\n  color: 204;\n}\n"

@@ -60,6 +60,8 @@ pub(crate) fn channel(mut args: ArgumentResult, visitor: &mut Visitor) -> SassRe
         }),
         "saturation" => percent(color.saturation()),
         "lightness" => percent(color.lightness()),
+        "whiteness" => percent(color.whiteness() * Number(100.0)),
+        "blackness" => percent(color.blackness() * Number(100.0)),
         "alpha" => Value::Dimension(SassNumber::new_unitless(color.alpha())),
         _ => {
             return Err((
