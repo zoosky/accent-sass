@@ -84,25 +84,57 @@ jobs:
               echo "No differences found"
           fi
 
-  # sass-spec:
-  #   continue-on-error: true
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - name: Checkout
-  #       uses: actions/checkout@master
-  #     - uses: dtolnay/rust-toolchain@master
-  #       with:
-  #         toolchain: stable
-  #     - name: version info
-  #       run:  rustc --version; cargo --version;
-  #     - name: Build binary
-  #       run: cargo b --release
-  #     - name: Get sass-spec
-  #       run: git submodule init && git submodule update
-  #     - name: Install whatever Ruby needs
-  #       run: |
-  #         sudo apt-get install libncurses5-dev libncursesw5-dev
-  #         sudo gem install bundler
-  #         cd sass-spec && bundler install
-  #     - name: Run Sass spec
-  #       run: ./sass-spec/sass-spec.rb -c './target/release/grass'
+  # Conformance against the official Sass spec suite (the `sass-spec`
+  # submodule). Advisory only -- `continue-on-error` keeps it from gating a
+  # merge, because most failures are the CSS Color 4 colour spaces this fork
+  # does not implement. See the results table in README.md. Runs on the
+  # self-hosted runner.
+  sass-spec:
+    continue-on-error: true
+    runs-on: [self-hosted, linux, x64, rust]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: version info
+        run: rustc --version; cargo --version; node --version
+
+      - name: Build binary
+        run: cargo build --release
+
+      - name: Install spec runner
+        working-directory: sass-spec
+        run: npm install --no-audit --no-fund
+
+      - name: Run Sass spec
+        working-directory: sass-spec
+        run: |
+          # The runner exits non-zero whenever any test fails, which is
+          # expected here; the tallies are the output we want.
+          npm run sass-spec -- \
+            --impl=dart-sass \
+            --command '../target/release/grass' \
+            --trim-errors --ignore-warning-diffs --ignore-error-diffs \
+            > spec-results.txt 2>&1 || true
+          tail -n 40 spec-results.txt
+
+      - name: Publish tallies
+        working-directory: sass-spec
+        run: |
+          {
+            echo "### Sass spec conformance"
+            echo
+            echo '```'
+            grep -a 'runs,' spec-results.txt | tail -n 1
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

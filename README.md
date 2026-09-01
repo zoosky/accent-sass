@@ -71,17 +71,37 @@ npm run sass-spec -- --impl=dart-sass --command '../target/release/grass'
 
 The spec runner does not work on Windows.
 
-Using a modified version of the spec runner that ignores warnings and error spans (but does include error messages), `grass` achieves the following results:
+The runner compares warnings and error spans exactly. To score only the CSS
+output and error messages -- which is how the numbers below are measured --
+pass the runner's leniency flags:
+
+```bash
+npm run sass-spec -- --impl=dart-sass --command '../target/release/grass' \
+  --trim-errors --ignore-warning-diffs --ignore-error-diffs
+```
+
+Against the pinned spec revision, this fork achieves the following results:
 
 ```
-2023-07-09
-PASSING: 6230
-FAILING: 545
-TOTAL: 6905
+2026-09-01
+PASSING: 7687
+FAILING: 6523
+TOTAL: 14218
 ```
 
-The majority of the failing tests are purely aesthetic, relating to whitespace
-around comments in expanded mode or error messages.
+One test varies between runs (it depends on `random()`), so the passing count
+moves by one either way.
+
+The suite more than doubled between the previously pinned revision (2022-12-08,
+6,905 tests, of which 6,149 passed) and the current one, and nearly all of the
+new tests cover CSS Color 4. `spec/core_functions/color` alone accounts for
+4,953 of the 6,523 failures -- 3,095 of them under `to_space` -- because this
+fork implements only the legacy `rgb`/`hsl`/`hwb` spaces. Excluding that
+subtree, the fork passes 6,205 of 7,783 tests (79.7%); the largest remaining
+groups are `values/calculation` (436, the CSS math functions `round()`,
+`mod()`, `rem()`, `log()` and `tan()` inside calculations) and the new CSS
+`if()` function (164). The rest are largely aesthetic, relating to whitespace
+around comments in expanded mode or to error messages.
 
 ## Versioning
 
