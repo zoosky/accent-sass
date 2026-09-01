@@ -630,3 +630,8 @@ error!(
     empty_query_after_resolving_interpolation,
     "@media #{null} {}", "Error: Expected identifier."
 );
+test!(
+    selector_list_continuation_is_indented,
+    "@media screen {\n  a,\n  b {\n    color: red;\n  }\n}\n",
+    "@media screen {\n  a,\n  b {\n    color: red;\n  }\n}\n"
+);

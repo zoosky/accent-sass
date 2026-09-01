@@ -130,6 +130,9 @@ pub(crate) struct Serializer<'a> {
     buffer: Vec<u8>,
     map: &'a CodeMap,
     span: Span,
+    /// Set while serializing a comment that trails a statement on the same
+    /// output line, so no indentation is written before it.
+    inline_comment: bool,
 }
 
 impl<'a> Serializer<'a> {
@@ -143,6 +146,7 @@ impl<'a> Serializer<'a> {
             buffer: Vec::new(),
             map,
             span,
+            inline_comment: false,
         }
     }
 
@@ -286,6 +290,9 @@ impl<'a> Serializer<'a> {
                 self.buffer.push(b',');
                 if complex.line_break {
                     self.write_newline();
+                    // Continuation lines of a selector list are indented to
+                    // the current level, matching Dart Sass.
+                    self.write_indentation();
                 } else {
                     self.write_optional_space();
                 }
@@ -487,7 +494,21 @@ impl<'a> Serializer<'a> {
             && Self::is_symmetrical_hex(color.blue().0.round() as u32)
     }
 
+    fn is_in_gamut(color: &Color) -> bool {
+        let in_range =
+            |c: f64| (0.0..=255.0).contains(&c) || fuzzy_equals(c, 0.0) || fuzzy_equals(c, 255.0);
+        in_range(color.red().0) && in_range(color.green().0) && in_range(color.blue().0)
+    }
+
     pub fn visit_color(&mut self, color: &Color) {
+        // An out-of-gamut legacy color can only be represented accurately in
+        // hsl form, which is not clamped at parse time. Matches Dart Sass's
+        // _writeLegacyColor.
+        if !Self::is_in_gamut(color) && !self.options.is_compressed() {
+            self.write_hsl(color);
+            return;
+        }
+
         let integral = Self::has_integral_channels(color);
         let red = color.red().0.round() as u8;
         let green = color.green().0.round() as u8;
@@ -1030,7 +1051,9 @@ impl<'a> Serializer<'a> {
             return Ok(());
         }
 
-        self.write_indentation();
+        if !self.inline_comment {
+            self.write_indentation();
+        }
         let col = self.map.look_up_pos(span.low()).position.column;
         let mut lines = comment.lines();
 
@@ -1061,7 +1084,34 @@ impl<'a> Serializer<'a> {
         }
     }
 
-    fn write_children(&mut self, mut children: Vec<CssStmt>) -> SassResult<()> {
+    /// The source line a statement ends on, for the statements that carry a
+    /// span. Used to keep a trailing comment on the same output line as the
+    /// declaration it follows, as Dart Sass does.
+    fn stmt_end_line(&self, stmt: &CssStmt) -> Option<usize> {
+        match stmt {
+            CssStmt::Style(style) => {
+                Some(self.map.look_up_pos(style.value.span.high()).position.line)
+            }
+            CssStmt::Comment(_, span) => Some(self.map.look_up_pos(span.high()).position.line),
+            _ => None,
+        }
+    }
+
+    /// Whether `stmt` is a comment that starts on `prev_end_line`, and should
+    /// therefore be written on the same output line as the previous statement.
+    fn is_trailing_comment(&self, stmt: &CssStmt, prev_end_line: Option<usize>) -> bool {
+        if self.options.is_compressed() {
+            return false;
+        }
+        match (stmt, prev_end_line) {
+            (CssStmt::Comment(_, span), Some(prev_line)) => {
+                self.map.look_up_pos(span.low()).position.line == prev_line
+            }
+            _ => false,
+        }
+    }
+
+    fn write_children(&mut self, children: Vec<CssStmt>) -> SassResult<()> {
         if self.options.is_compressed() {
             self.buffer.push(b'{');
         } else {
@@ -1070,34 +1120,38 @@ impl<'a> Serializer<'a> {
 
         self.indentation += self.indent_width;
 
-        let last = children.pop();
+        let len = children.len();
+        let mut prev_end_line: Option<usize> = None;
 
-        for child in children {
+        for (idx, child) in children.into_iter().enumerate() {
+            let is_last = idx + 1 == len;
             let needs_semicolon = Self::requires_semicolon(&child);
+            let end_line = self.stmt_end_line(&child);
+
+            if self.is_trailing_comment(&child, prev_end_line) {
+                // Rewind the newline written after the previous statement so
+                // the comment lands on the same line, separated by a space.
+                if self.buffer.last() == Some(&b'\n') {
+                    self.buffer.pop();
+                }
+                self.buffer.push(b' ');
+                self.inline_comment = true;
+            }
+
             let did_write = self.visit_stmt(child)?;
+            self.inline_comment = false;
 
             if !did_write {
                 continue;
             }
 
-            if needs_semicolon {
+            prev_end_line = end_line;
+
+            if needs_semicolon && !(is_last && self.options.is_compressed()) {
                 self.buffer.push(b';');
             }
 
             self.write_optional_newline();
-        }
-
-        if let Some(last) = last {
-            let needs_semicolon = Self::requires_semicolon(&last);
-            let did_write = self.visit_stmt(last)?;
-
-            if did_write {
-                if needs_semicolon && !self.options.is_compressed() {
-                    self.buffer.push(b';');
-                }
-
-                self.write_optional_newline();
-            }
         }
 
         self.indentation -= self.indent_width;

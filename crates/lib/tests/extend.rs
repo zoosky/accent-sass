@@ -1980,3 +1980,17 @@ error!(
 // todo: extend_loop (massive test)
 // todo: extend tests in folders
 // todo: copy all :where extend tests, https://github.com/sass/sass-spec/pull/1783/files
+
+#[test]
+fn extend_placeholder_across_module_boundary() {
+    let mut fs = macros::TestFs::new();
+
+    fs.add_file("_other.scss", "%p {\n  color: red;\n}\n");
+
+    let input = "@use \"other\";\n.x {\n  @extend %p;\n}\n";
+
+    assert_eq!(
+        ".x {\n  color: red;\n}\n",
+        &grass::from_string(input.to_string(), &grass::Options::default().fs(&fs)).expect(input)
+    );
+}

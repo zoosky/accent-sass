@@ -328,3 +328,13 @@ error!(
     "a {\n  color: calc(1+1);\n}\n",
     r#"Error: "+" and "-" must be surrounded by whitespace in calculations."#
 );
+test!(
+    interpolated_calc_trims_inner_whitespace,
+    "a {\n  color: calc( #{\"var(--x)\"} + 1px );\n}\n",
+    "a {\n  color: calc(var(--x) + 1px);\n}\n"
+);
+test!(
+    interpolated_calc_nested_in_fn_trims_inner_whitespace,
+    "a {\n  color: hsl(#{\"var(--h)\"}, 10%, calc(\n    #{\"var(--l)\"} + 1%\n  ));\n}\n",
+    "a {\n  color: hsl(var(--h), 10%, calc(var(--l) + 1%));\n}\n"
+);

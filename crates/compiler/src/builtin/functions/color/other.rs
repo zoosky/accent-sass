@@ -224,11 +224,22 @@ fn update_components(
             .into());
     }
 
-    fn update_value(
+    /// How `color.adjust` bounds a channel's result. Dart Sass clamps rgb
+    /// channels and alpha, lower-clamps saturation, and leaves lightness
+    /// unclamped so out-of-gamut legacy colors are representable.
+    #[derive(Copy, Clone, Eq, PartialEq)]
+    enum AdjustClamp {
+        Full,
+        LowerOnly,
+        None,
+    }
+
+    fn update_value_clamped(
         current: Number,
         param: Option<Number>,
         max: f64,
         update: UpdateComponents,
+        clamp: AdjustClamp,
     ) -> Number {
         let param = match param {
             Some(p) => p,
@@ -237,7 +248,11 @@ fn update_components(
 
         match update {
             UpdateComponents::Change => param,
-            UpdateComponents::Adjust => (param + current).clamp(0.0, max),
+            UpdateComponents::Adjust => match clamp {
+                AdjustClamp::Full => (param + current).clamp(0.0, max),
+                AdjustClamp::LowerOnly => Number((param + current).0.max(0.0)),
+                AdjustClamp::None => param + current,
+            },
             UpdateComponents::Scale => {
                 current
                     + if param > Number(0.0) {
@@ -247,6 +262,15 @@ fn update_components(
                     } * param
             }
         }
+    }
+
+    fn update_value(
+        current: Number,
+        param: Option<Number>,
+        max: f64,
+        update: UpdateComponents,
+    ) -> Number {
+        update_value_clamped(current, param, max, update, AdjustClamp::Full)
     }
 
     fn update_rgb(current: Number, param: Option<Number>, update: UpdateComponents) -> Number {
@@ -286,8 +310,14 @@ fn update_components(
                 } else {
                     this_hue + hue.unwrap_or_else(Number::zero)
                 },
-                update_value(this_saturation, saturation, 1.0, update),
-                update_value(this_lightness, lightness, 1.0, update),
+                update_value_clamped(
+                    this_saturation,
+                    saturation,
+                    1.0,
+                    update,
+                    AdjustClamp::LowerOnly,
+                ),
+                update_value_clamped(this_lightness, lightness, 1.0, update, AdjustClamp::None),
                 update_value(this_alpha, alpha, 1.0, update),
             )
             .inherit_space(&color),
