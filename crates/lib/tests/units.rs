@@ -199,7 +199,7 @@ test!(
 test!(
     add_complex_div_units,
     "a {\n  color: inspect((1em / 1em) + (1px / 1em));\n}\n",
-    "a {\n  color: 2px/em;\n}\n"
+    "a {\n  color: calc(2px / 1em);\n}\n"
 );
 test!(
     #[ignore = "we need to rewrite how we compare and convert units"]
@@ -222,9 +222,10 @@ test!(
     "a {\n  color: unit(1 / (1px*1rem));\n}\n",
     "a {\n  color: \"(px*rem)^-1\";\n}\n"
 );
-error!(
+test!(
     display_single_div_with_none_numerator,
-    "a {\n  color: (1 / 1em);\n}\n", "Error: 1em^-1 isn't a valid CSS value."
+    "a {\n  color: (1 / 1em);\n}\n",
+    "a {\n  color: calc(1 / 1em);\n}\n"
 );
 error!(
     // note: dart-sass has error "Error: 1X and 1dppx have incompatible units."
@@ -236,22 +237,25 @@ error!(
     lowercase_x_is_not_alias_for_dppx,
     "a {\n  color: 1x + 1dppx;\n}\n", "Error: Incompatible units dppx and x."
 );
-error!(
+test!(
     display_single_div_with_non_comparable_numerator,
-    "a {\n  color: (1px / 1em);\n}\n", "Error: 1px/em isn't a valid CSS value."
+    "a {\n  color: (1px / 1em);\n}\n",
+    "a {\n  color: calc(1px / 1em);\n}\n"
 );
-error!(
+test!(
     display_single_mul,
-    "a {\n  color: 1rem * 1px;\n}\n", "Error: 1rem*px isn't a valid CSS value."
+    "a {\n  color: 1rem * 1px;\n}\n",
+    "a {\n  color: calc(1rem * 1px);\n}\n"
 );
-error!(
+test!(
     display_arbitrary_mul,
     "a {\n  color: 1rem * 1px * 1rad * 1foo;\n}\n",
-    "Error: 1rem*px*rad*foo isn't a valid CSS value."
+    "a {\n  color: calc(1rem * 1px * 1rad * 1foo);\n}\n"
 );
-error!(
+test!(
     display_single_div_with_none_numerator_percent,
-    "a {\n  color: (35 / 7%);\n}\n", "Error: 5%^-1 isn't a valid CSS value."
+    "a {\n  color: (35 / 7%);\n}\n",
+    "a {\n  color: calc(5 / 1%);\n}\n"
 );
 test!(
     /// Verify the display implementation of all special-cased units
@@ -406,3 +410,27 @@ test_unit_addition!(dpcm, dppx, "38.7952755906");
 test_unit_addition!(dppx, dpi, "1.0104166667");
 test_unit_addition!(dppx, dpcm, "1.0264583333");
 test_unit_addition!(dppx, dppx, "2");
+
+// A number with no plain-CSS representation is emitted as a `calc()`
+// expression rather than an error or an invalid bare value, matching Dart
+// Sass 1.103.1. Expected values are cross-checked against that release.
+test!(
+    non_finite_with_unit_is_calc,
+    "@use \"sass:math\";\na {\n  color: math.div(1px, 0);\n}\n",
+    "a {\n  color: calc(infinity * 1px);\n}\n"
+);
+test!(
+    negative_non_finite_with_unit_is_calc,
+    "@use \"sass:math\";\na {\n  color: math.div(-1px, 0);\n}\n",
+    "a {\n  color: calc(-infinity * 1px);\n}\n"
+);
+test!(
+    multiple_denominator_units_is_calc,
+    "@use \"sass:math\";\na {\n  color: math.div(math.div(1px, 1em), 1s);\n}\n",
+    "a {\n  color: calc(1px / 1em / 1s);\n}\n"
+);
+test!(
+    inspect_complex_units_is_calc,
+    "@use \"sass:math\";\n@use \"sass:meta\";\na {\n  color: meta.inspect(math.div(1px, 1em));\n}\n",
+    "a {\n  color: calc(1px / 1em);\n}\n"
+);
