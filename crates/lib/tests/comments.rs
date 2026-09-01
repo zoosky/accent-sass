@@ -173,3 +173,13 @@ test!(
 test!(silent_comment_as_child, "a {\n// silent\n}\n", "");
 test!(single_hash_in_loud_comment, "/*#*/", "/*#*/\n");
 error!(unclosed_loud_comment, "/*", "Error: expected more input.");
+test!(
+    trailing_comment_stays_on_same_line,
+    "a {\n  color: red; /* 1 */\n  height: 2px; /* 2 */\n}\n",
+    "a {\n  color: red; /* 1 */\n  height: 2px; /* 2 */\n}\n"
+);
+test!(
+    comment_on_own_line_stays_on_own_line,
+    "a {\n  color: red;\n  /* own */\n}\n",
+    "a {\n  color: red;\n  /* own */\n}\n"
+);

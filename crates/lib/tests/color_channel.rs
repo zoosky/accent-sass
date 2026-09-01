@@ -140,3 +140,27 @@ test!(
     "@use \"sass:color\";\na {\n  color: color.channel(color.adjust(#cc0f35, $lightness: 8%, $space: hsl), \"lightness\", $space: hsl);\n}\n",
     "a {\n  color: 50.9411764706%;\n}\n"
 );
+
+// Dart Sass 1.79+ does not clamp lightness in color.adjust, so legacy colors
+// can leave the rgb gamut; such colors serialize in hsl form. Expected values
+// are cross-checked against Dart Sass 1.103.1.
+test!(
+    adjust_lightness_below_gamut,
+    "@use \"sass:color\";\na {\n  color: color.adjust(hsl(0, 0%, 10%), $lightness: -20%, $space: hsl);\n}\n",
+    "a {\n  color: hsl(0, 0%, -10%);\n}\n"
+);
+test!(
+    adjust_rgb_color_out_of_gamut_serializes_as_hsl,
+    "@use \"sass:color\";\na {\n  color: color.adjust(#141414, $lightness: -20%, $space: hsl);\n}\n",
+    "a {\n  color: hsl(0, 0%, -12.1568627451%);\n}\n"
+);
+test!(
+    adjust_saturation_above_100,
+    "@use \"sass:color\";\na {\n  color: color.adjust(hsl(0, 90%, 50%), $saturation: 20%, $space: hsl);\n}\n",
+    "a {\n  color: hsl(0, 110%, 50%);\n}\n"
+);
+test!(
+    out_of_gamut_hsl_literal_round_trips,
+    "a {\n  color: hsl(0, 50%, 150%);\n}\n",
+    "a {\n  color: hsl(0, 50%, 150%);\n}\n"
+);

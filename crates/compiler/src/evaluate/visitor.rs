@@ -581,11 +581,20 @@ impl<'a> Visitor<'a> {
         }
 
         let env = Environment::new();
-        let mut extension_store = ExtensionStore::new(self.empty_span);
+        // The loaded module's style rules and `@extend`s share the visitor's
+        // extension store instead of getting their own: grass emits all CSS
+        // into one tree, so a per-module store silently dropped any extension
+        // that crosses a `@use`/`@forward` boundary (extending a placeholder
+        // defined in another file emitted nothing). Sharing the store matches
+        // Dart Sass's output for upstream and downstream extensions alike; the
+        // difference is that an extension here can also reach CSS from sibling
+        // modules the extending module never loaded, which Dart Sass scopes
+        // away (connorskees/grass#104 is the upstream issue for a full
+        // per-module implementation).
+        let extension_store = ExtensionStore::new(self.empty_span);
 
         self.with_environment::<SassResult<()>, _>(env.new_closure(), |visitor| {
             let old_parent = visitor.parent;
-            mem::swap(&mut visitor.extender, &mut extension_store);
             let old_style_rule = visitor.style_rule_ignoring_at_root.take();
             let old_media_queries = visitor.media_queries.take();
             let old_declaration_name = visitor.declaration_name.take();
@@ -612,7 +621,6 @@ impl<'a> Visitor<'a> {
             visitor.parent = old_parent;
             // visitor.end_of_imports = old_end_of_imports;
             // visitor.out_of_order_imports = old_out_of_order_imports;
-            mem::swap(&mut visitor.extender, &mut extension_store);
             visitor.style_rule_ignoring_at_root = old_style_rule;
             visitor.media_queries = old_media_queries;
             visitor.declaration_name = old_declaration_name;

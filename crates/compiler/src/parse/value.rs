@@ -1426,7 +1426,22 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
             _ => return Ok(None),
         }
 
-        buffer.add_interpolation(parser.parse_interpolated_declaration_value(false, true, true)?);
+        let mut contents = parser.parse_interpolated_declaration_value(false, true, true)?;
+        // An interpolated calc() reaches this raw-string fallback, but Dart
+        // Sass serializes it without the source's leading/trailing whitespace
+        // inside the parentheses (`calc( x )` becomes `calc(x)`).
+        if normalized == "calc" {
+            if let Some(InterpolationPart::String(first)) = contents.contents.first_mut() {
+                *first = first.trim_start().to_owned();
+            }
+            if let Some(InterpolationPart::String(last)) = contents.contents.last_mut() {
+                *last = last.trim_end().to_owned();
+            }
+            contents
+                .contents
+                .retain(|part| !matches!(part, InterpolationPart::String(s) if s.is_empty()));
+        }
+        buffer.add_interpolation(contents);
         parser.expect_char(')')?;
         buffer.add_char(')');
 
@@ -1502,11 +1517,22 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
     ) -> SassResult<Option<AstExpr>> {
         Ok(
             if ValueParser::contains_calculation_interpolation(parser)? {
+                let mut contents =
+                    parser.parse_interpolated_declaration_value(false, false, true)?;
+                // Dart Sass serializes an interpolated calculation without the
+                // source's leading/trailing whitespace inside the parentheses
+                // (`calc( x )` becomes `calc(x)`).
+                if let Some(InterpolationPart::String(first)) = contents.contents.first_mut() {
+                    *first = first.trim_start().to_owned();
+                }
+                if let Some(InterpolationPart::String(last)) = contents.contents.last_mut() {
+                    *last = last.trim_end().to_owned();
+                }
+                contents
+                    .contents
+                    .retain(|part| !matches!(part, InterpolationPart::String(s) if s.is_empty()));
                 Some(AstExpr::String(
-                    StringExpr(
-                        parser.parse_interpolated_declaration_value(false, false, true)?,
-                        QuoteKind::None,
-                    ),
+                    StringExpr(contents, QuoteKind::None),
                     parser.toks_mut().span_from(start),
                 ))
             } else {

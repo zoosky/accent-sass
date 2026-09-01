@@ -4,6 +4,11 @@
 - accept the `$space` argument to `color.adjust()`, `color.change()`, and `color.scale()` (rgb/hsl/hwb only)
 - store legacy color channels as floats instead of rounding to integers, matching Dart Sass 1.79+; non-integral rgb colors serialize as `rgb(R%, G%, B%)`, colors written as or derived from `hsl()`/`hwb()` serialize in `hsl(..)` form (without a `deg` suffix), and a NaN hue serializes as `calc(NaN)`
 - match Dart Sass's hsl/hwb conversion bit for bit (plain multiply-add operation order instead of FMA, hue scaled as `(hue / 360) % 1`), round the legacy `red()`/`green()`/`blue()` results like Dart Sass does, and keep out-of-gamut legacy hsl colors unclamped (`hsl(-1 -1 -1)` round-trips as `hsl(359, 0%, -1%)`; saturation is lower-clamped at 0 like the CSS channel)
+- serialize an interpolated `calc()` without the source's leading/trailing whitespace inside the parentheses, matching Dart Sass
+- keep a trailing loud comment on the same output line as the declaration it follows, matching Dart Sass
+- apply `@extend` across `@use`/`@forward` boundaries: extending a placeholder defined in another module now emits the extended rule instead of nothing (the shared-store approximation of connorskees/grass#104)
+- indent continuation lines of a multi-line selector list to the current level, matching Dart Sass
+- `color.adjust()` no longer clamps lightness (and no longer upper-clamps saturation), matching Dart Sass 1.79+; a legacy color pushed out of the rgb gamut serializes in `hsl(..)` form
 
 - error when `@extend` is used across `@media` boundaries
 - more robust support for NaN in builtin functions
