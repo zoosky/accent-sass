@@ -109,7 +109,7 @@ test!(
 test!(
     rgba_percent_round_up,
     "a {\n  color: rgba(59%, 169, 69%, 50%);\n}\n",
-    "a {\n  color: rgba(150, 169, 176, 0.5);\n}\n"
+    "a {\n  color: rgba(59%, 66.2745098039%, 69%, 0.5);\n}\n"
 );
 test!(
     rgb_double_digits,
@@ -179,7 +179,7 @@ test!(
 test!(
     rgba_3_args,
     "a {\n  color: rgba(7.1%, 20.4%, 33.9%);\n}\n",
-    "a {\n  color: rgb(18, 52, 86);\n}\n"
+    "a {\n  color: rgb(7.1%, 20.4%, 33.9%);\n}\n"
 );
 error!(
     rgb_no_args,
@@ -242,7 +242,7 @@ test!(
 test!(
     invert_weight_percent_turquoise,
     "a {\n  color: invert(turquoise, 23%);\n}\n",
-    "a {\n  color: #5db4ab;\n}\n"
+    "a {\n  color: rgb(36.5529411765%, 70.4352941176%, 67.0470588235%);\n}\n"
 );
 test!(
     invert_weight_no_unit,
@@ -273,12 +273,12 @@ test!(
 test!(
     grayscale_1,
     "a {\n  color: grayscale(plum);\n}\n",
-    "a {\n  color: #bfbfbf;\n}\n"
+    "a {\n  color: rgb(74.7058823529%, 74.7058823529%, 74.7058823529%);\n}\n"
 );
 test!(
     grayscale_2,
     "a {\n  color: grayscale(red);\n}\n",
-    "a {\n  color: gray;\n}\n"
+    "a {\n  color: rgb(50%, 50%, 50%);\n}\n"
 );
 test!(
     grayscale_number,
@@ -298,22 +298,22 @@ test!(
 test!(
     mix_no_weight,
     "a {\n  color: mix(#f00, #00f);\n}\n",
-    "a {\n  color: purple;\n}\n"
+    "a {\n  color: rgb(50%, 0%, 50%);\n}\n"
 );
 test!(
     mix_weight_25,
     "a {\n  color: mix(#f00, #00f, 25%);\n}\n",
-    "a {\n  color: #4000bf;\n}\n"
+    "a {\n  color: rgb(25%, 0%, 75%);\n}\n"
 );
 test!(
     mix_opacity,
     "a {\n  color: mix(rgba(255, 0, 0, 0.5), #00f);\n}\n",
-    "a {\n  color: rgba(64, 0, 191, 0.75);\n}\n"
+    "a {\n  color: rgba(25%, 0%, 75%, 0.75);\n}\n"
 );
 test!(
     mix_sanity_check,
     "a {\n  color: mix(black, white);\n}\n",
-    "a {\n  color: gray;\n}\n"
+    "a {\n  color: rgb(50%, 50%, 50%);\n}\n"
 );
 test!(
     change_color_blue,
@@ -343,17 +343,17 @@ test!(
 test!(
     adjust_color_lum_alpha,
     "a {\n  color: adjust-color(hsl(25, 100%, 80%), $lightness: -30%, $alpha: -0.4);\n}\n",
-    "a {\n  color: rgba(255, 106, 0, 0.6);\n}\n"
+    "a {\n  color: hsla(25, 100%, 50%, 0.6);\n}\n"
 );
 test!(
     scale_color_lightness,
     "a {\n  color: scale-color(hsl(120, 70%, 80%), $lightness: 50%);\n}\n",
-    "a {\n  color: #d4f7d4;\n}\n"
+    "a {\n  color: hsl(120, 70%, 90%);\n}\n"
 );
 test!(
     scale_color_neg_lightness_and_pos_saturation,
     "a {\n  color: scale-color(turquoise, $saturation: 24%, $lightness: -48%);\n}\n",
-    "a {\n  color: #10867a;\n}\n"
+    "a {\n  color: rgb(6.2327249603%, 52.4966868045%, 47.87029062%);\n}\n"
 );
 error!(
     scale_color_named_arg_hue,
@@ -367,12 +367,12 @@ test!(
 test!(
     change_color_named_arg_hue,
     "a {\n  color: change-color(blue, $hue: 150);\n}\n",
-    "a {\n  color: #00ff80;\n}\n"
+    "a {\n  color: rgb(0%, 100%, 50%);\n}\n"
 );
 test!(
     adjust_color_named_arg_hue,
     "a {\n  color: adjust-color(blue, $hue: 150);\n}\n",
-    "a {\n  color: #ff8000;\n}\n"
+    "a {\n  color: rgb(100%, 50%, 0%);\n}\n"
 );
 test!(
     change_color_negative_hue,
@@ -382,7 +382,7 @@ test!(
 test!(
     scale_color_alpha,
     "a {\n  color: scale-color(hsl(200, 70%, 80%), $saturation: -90%, $alpha: -30%);\n}\n",
-    "a {\n  color: rgba(200, 205, 208, 0.7);\n}\n"
+    "a {\n  color: hsla(200, 7%, 80%, 0.7);\n}\n"
 );
 test!(
     scale_color_alpha_over_1,
@@ -407,17 +407,17 @@ test!(
 test!(
     rgba_1_arg,
     "a {\n  color: rgba(74.7% 173 93%);\n}\n",
-    "a {\n  color: rgb(190, 173, 237);\n}\n"
+    "a {\n  color: rgb(74.7%, 67.8431372549%, 93%);\n}\n"
 );
 test!(
     hsla_1_arg,
     "a {\n  color: hsla(60 60% 50%);\n}\n",
-    "a {\n  color: hsl(60deg, 60%, 50%);\n}\n"
+    "a {\n  color: hsl(60, 60%, 50%);\n}\n"
 );
 test!(
     hsla_1_arg_weird_units,
     "a {\n  color: hsla(60foo 60foo 50foo);\n}\n",
-    "a {\n  color: hsl(60deg, 60%, 50%);\n}\n"
+    "a {\n  color: hsl(60, 60%, 50%);\n}\n"
 );
 test!(
     sass_spec__spec_colors_basic,
@@ -486,7 +486,7 @@ test!(
 test!(
     all_three_rgb_channels_have_decimal,
     "a {\n  color: rgba(1.5, 1.5, 1.5, 1);\n}\n",
-    "a {\n  color: rgb(2, 2, 2);\n}\n"
+    "a {\n  color: rgb(0.5882352941%, 0.5882352941%, 0.5882352941%);\n}\n"
 );
 test!(
     builtin_fn_red_rounds_channel,
@@ -558,12 +558,12 @@ test!(
 test!(
     rgb_special_fn_4_arg_maintains_units,
     "a {\n  color: rgb(1, 0.02, 3%, max(0.4));\n}\n",
-    "a {\n  color: rgba(1, 0, 8, 0.4);\n}\n"
+    "a {\n  color: rgba(0.3921568627%, 0.0078431373%, 3%, 0.4);\n}\n"
 );
 test!(
     rgb_special_fn_3_arg_maintains_units,
     "a {\n  color: rgb(1, 0.02, max(0.4));\n}\n",
-    "a {\n  color: rgb(1, 0, 0);\n}\n"
+    "a {\n  color: rgb(0.3921568627%, 0.0078431373%, 0.1568627451%);\n}\n"
 );
 test!(
     rgb_special_fn_2_arg_first_non_color,
@@ -573,7 +573,7 @@ test!(
 test!(
     rgb_special_fn_2_arg_first_is_color,
     "a {\n  color: rgb(rgb(1%, 1, 1), var(--foo));;\n}\n",
-    "a {\n  color: rgb(3, 1, 1, var(--foo));\n}\n"
+    "a {\n  color: rgb(2.55, 1, 1, var(--foo));\n}\n"
 );
 test!(
     interpolated_named_color_is_not_color,
@@ -626,7 +626,7 @@ test!(
         color: blue(change-color(red, $lightness: 95%));
         color: green(change-color(red, $lightness: 95%));
     }",
-    "a {\n  color: 0deg;\n  color: 100%;\n  color: 50%;\n  color: #ffe6e6;\n  color: 255;\n  color: 230;\n  color: 230;\n}\n"
+    "a {\n  color: 0deg;\n  color: 100%;\n  color: 50%;\n  color: rgb(100%, 90%, 90%);\n  color: 255;\n  color: 230;\n  color: 230;\n}\n"
 );
 test!(
     slash_list_alpha,
@@ -703,7 +703,7 @@ test!(
 test!(
     change_color_hwb_hue,
     "a {\n  color: change-color(red, $whiteness: 50%, $hue: 230);\n}\n",
-    "a {\n  color: #8095ff;\n}\n"
+    "a {\n  color: rgb(50%, 58.3333333333%, 100%);\n}\n"
 );
 test!(
     aqua_alias,

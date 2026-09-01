@@ -123,15 +123,11 @@ fn inner_rgb_3_arg(
     let blue = blue.assert_number_with_name("blue", span)?;
 
     Ok(Value::Color(Arc::new(Color::from_rgba_fn(
-        Number(fuzzy_round(percentage_or_unitless(
-            &red, 255.0, "red", span, visitor,
-        )?)),
-        Number(fuzzy_round(percentage_or_unitless(
+        Number(percentage_or_unitless(&red, 255.0, "red", span, visitor)?),
+        Number(percentage_or_unitless(
             &green, 255.0, "green", span, visitor,
-        )?)),
-        Number(fuzzy_round(percentage_or_unitless(
-            &blue, 255.0, "blue", span, visitor,
-        )?)),
+        )?),
+        Number(percentage_or_unitless(&blue, 255.0, "blue", span, visitor)?),
         Number(
             alpha
                 .map(|alpha| {
@@ -354,7 +350,9 @@ pub(crate) fn red(mut args: ArgumentResult, visitor: &mut Visitor) -> SassResult
         .get_err(0, "color")?
         .assert_color_with_name("color", args.span())?;
 
-    Ok(Value::Dimension(SassNumber::new_unitless(color.red())))
+    Ok(Value::Dimension(SassNumber::new_unitless(Number(
+        fuzzy_round(color.red().0),
+    ))))
 }
 
 pub(crate) fn green(mut args: ArgumentResult, visitor: &mut Visitor) -> SassResult<Value> {
@@ -363,7 +361,9 @@ pub(crate) fn green(mut args: ArgumentResult, visitor: &mut Visitor) -> SassResu
         .get_err(0, "color")?
         .assert_color_with_name("color", args.span())?;
 
-    Ok(Value::Dimension(SassNumber::new_unitless(color.green())))
+    Ok(Value::Dimension(SassNumber::new_unitless(Number(
+        fuzzy_round(color.green().0),
+    ))))
 }
 
 pub(crate) fn blue(mut args: ArgumentResult, visitor: &mut Visitor) -> SassResult<Value> {
@@ -372,7 +372,9 @@ pub(crate) fn blue(mut args: ArgumentResult, visitor: &mut Visitor) -> SassResul
         .get_err(0, "color")?
         .assert_color_with_name("color", args.span())?;
 
-    Ok(Value::Dimension(SassNumber::new_unitless(color.blue())))
+    Ok(Value::Dimension(SassNumber::new_unitless(Number(
+        fuzzy_round(color.blue().0),
+    ))))
 }
 
 pub(crate) fn mix(mut args: ArgumentResult, visitor: &mut Visitor) -> SassResult<Value> {
