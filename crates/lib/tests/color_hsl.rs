@@ -240,7 +240,7 @@ test!(
 test!(
     negative_values_in_hsl,
     "a {\n  color: hsl(-1 -1 -1);\n}\n",
-    "a {\n  color: hsl(359, 0%, 0%);\n}\n"
+    "a {\n  color: hsl(359, 0%, -1%);\n}\n"
 );
 test!(
     hsla_becomes_named_color,

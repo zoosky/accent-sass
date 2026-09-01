@@ -367,12 +367,14 @@ impl Color {
 
     pub fn lighten(&self, amount: Number) -> Self {
         let (hue, saturation, luminance, alpha) = self.as_hsla();
-        Color::from_hsla(hue, saturation, luminance + amount, alpha).inherit_space(self)
+        Color::from_hsla(hue, saturation, (luminance + amount).clamp(0.0, 1.0), alpha)
+            .inherit_space(self)
     }
 
     pub fn darken(&self, amount: Number) -> Self {
         let (hue, saturation, luminance, alpha) = self.as_hsla();
-        Color::from_hsla(hue, saturation, luminance - amount, alpha).inherit_space(self)
+        Color::from_hsla(hue, saturation, (luminance - amount).clamp(0.0, 1.0), alpha)
+            .inherit_space(self)
     }
 
     pub fn saturate(&self, amount: Number) -> Self {
@@ -396,19 +398,27 @@ impl Color {
     /// Create RGBA representation from HSLA values
     pub fn from_hsla(hue: Number, saturation: Number, lightness: Number, alpha: Number) -> Self {
         let hue = hue % Number(360.0);
-        let hsla = Hsl::new(hue, saturation.clamp(0.0, 1.0), lightness.clamp(0.0, 1.0));
+        // Dart Sass lower-clamps saturation (the CSS hsl() channel is
+        // lower-clamped) and leaves lightness unclamped, so out-of-gamut
+        // legacy colors round-trip.
+        let saturation = Number(saturation.0.max(0.0));
+        let hsla = Hsl::new(hue, saturation, lightness);
 
-        let scaled_hue = hue.0 / 360.0;
-        let scaled_saturation = saturation.0.clamp(0.0, 1.0);
-        let scaled_lightness = lightness.0.clamp(0.0, 1.0);
+        // The operation order below mirrors Dart Sass's hsl conversion
+        // (lib/src/value/color/space/{hsl,utils}.dart) exactly -- plain
+        // multiply-add sequences, no FMA -- so channel values match Dart
+        // Sass bit for bit.
+        let scaled_hue = (hue.0 / 360.0).rem_euclid(1.0);
+        let scaled_saturation = saturation.0;
+        let scaled_lightness = lightness.0;
 
         let m2 = if scaled_lightness <= 0.5 {
             scaled_lightness * (scaled_saturation + 1.0)
         } else {
-            scaled_lightness.mul_add(-scaled_saturation, scaled_lightness + scaled_saturation)
+            scaled_lightness + scaled_saturation - scaled_lightness * scaled_saturation
         };
 
-        let m1 = scaled_lightness.mul_add(2.0, -m2);
+        let m1 = scaled_lightness * 2.0 - m2;
 
         let red = Self::hue_to_rgb(m1, m2, scaled_hue + 1.0 / 3.0) * 255.0;
         let green = Self::hue_to_rgb(m1, m2, scaled_hue) * 255.0;
@@ -426,11 +436,11 @@ impl Color {
         }
 
         if hue < 1.0 / 6.0 {
-            ((m2 - m1) * hue).mul_add(6.0, m1)
+            m1 + (m2 - m1) * hue * 6.0
         } else if hue < 1.0 / 2.0 {
             m2
         } else if hue < 2.0 / 3.0 {
-            ((m2 - m1) * (2.0 / 3.0 - hue)).mul_add(6.0, m1)
+            m1 + (m2 - m1) * (2.0 / 3.0 - hue) * 6.0
         } else {
             m1
         }
@@ -520,7 +530,7 @@ impl Color {
         let factor = 1.0 - scaled_white - scaled_black;
 
         let to_rgb = |hue: f64| -> Number {
-            let channel = Self::hue_to_rgb(0.0, 1.0, hue).mul_add(factor, scaled_white);
+            let channel = Self::hue_to_rgb(0.0, 1.0, hue) * factor + scaled_white;
             Number(channel * 255.0)
         };
 

@@ -3,6 +3,7 @@
 - add `color.channel($color, $channel, $space: null)` for the legacy rgb/hsl/hwb spaces
 - accept the `$space` argument to `color.adjust()`, `color.change()`, and `color.scale()` (rgb/hsl/hwb only)
 - store legacy color channels as floats instead of rounding to integers, matching Dart Sass 1.79+; non-integral rgb colors serialize as `rgb(R%, G%, B%)`, colors written as or derived from `hsl()`/`hwb()` serialize in `hsl(..)` form (without a `deg` suffix), and a NaN hue serializes as `calc(NaN)`
+- match Dart Sass's hsl/hwb conversion bit for bit (plain multiply-add operation order instead of FMA, hue scaled as `(hue / 360) % 1`), round the legacy `red()`/`green()`/`blue()` results like Dart Sass does, and keep out-of-gamut legacy hsl colors unclamped (`hsl(-1 -1 -1)` round-trips as `hsl(359, 0%, -1%)`; saturation is lower-clamped at 0 like the CSS channel)
 
 - error when `@extend` is used across `@media` boundaries
 - more robust support for NaN in builtin functions
