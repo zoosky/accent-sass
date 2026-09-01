@@ -379,6 +379,28 @@ fn real_mod(n1: f64, n2: f64) -> f64 {
 }
 
 fn modulo(n1: f64, n2: f64) -> f64 {
+    // Sass uses floored-division modulo, and defines the infinite cases
+    // explicitly: an infinite dividend is always NaN, and an infinite divisor
+    // keeps the dividend when the two share a sign (counting -0 as negative)
+    // and is NaN otherwise.
+    if n1.is_infinite() {
+        return f64::NAN;
+    }
+
+    if n2.is_infinite() {
+        // Zero counts as negative here, which is what Dart Sass 1.103.1 does
+        // (`0 % infinity` is NaN while `0 % -infinity` is 0). dart-sass master
+        // has since changed the positive-zero case; this matches the released
+        // reference implementation.
+        let is_negative = |n: f64| n.is_sign_negative() || n == 0.0;
+
+        return if is_negative(n1) == is_negative(n2) {
+            n1
+        } else {
+            f64::NAN
+        };
+    }
+
     if n2 > 0.0 {
         return real_mod(n1, n2);
     }

@@ -11,6 +11,7 @@ use crate::{
         Combinator, ComplexSelector, ComplexSelectorComponent, CompoundSelector, Namespace, Pseudo,
         SelectorList, SimpleSelector,
     },
+    unit::Unit,
     utils::hex_char_for,
     value::{
         fuzzy_equals, ArgList, CalculationArg, CalculationName, SassCalculation, SassFunction,
@@ -129,7 +130,8 @@ pub(crate) struct Serializer<'a> {
     _quote: bool,
     buffer: Vec<u8>,
     map: &'a CodeMap,
-    span: Span,
+    // todo: use this field
+    _span: Span,
     /// Set while serializing a comment that trails a statement on the same
     /// output line, so no indentation is written before it.
     inline_comment: bool,
@@ -145,7 +147,7 @@ impl<'a> Serializer<'a> {
             options,
             buffer: Vec::new(),
             map,
-            span,
+            _span: span,
             inline_comment: false,
         }
     }
@@ -601,19 +603,61 @@ impl<'a> Serializer<'a> {
             return Ok(());
         }
 
-        if !self.inspect && number.unit.is_complex() {
-            return Err((
-                format!(
-                    "{} isn't a valid CSS value.",
-                    inspect_number(number, self.options, self.span)?
-                ),
-                self.span,
-            )
-                .into());
+        // A number that has no plain-CSS representation -- non-finite, or
+        // carrying complex units -- is written as a `calc()` expression, which
+        // is what Dart Sass emits and, unlike a bare `NaN` or `1px/em`, is
+        // valid CSS.
+        if !number.num.0.is_finite() || number.unit.is_complex() {
+            return self.write_number_as_calculation(number);
         }
 
         self.write_float(number.num.0);
         write!(&mut self.buffer, "{}", number.unit)?;
+
+        Ok(())
+    }
+
+    /// Writes a number as a `calc()` expression, mirroring Dart Sass's
+    /// `_writeCalculationValue`: a non-finite value becomes the `infinity`,
+    /// `-infinity`, or `NaN` keyword with every unit written as a factor
+    /// (`calc(infinity * 1px)`), while a finite value keeps its first
+    /// numerator unit attached (`calc(1px / 1em)`).
+    fn write_number_as_calculation(&mut self, number: &SassNumber) -> SassResult<()> {
+        self.buffer.extend_from_slice(b"calc(");
+
+        let (numer, denom) = number.unit.clone().numer_and_denom();
+        let value = number.num.0;
+        let mut factors: &[Unit] = &numer;
+
+        if value.is_finite() {
+            self.write_float(value);
+            if let Some((first, rest)) = numer.split_first() {
+                write!(&mut self.buffer, "{}", first)?;
+                factors = rest;
+            }
+        } else if value.is_nan() {
+            self.buffer.extend_from_slice(b"NaN");
+        } else if value.is_sign_negative() {
+            self.buffer.extend_from_slice(b"-infinity");
+        } else {
+            self.buffer.extend_from_slice(b"infinity");
+        }
+
+        for unit in factors {
+            self.write_optional_space();
+            self.buffer.push(b'*');
+            self.write_optional_space();
+            write!(&mut self.buffer, "1{}", unit)?;
+        }
+
+        for unit in &denom {
+            self.write_optional_space();
+            self.buffer.push(b'/');
+            self.write_optional_space();
+            write!(&mut self.buffer, "1{}", unit)?;
+        }
+
+        self.buffer.push(b')');
 
         Ok(())
     }

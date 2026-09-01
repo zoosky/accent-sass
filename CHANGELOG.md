@@ -9,6 +9,8 @@
 - apply `@extend` across `@use`/`@forward` boundaries: extending a placeholder defined in another module now emits the extended rule instead of nothing (the shared-store approximation of connorskees/grass#104)
 - indent continuation lines of a multi-line selector list to the current level, matching Dart Sass
 - `color.adjust()` no longer clamps lightness (and no longer upper-clamps saturation), matching Dart Sass 1.79+; a legacy color pushed out of the rgb gamut serializes in `hsl(..)` form
+- serialize numbers that have no plain-CSS representation as `calc()`, matching Dart Sass: a non-finite value becomes `calc(infinity)`, `calc(-infinity)`, or `calc(NaN)` (with units as factors, e.g. `calc(infinity * 1px)`), and complex units become e.g. `calc(1px / 1em)` instead of erroring with "isn't a valid CSS value"
+- fix `%` with an infinite operand: an infinite dividend is NaN, and an infinite divisor keeps the dividend when the operands share a sign and is NaN otherwise
 
 - error when `@extend` is used across `@media` boundaries
 - more robust support for NaN in builtin functions
