@@ -76,12 +76,12 @@ test!(
 test!(
     call_builtin_positional_args,
     "a {b: call(get-function(lighten), red, 5);}",
-    "a {\n  b: #ff1a1a;\n}\n"
+    "a {\n  b: rgb(100%, 10%, 10%);\n}\n"
 );
 test!(
     call_builtin_keyword_args,
     "a {b: call(get-function(lighten), $color: red, $amount: 5);}",
-    "a {\n  b: #ff1a1a;\n}\n"
+    "a {\n  b: rgb(100%, 10%, 10%);\n}\n"
 );
 test!(
     call_user_defined_super_selector,

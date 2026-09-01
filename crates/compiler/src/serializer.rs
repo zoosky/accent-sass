@@ -395,6 +395,12 @@ impl<'a> Serializer<'a> {
         Ok(())
     }
 
+    fn has_integral_channels(color: &Color) -> bool {
+        fuzzy_equals(color.red().0, color.red().0.round())
+            && fuzzy_equals(color.green().0, color.green().0.round())
+            && fuzzy_equals(color.blue().0, color.blue().0.round())
+    }
+
     fn write_rgb(&mut self, color: &Color) {
         let is_opaque = fuzzy_equals(color.alpha().0, 1.0);
 
@@ -404,13 +410,26 @@ impl<'a> Serializer<'a> {
             self.buffer.extend_from_slice(b"rgba(");
         }
 
-        self.write_float(color.red().0);
-        self.buffer.extend_from_slice(b",");
-        self.write_optional_space();
-        self.write_float(color.green().0);
-        self.buffer.extend_from_slice(b",");
-        self.write_optional_space();
-        self.write_float(color.blue().0);
+        if Self::has_integral_channels(color) {
+            self.write_float(color.red().0);
+            self.buffer.extend_from_slice(b",");
+            self.write_optional_space();
+            self.write_float(color.green().0);
+            self.buffer.extend_from_slice(b",");
+            self.write_optional_space();
+            self.write_float(color.blue().0);
+        } else {
+            // Dart Sass serializes non-integral legacy rgb channels as
+            // percentages of 255.
+            self.write_float(color.red().0 / 255.0 * 100.0);
+            self.buffer.extend_from_slice(b"%,");
+            self.write_optional_space();
+            self.write_float(color.green().0 / 255.0 * 100.0);
+            self.buffer.extend_from_slice(b"%,");
+            self.write_optional_space();
+            self.write_float(color.blue().0 / 255.0 * 100.0);
+            self.buffer.extend_from_slice(b"%");
+        }
 
         if !is_opaque {
             self.buffer.extend_from_slice(b",");
@@ -430,8 +449,14 @@ impl<'a> Serializer<'a> {
             self.buffer.extend_from_slice(b"hsla(");
         }
 
-        self.write_float(color.hue().0);
-        self.buffer.extend_from_slice(b"deg, ");
+        if color.hue().0.is_nan() {
+            // Dart Sass wraps a non-finite channel in calc(..) so the output
+            // stays valid CSS.
+            self.buffer.extend_from_slice(b"calc(NaN)");
+        } else {
+            self.write_float(color.hue().0);
+        }
+        self.buffer.extend_from_slice(b", ");
         self.write_float(color.saturation().0);
         self.buffer.extend_from_slice(b"%, ");
         self.write_float(color.lightness().0);
@@ -463,11 +488,12 @@ impl<'a> Serializer<'a> {
     }
 
     pub fn visit_color(&mut self, color: &Color) {
+        let integral = Self::has_integral_channels(color);
         let red = color.red().0.round() as u8;
         let green = color.green().0.round() as u8;
         let blue = color.blue().0.round() as u8;
 
-        let name = if fuzzy_equals(color.alpha().0, 1.0) {
+        let name = if integral && fuzzy_equals(color.alpha().0, 1.0) {
             NAMED_COLORS.get_by_rgba([red, green, blue])
         } else {
             None
@@ -475,7 +501,7 @@ impl<'a> Serializer<'a> {
 
         #[allow(clippy::unnecessary_unwrap)]
         if self.options.is_compressed() {
-            if fuzzy_equals(color.alpha().0, 1.0) {
+            if fuzzy_equals(color.alpha().0, 1.0) && integral {
                 let hex_length = if Self::can_use_short_hex(color) { 4 } else { 7 };
                 if name.is_some() && name.unwrap().len() <= hex_length {
                     self.buffer.extend_from_slice(name.unwrap().as_bytes());
@@ -504,7 +530,13 @@ impl<'a> Serializer<'a> {
             // around an IE bug. See sass/sass#1782.
         } else if name.is_some() && !fuzzy_equals(color.alpha().0, 0.0) {
             self.buffer.extend_from_slice(name.unwrap().as_bytes());
-        } else if fuzzy_equals(color.alpha().0, 1.0) {
+        } else if color.is_hsl_family() && !integral {
+            // A non-integral color written as hsl()/hwb(), or derived from
+            // one, serializes in hsl form, matching Dart Sass. (An integral
+            // one falls through to the name/hex paths below; an hsl() literal
+            // keeps hsl form via its ColorFormat above.)
+            self.write_hsl(color);
+        } else if fuzzy_equals(color.alpha().0, 1.0) && integral {
             self.buffer.push(b'#');
             self.write_hex_component(red as u32);
             self.write_hex_component(green as u32);

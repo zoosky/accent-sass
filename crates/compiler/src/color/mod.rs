@@ -27,6 +27,10 @@ pub struct Color {
     hsla: Option<Hsl>,
     alpha: Number,
     pub(crate) format: ColorFormat,
+    /// Whether this color was written in an hsl-family form (`hsl()`/`hwb()`)
+    /// or derived from such a color. Dart Sass serializes legacy colors in
+    /// the space the input color was written in; this tracks that provenance.
+    hsl_family: bool,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -67,7 +71,19 @@ impl Color {
             alpha,
             hsla: None,
             format,
+            hsl_family: false,
         }
+    }
+
+    pub(crate) fn is_hsl_family(&self) -> bool {
+        self.hsl_family
+    }
+
+    /// Propagate serialization-space provenance from the color an operation
+    /// was applied to. Dart Sass keeps a derived color in its input's space.
+    pub(crate) fn inherit_space(mut self, source: &Color) -> Color {
+        self.hsl_family = source.hsl_family;
+        self
     }
 
     const fn new_hsla(red: Number, green: Number, blue: Number, alpha: Number, hsla: Hsl) -> Color {
@@ -76,6 +92,7 @@ impl Color {
             alpha,
             hsla: Some(hsla),
             format: ColorFormat::Infer,
+            hsl_family: true,
         }
     }
 }
@@ -149,6 +166,7 @@ impl Color {
             hsla: None,
             alpha: alpha.into(),
             format: ColorFormat::Literal(format),
+            hsl_family: false,
         }
     }
 
@@ -183,15 +201,15 @@ impl Color {
     }
 
     pub fn red(&self) -> Number {
-        self.rgba.red.round()
+        self.rgba.red
     }
 
     pub fn blue(&self) -> Number {
-        self.rgba.blue.round()
+        self.rgba.blue
     }
 
     pub fn green(&self) -> Number {
-        self.rgba.green.round()
+        self.rgba.green
     }
 
     /// Mix two colors together with weight
@@ -211,12 +229,14 @@ impl Color {
         let weight1 = (combined_weight1 + Number::one()) / Number(2.0);
         let weight2 = Number::one() - weight1;
 
+        #[allow(clippy::let_and_return)]
         Color::from_rgba(
             self.red() * weight1 + other.red() * weight2,
             self.green() * weight1 + other.green() * weight2,
             self.blue() * weight1 + other.blue() * weight2,
             self.alpha() * weight + other.alpha() * (Number::one() - weight),
         )
+        .inherit_space(self)
     }
 }
 
@@ -293,7 +313,7 @@ impl Color {
         let blue = self.blue() / Number(255.0);
         let min = red.min(green.min(blue));
         let max = red.max(green.max(blue));
-        (((min + max) / Number(2.0)) * Number(100.0)).round()
+        ((min + max) / Number(2.0)) * Number(100.0)
     }
 
     pub fn as_hsla(&self) -> (Number, Number, Number, Number) {
@@ -342,27 +362,29 @@ impl Color {
 
     pub fn adjust_hue(&self, degrees: Number) -> Self {
         let (hue, saturation, luminance, alpha) = self.as_hsla();
-        Color::from_hsla(hue + degrees, saturation, luminance, alpha)
+        Color::from_hsla(hue + degrees, saturation, luminance, alpha).inherit_space(self)
     }
 
     pub fn lighten(&self, amount: Number) -> Self {
         let (hue, saturation, luminance, alpha) = self.as_hsla();
-        Color::from_hsla(hue, saturation, luminance + amount, alpha)
+        Color::from_hsla(hue, saturation, luminance + amount, alpha).inherit_space(self)
     }
 
     pub fn darken(&self, amount: Number) -> Self {
         let (hue, saturation, luminance, alpha) = self.as_hsla();
-        Color::from_hsla(hue, saturation, luminance - amount, alpha)
+        Color::from_hsla(hue, saturation, luminance - amount, alpha).inherit_space(self)
     }
 
     pub fn saturate(&self, amount: Number) -> Self {
         let (hue, saturation, luminance, alpha) = self.as_hsla();
         Color::from_hsla(hue, (saturation + amount).clamp(0.0, 1.0), luminance, alpha)
+            .inherit_space(self)
     }
 
     pub fn desaturate(&self, amount: Number) -> Self {
         let (hue, saturation, luminance, alpha) = self.as_hsla();
         Color::from_hsla(hue, (saturation - amount).clamp(0.0, 1.0), luminance, alpha)
+            .inherit_space(self)
     }
 
     pub fn from_hsla_fn(hue: Number, saturation: Number, luminance: Number, alpha: Number) -> Self {
@@ -388,9 +410,9 @@ impl Color {
 
         let m1 = scaled_lightness.mul_add(2.0, -m2);
 
-        let red = fuzzy_round(Self::hue_to_rgb(m1, m2, scaled_hue + 1.0 / 3.0) * 255.0);
-        let green = fuzzy_round(Self::hue_to_rgb(m1, m2, scaled_hue) * 255.0);
-        let blue = fuzzy_round(Self::hue_to_rgb(m1, m2, scaled_hue - 1.0 / 3.0) * 255.0);
+        let red = Self::hue_to_rgb(m1, m2, scaled_hue + 1.0 / 3.0) * 255.0;
+        let green = Self::hue_to_rgb(m1, m2, scaled_hue) * 255.0;
+        let blue = Self::hue_to_rgb(m1, m2, scaled_hue - 1.0 / 3.0) * 255.0;
 
         Color::new_hsla(Number(red), Number(green), Number(blue), alpha, hsla)
     }
@@ -431,7 +453,7 @@ impl Color {
     pub fn complement(&self) -> Self {
         let (hue, saturation, luminance, alpha) = self.as_hsla();
 
-        Color::from_hsla(hue + Number(180.0), saturation, luminance, alpha)
+        Color::from_hsla(hue + Number(180.0), saturation, luminance, alpha).inherit_space(self)
     }
 }
 
@@ -447,7 +469,7 @@ impl Color {
 
     /// Change `alpha` to value given
     pub fn with_alpha(&self, alpha: Number) -> Self {
-        Color::from_rgba(self.red(), self.green(), self.blue(), alpha)
+        Color::from_rgba(self.red(), self.green(), self.blue(), alpha).inherit_space(self)
     }
 
     /// Makes a color more opaque.
@@ -455,6 +477,7 @@ impl Color {
     /// and returns a color with the opacity increased by that amount.
     pub fn fade_in(&self, amount: Number) -> Self {
         Color::from_rgba(self.red(), self.green(), self.blue(), self.alpha() + amount)
+            .inherit_space(self)
     }
 
     /// Makes a color more transparent.
@@ -462,6 +485,7 @@ impl Color {
     /// and returns a color with the opacity decreased by that amount.
     pub fn fade_out(&self, amount: Number) -> Self {
         Color::from_rgba(self.red(), self.green(), self.blue(), self.alpha() - amount)
+            .inherit_space(self)
     }
 }
 
@@ -471,9 +495,9 @@ impl Color {
         format!(
             "#{:02X}{:02X}{:02X}{:02X}",
             fuzzy_round(self.alpha().0 * 255.0) as u8,
-            self.red().0 as u8,
-            self.green().0 as u8,
-            self.blue().0 as u8
+            fuzzy_round(self.red().0) as u8,
+            fuzzy_round(self.green().0) as u8,
+            fuzzy_round(self.blue().0) as u8
         )
     }
 }
@@ -497,14 +521,24 @@ impl Color {
 
         let to_rgb = |hue: f64| -> Number {
             let channel = Self::hue_to_rgb(0.0, 1.0, hue).mul_add(factor, scaled_white);
-            Number(fuzzy_round(channel * 255.0))
+            Number(channel * 255.0)
         };
 
         let red = to_rgb(hue.0 + 1.0 / 3.0);
         let green = to_rgb(hue.0);
         let blue = to_rgb(hue.0 - 1.0 / 3.0);
 
-        Color::new_rgba(red, green, blue, alpha, ColorFormat::Infer)
+        // Attach the hsl representation so non-integral hwb colors serialize
+        // as hsl(..), matching Dart Sass.
+        let color = Color::new_rgba(red, green, blue, alpha, ColorFormat::Infer);
+        let (h, s, l, _) = color.as_hsla();
+        Color::new_hsla(
+            color.rgba.red,
+            color.rgba.green,
+            color.rgba.blue,
+            color.alpha,
+            Hsl::new(h, s, l),
+        )
     }
 
     pub fn whiteness(&self) -> Number {

@@ -51,14 +51,10 @@ test!(
     "@use \"sass:color\";\na {\n  color: color.channel(#abcdef, \"blackness\", $space: hwb);\n}\n",
     "a {\n  color: 6.2745098039%;\n}\n"
 );
-// Dart Sass returns exactly 30% here. The 0.196% drift is this crate's
-// integer-rounded channel storage (hwb converts through rounded rgb), not
-// the channel lookup itself; hwb(210, 40%, 40%) below lands on an exact
-// channel value and round-trips cleanly.
 test!(
     channel_whiteness_round_trips_hwb,
     "@use \"sass:color\";\na {\n  color: color.channel(color.hwb(210, 30%, 40%), \"whiteness\");\n}\n",
-    "a {\n  color: 30.1960784314%;\n}\n"
+    "a {\n  color: 30%;\n}\n"
 );
 test!(
     channel_blackness_round_trips_hwb,
@@ -78,7 +74,7 @@ test!(
 test!(
     adjust_lightness_with_hsl_space,
     "@use \"sass:color\";\na {\n  color: color.adjust(hsl(221, 14%, 40%), $lightness: 10%, $space: hsl);\n}\n",
-    "a {\n  color: #6e7991;\n}\n"
+    "a {\n  color: hsl(221, 14%, 50%);\n}\n"
 );
 test!(
     adjust_red_with_rgb_space,
@@ -88,12 +84,12 @@ test!(
 test!(
     change_lightness_with_hsl_space,
     "@use \"sass:color\";\na {\n  color: color.change(hsl(221, 14%, 40%), $lightness: 96%, $space: hsl);\n}\n",
-    "a {\n  color: #f3f4f6;\n}\n"
+    "a {\n  color: hsl(221, 14%, 96%);\n}\n"
 );
 test!(
     scale_lightness_with_hsl_space,
     "@use \"sass:color\";\na {\n  color: color.scale(#cc0f35, $lightness: 20%, $space: hsl);\n}\n",
-    "a {\n  color: #ef264f;\n}\n"
+    "a {\n  color: rgb(93.7469782434%, 14.9589041096%, 30.7998925598%);\n}\n"
 );
 error!(
     channel_unknown_channel_name,

@@ -12,47 +12,47 @@ error!(
 test!(
     hsl_basic,
     "a {\n  color: hsl(193, 67%, 99);\n}\n",
-    "a {\n  color: hsl(193deg, 67%, 99%);\n}\n"
+    "a {\n  color: hsl(193, 67%, 99%);\n}\n"
 );
 test!(
     hsla_basic,
     "a {\n  color: hsla(193, 67%, 99, .6);\n}\n",
-    "a {\n  color: hsla(193deg, 67%, 99%, 0.6);\n}\n"
+    "a {\n  color: hsla(193, 67%, 99%, 0.6);\n}\n"
 );
 test!(
     hsl_doesnt_care_about_units,
     "a {\n  color: hsl(193deg, 67foo, 99%);\n}\n",
-    "a {\n  color: hsl(193deg, 67%, 99%);\n}\n"
+    "a {\n  color: hsl(193, 67%, 99%);\n}\n"
 );
 test!(
     hsl_named,
     "a {\n  color: hsl($hue: 193, $saturation: 67%, $lightness: 99);\n}\n",
-    "a {\n  color: hsl(193deg, 67%, 99%);\n}\n"
+    "a {\n  color: hsl(193, 67%, 99%);\n}\n"
 );
 test!(
     hsl_four_args,
     "a {\n  color: hsl(0, 0, 0, 0.456);\n}\n",
-    "a {\n  color: hsla(0deg, 0%, 0%, 0.456);\n}\n"
+    "a {\n  color: hsla(0, 0%, 0%, 0.456);\n}\n"
 );
 test!(
     hsl_negative_hue,
     "a {\n  color: hsl(-60deg, 100%, 50%);\n}\n",
-    "a {\n  color: hsl(300deg, 100%, 50%);\n}\n"
+    "a {\n  color: hsl(300, 100%, 50%);\n}\n"
 );
 test!(
     hsl_hue_above_max,
     "a {\n  color: hsl(540, 100%, 50%);\n}\n",
-    "a {\n  color: hsl(180deg, 100%, 50%);\n}\n"
+    "a {\n  color: hsl(180, 100%, 50%);\n}\n"
 );
 test!(
     hsl_hue_below_min,
     "a {\n  color: hsl(-540, 100%, 50%);\n}\n",
-    "a {\n  color: hsl(180deg, 100%, 50%);\n}\n"
+    "a {\n  color: hsl(180, 100%, 50%);\n}\n"
 );
 test!(
     hsla_named,
     "a {\n  color: hsla($hue: 193, $saturation: 67%, $lightness: 99, $alpha: .6);\n}\n",
-    "a {\n  color: hsla(193deg, 67%, 99%, 0.6);\n}\n"
+    "a {\n  color: hsla(193, 67%, 99%, 0.6);\n}\n"
 );
 test!(
     hue,
@@ -107,32 +107,32 @@ test!(
 test!(
     adjust_hue_positive,
     "a {\n  color: adjust-hue(hsl(120, 30%, 90%), 60deg);\n}\n",
-    "a {\n  color: #deeded;\n}\n"
+    "a {\n  color: hsl(180, 30%, 90%);\n}\n"
 );
 test!(
     adjust_hue_negative,
     "a {\n  color: adjust-hue(hsl(120, 30%, 90%), -60deg);\n}\n",
-    "a {\n  color: #ededde;\n}\n"
+    "a {\n  color: hsl(60, 30%, 90%);\n}\n"
 );
 test!(
     adjust_hue_3_hex,
     "a {\n  color: adjust-hue(#811, 45deg);\n}\n",
-    "a {\n  color: #886a11;\n}\n"
+    "a {\n  color: rgb(53.3333333333%, 41.6666666667%, 6.6666666667%);\n}\n"
 );
 test!(
     adjust_hue_named_args,
     "a {\n  color: adjust-hue($color: hsl(120, 30%, 90%), $degrees: 60deg);\n}\n",
-    "a {\n  color: #deeded;\n}\n"
+    "a {\n  color: hsl(180, 30%, 90%);\n}\n"
 );
 test!(
     lighten_named_args,
     "a {\n  color: lighten($color: hsl(0, 0%, 0%), $amount: 30%);\n}\n",
-    "a {\n  color: #4d4d4d;\n}\n"
+    "a {\n  color: hsl(0, 0%, 30%);\n}\n"
 );
 test!(
     lighten_basic,
     "a {\n  color: lighten(hsl(0, 0%, 0%), 30%);\n}\n",
-    "a {\n  color: #4d4d4d;\n}\n"
+    "a {\n  color: hsl(0, 0%, 30%);\n}\n"
 );
 test!(
     lighten_3_hex,
@@ -146,14 +146,14 @@ test!(
     "a {
         color: lighten(crimson, 10%);
     }",
-    "a {\n  color: #ed365b;\n}\n"
+    "a {\n  color: rgb(92.8431372549%, 21.2745098039%, 35.5882352941%);\n}\n"
 );
 test!(
     lighten_no_percent,
     "a {
         color: lighten(crimson, 10);
     }",
-    "a {\n  color: #ed365b;\n}\n"
+    "a {\n  color: rgb(92.8431372549%, 21.2745098039%, 35.5882352941%);\n}\n"
 );
 test!(
     channels_after_lighten,
@@ -178,12 +178,12 @@ error!(
 test!(
     darken_named_args,
     "a {\n  color: darken($color: hsl(25, 100%, 80%), $amount: 30%);\n}\n",
-    "a {\n  color: #ff6a00;\n}\n"
+    "a {\n  color: hsl(25, 100%, 50%);\n}\n"
 );
 test!(
     darken_basic,
     "a {\n  color: darken(hsl(25, 100%, 80%), 30%);\n}\n",
-    "a {\n  color: #ff6a00;\n}\n"
+    "a {\n  color: hsl(25, 100%, 50%);\n}\n"
 );
 test!(
     darken_3_hex,
@@ -195,7 +195,7 @@ test!(
 test!(
     saturate_named_args,
     "a {\n  color: saturate($color: hsl(25, 100%, 80%), $amount: 30%);\n}\n",
-    "a {\n  color: #ffc499;\n}\n"
+    "a {\n  color: hsl(25, 100%, 80%);\n}\n"
 );
 test!(
     saturation_cannot_go_above_100,
@@ -210,52 +210,52 @@ test!(
 test!(
     saturate_basic,
     "a {\n  color: saturate(hsl(120, 30%, 90%), 20%);\n}\n",
-    "a {\n  color: #d9f2d9;\n}\n"
+    "a {\n  color: hsl(120, 50%, 90%);\n}\n"
 );
 test!(
     saturate_3_hex,
     "a {\n  color: saturate(#855, 20%);\n}\n",
-    "a {\n  color: #9e3f3f;\n}\n"
+    "a {\n  color: rgb(62%, 24.6666666667%, 24.6666666667%);\n}\n"
 );
 test!(
     desaturate_named_args,
     "a {\n  color: desaturate($color: hsl(25, 100%, 80%), $amount: 30%);\n}\n",
-    "a {\n  color: #f0c6a8;\n}\n"
+    "a {\n  color: hsl(25, 70%, 80%);\n}\n"
 );
 test!(
     desaturate_basic,
     "a {\n  color: desaturate(hsl(120, 30%, 90%), 20%);\n}\n",
-    "a {\n  color: #e3e8e3;\n}\n"
+    "a {\n  color: hsl(120, 10%, 90%);\n}\n"
 );
 test!(
     desaturate_3_hex,
     "a {\n  color: desaturate(#855, 20%);\n}\n",
-    "a {\n  color: #726b6b;\n}\n"
+    "a {\n  color: rgb(44.6666666667%, 42%, 42%);\n}\n"
 );
 test!(
     desaturate_correctly_calculates_hue,
     "a {\n  color: desaturate(plum, 14%);\n}\n",
-    "a {\n  color: #d4a9d4;\n}\n"
+    "a {\n  color: rgb(83.1254901961%, 66.2862745098%, 83.1254901961%);\n}\n"
 );
 test!(
     negative_values_in_hsl,
     "a {\n  color: hsl(-1 -1 -1);\n}\n",
-    "a {\n  color: hsl(359deg, 0%, 0%);\n}\n"
+    "a {\n  color: hsl(359, 0%, 0%);\n}\n"
 );
 test!(
     hsla_becomes_named_color,
     "a {\n  color: hsla(0deg, 100%, 50%);\n}\n",
-    "a {\n  color: hsl(0deg, 100%, 50%);\n}\n"
+    "a {\n  color: hsl(0, 100%, 50%);\n}\n"
 );
 test!(
     hsl_special_fn_4_arg_maintains_units,
     "a {\n  color: hsl(1, 0.02, 3%, max(0.4));\n}\n",
-    "a {\n  color: hsla(1deg, 0.02%, 3%, 0.4);\n}\n"
+    "a {\n  color: hsla(1, 0.02%, 3%, 0.4);\n}\n"
 );
 test!(
     hsl_special_fn_3_arg_maintains_units,
     "a {\n  color: hsl(1, 0.02, max(0.4));\n}\n",
-    "a {\n  color: hsl(1deg, 0.02%, 0.4%);\n}\n"
+    "a {\n  color: hsl(1, 0.02%, 0.4%);\n}\n"
 );
 test!(
     hsla_special_fn_1_arg_is_not_list,
@@ -285,22 +285,22 @@ test!(
 test!(
     hsl_with_turn_unit,
     "a {\n  color: hsl(8turn, 25%, 50%);\n}\n",
-    "a {\n  color: hsl(0deg, 25%, 50%);\n}\n"
+    "a {\n  color: hsl(0, 25%, 50%);\n}\n"
 );
 test!(
     hsl_with_rad_unit,
     "a {\n  color: hsl(8rad, 25%, 50%);\n}\n",
-    "a {\n  color: hsl(98.3662361047deg, 25%, 50%);\n}\n"
+    "a {\n  color: hsl(98.3662361047, 25%, 50%);\n}\n"
 );
 test!(
     hsl_with_grad_unit,
     "a {\n  color: hsl(8grad, 25%, 50%);\n}\n",
-    "a {\n  color: hsl(7.2deg, 25%, 50%);\n}\n"
+    "a {\n  color: hsl(7.2, 25%, 50%);\n}\n"
 );
 test!(
     adjust_hue_nan,
     "a {\n  color: adjust-hue(hsla(200, 50%, 50%), (0/0));\n}\n",
-    "a {\n  color: #404040;\n}\n"
+    "a {\n  color: hsl(calc(NaN), 50%, 50%);\n}\n"
 );
 test!(
     adjust_hue_nan_get_hue,
@@ -334,12 +334,12 @@ test!(
 test!(
     darken_all_channels_equal,
     "a {\n  color: darken(#fff, 10);\n}\n",
-    "a {\n  color: #e6e6e6;\n}\n"
+    "a {\n  color: rgb(90%, 90%, 90%);\n}\n"
 );
 test!(
     darken_green_channel_max,
     "a {\n  color: darken(rgb(50, 200, 100), 10);\n}\n",
-    "a {\n  color: #289f50;\n}\n"
+    "a {\n  color: rgb(15.6078431373%, 62.431372549%, 31.2156862745%);\n}\n"
 );
 test!(
     hue_adjust_color_over_360,
@@ -349,12 +349,12 @@ test!(
 test!(
     adjust_hue_rad,
     "a {\n  color: adjust-hue(red, 60rad);\n}\n",
-    "a {\n  color: #00b4ff;\n}\n"
+    "a {\n  color: rgb(0%, 70.4220486918%, 100%);\n}\n"
 );
 test!(
     hsl_hue_rad,
     "a {\n  color: hsl(60rad, 100%, 50%);\n}\n",
-    "a {\n  color: hsl(197.7467707849deg, 100%, 50%);\n}\n"
+    "a {\n  color: hsl(197.7467707849, 100%, 50%);\n}\n"
 );
 error!(
     hsl_one_arg_bracketed,

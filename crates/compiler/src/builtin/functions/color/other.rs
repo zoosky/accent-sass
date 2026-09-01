@@ -1,7 +1,6 @@
 use crate::{
     builtin::{builtin_imports::*, color::angle_value},
     utils::to_sentence,
-    value::fuzzy_round,
 };
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
@@ -251,39 +250,48 @@ fn update_components(
     }
 
     fn update_rgb(current: Number, param: Option<Number>, update: UpdateComponents) -> Number {
-        Number(fuzzy_round(update_value(current, param, 255.0, update).0))
+        update_value(current, param, 255.0, update)
     }
 
     let color = if has_rgb {
-        Arc::new(Color::from_rgba(
-            update_rgb(color.red(), red, update),
-            update_rgb(color.green(), green, update),
-            update_rgb(color.blue(), blue, update),
-            update_value(color.alpha(), alpha, 1.0, update),
-        ))
+        Arc::new(
+            Color::from_rgba(
+                update_rgb(color.red(), red, update),
+                update_rgb(color.green(), green, update),
+                update_rgb(color.blue(), blue, update),
+                update_value(color.alpha(), alpha, 1.0, update),
+            )
+            .inherit_space(&color),
+        )
     } else if has_wb {
-        Arc::new(Color::from_hwb(
-            if update == UpdateComponents::Change {
-                hue.unwrap_or_else(|| color.hue())
-            } else {
-                color.hue() + hue.unwrap_or_else(Number::zero)
-            },
-            update_value(color.whiteness(), whiteness, 1.0, update) * Number(100.0),
-            update_value(color.blackness(), blackness, 1.0, update) * Number(100.0),
-            update_value(color.alpha(), alpha, 1.0, update),
-        ))
+        Arc::new(
+            Color::from_hwb(
+                if update == UpdateComponents::Change {
+                    hue.unwrap_or_else(|| color.hue())
+                } else {
+                    color.hue() + hue.unwrap_or_else(Number::zero)
+                },
+                update_value(color.whiteness(), whiteness, 1.0, update) * Number(100.0),
+                update_value(color.blackness(), blackness, 1.0, update) * Number(100.0),
+                update_value(color.alpha(), alpha, 1.0, update),
+            )
+            .inherit_space(&color),
+        )
     } else if hue.is_some() || has_sl {
         let (this_hue, this_saturation, this_lightness, this_alpha) = color.as_hsla();
-        Arc::new(Color::from_hsla(
-            if update == UpdateComponents::Change {
-                hue.unwrap_or(this_hue)
-            } else {
-                this_hue + hue.unwrap_or_else(Number::zero)
-            },
-            update_value(this_saturation, saturation, 1.0, update),
-            update_value(this_lightness, lightness, 1.0, update),
-            update_value(this_alpha, alpha, 1.0, update),
-        ))
+        Arc::new(
+            Color::from_hsla(
+                if update == UpdateComponents::Change {
+                    hue.unwrap_or(this_hue)
+                } else {
+                    this_hue + hue.unwrap_or_else(Number::zero)
+                },
+                update_value(this_saturation, saturation, 1.0, update),
+                update_value(this_lightness, lightness, 1.0, update),
+                update_value(this_alpha, alpha, 1.0, update),
+            )
+            .inherit_space(&color),
+        )
     } else if alpha.is_some() {
         Arc::new(color.with_alpha(update_value(color.alpha(), alpha, 1.0, update)))
     } else {

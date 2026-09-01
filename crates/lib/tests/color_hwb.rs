@@ -25,42 +25,42 @@ test!(
 test!(
     blackness_approx_50_pct,
     "@use \"sass:color\";\na {\n  color: color.blackness(color.hwb(0, 0%, 50%));\n}\n",
-    "a {\n  color: 49.8039215686%;\n}\n"
+    "a {\n  color: 50%;\n}\n"
 );
 test!(
     blackness_approx_50_pct_and_whiteness,
     "@use \"sass:color\";\na {\n  color: color.blackness(color.hwb(0, 50%, 50%));\n}\n",
-    "a {\n  color: 49.8039215686%;\n}\n"
+    "a {\n  color: 50%;\n}\n"
 );
 test!(
     blackness_approx_70_pct_and_whiteness,
     "@use \"sass:color\";\na {\n  color: color.blackness(color.hwb(0, 70%, 70%));\n}\n",
-    "a {\n  color: 49.8039215686%;\n}\n"
+    "a {\n  color: 50%;\n}\n"
 );
 test!(
     blackness_approx_half_pct,
     "@use \"sass:color\";\na {\n  color: color.blackness(color.hwb(0, 0%, 0.5%));\n}\n",
-    "a {\n  color: 0.3921568627%;\n}\n"
+    "a {\n  color: 0.5%;\n}\n"
 );
 test!(
     hwb_half_blackness,
     "@use \"sass:color\";\na {\n  color: color.hwb(0, 0%, 50%);\n}\n",
-    "a {\n  color: maroon;\n}\n"
+    "a {\n  color: hsl(0, 100%, 25%);\n}\n"
 );
 test!(
     hwb_equal_white_black_50,
     "@use \"sass:color\";\na {\n  color: color.hwb(0, 50%, 50%);\n}\n",
-    "a {\n  color: gray;\n}\n"
+    "a {\n  color: hsl(0, 0%, 50%);\n}\n"
 );
 test!(
     hwb_equal_white_black_70,
     "@use \"sass:color\";\na {\n  color: color.hwb(0, 70%, 70%);\n}\n",
-    "a {\n  color: gray;\n}\n"
+    "a {\n  color: hsl(0, 0%, 50%);\n}\n"
 );
 test!(
     hwb_half_percent_black,
     "@use \"sass:color\";\na {\n  color: color.hwb(0, 0%, 0.5%);\n}\n",
-    "a {\n  color: #fe0000;\n}\n"
+    "a {\n  color: hsl(0, 100%, 49.75%);\n}\n"
 );
 test!(
     hwb_black_100,
@@ -70,7 +70,7 @@ test!(
 test!(
     blackness_named,
     "@use \"sass:color\";\na {\n  color: color.blackness($color: color.hwb(0, 0%, 42%));\n}\n",
-    "a {\n  color: 41.9607843137%;\n}\n"
+    "a {\n  color: 42%;\n}\n"
 );
 test!(
     hwb_alpha_unitless,
@@ -90,22 +90,22 @@ test!(
 test!(
     hue_60_whiteness_20_blackness_100,
     "@use \"sass:color\";\na {\n  color: color.hwb(60, 20%, 100%);\n}\n",
-    "a {\n  color: #2b2b2b;\n}\n"
+    "a {\n  color: hsl(0, 0%, 16.6666666667%);\n}\n"
 );
 test!(
     one_arg_with_slash,
     "@use \"sass:color\";\na {\n  color: color.hwb(180 30% 40% / 0);\n}\n",
-    "a {\n  color: rgba(77, 153, 153, 0);\n}\n"
+    "a {\n  color: hsla(180, 33.3333333333%, 45%, 0);\n}\n"
 );
 test!(
     hue_has_unit_rad,
     "@use \"sass:color\";\na {\n  color: color.hwb(1rad, 30%, 40%);\n}\n",
-    "a {\n  color: #99964d;\n}\n"
+    "a {\n  color: hsl(57.2957795131, 33.3333333333%, 45%);\n}\n"
 );
 test!(
     scale_whiteness,
     "a {\n  color: scale-color(#cc6666, $whiteness: 100%);\n}\n",
-    "a {\n  color: #d5d5d5;\n}\n"
+    "a {\n  color: rgb(83.3333333333%, 83.3333333333%, 83.3333333333%);\n}\n"
 );
 error!(
     hwb_whiteness_missing_pct,
