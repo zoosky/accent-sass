@@ -86,3 +86,37 @@ error!(
     "@use \"sass:color\";\na {\n  color: color.adjust(#fff, $lightness: -10%, $space: oklch);\n}\n",
     "Error: $space: Color space oklch is not supported by this implementation (rgb, hsl, and hwb are)."
 );
+
+// The shapes below are lifted from real-world consumers of these APIs
+// (Bulma 1.0.4, Pico CSS 2.1.1, Foundation 6.9.0, USWDS 3.13.0). Expected
+// values are cross-checked against Dart Sass 1.103.1.
+test!(
+    channel_in_arithmetic,
+    "@use \"sass:color\";\na {\n  color: color.channel(#19d3c5, \"red\", $space: rgb) + 1;\n}\n",
+    "a {\n  color: 26;\n}\n"
+);
+test!(
+    channel_in_math_round,
+    "@use \"sass:color\";\n@use \"sass:math\";\na {\n  color: math.round(color.channel(color.mix(#485fc7, #fff, 50%), \"red\"));\n}\n",
+    "a {\n  color: 164;\n}\n"
+);
+test!(
+    channel_in_math_div,
+    "@use \"sass:color\";\n@use \"sass:math\";\na {\n  color: math.div(color.channel(#cc0f35, \"green\"), 255);\n}\n",
+    "a {\n  color: 0.0588235294;\n}\n"
+);
+test!(
+    channel_lightness_compared_in_if_light,
+    "@use \"sass:color\";\na {\n  @if color.channel(#f3f4f6, \"lightness\", $space: hsl) > 60% {\n    color: light;\n  } @else {\n    color: dark;\n  }\n}\n",
+    "a {\n  color: light;\n}\n"
+);
+test!(
+    channel_lightness_compared_in_if_dark,
+    "@use \"sass:color\";\na {\n  @if color.channel(#14191f, \"lightness\", $space: hsl) < 60% {\n    color: dark;\n  } @else {\n    color: light;\n  }\n}\n",
+    "a {\n  color: dark;\n}\n"
+);
+test!(
+    channel_reads_back_adjusted_lightness,
+    "@use \"sass:color\";\na {\n  color: color.channel(color.adjust(#cc0f35, $lightness: 8%, $space: hsl), \"lightness\", $space: hsl);\n}\n",
+    "a {\n  color: 50.9411764706%;\n}\n"
+);
