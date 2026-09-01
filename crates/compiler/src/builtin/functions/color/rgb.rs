@@ -1,4 +1,4 @@
-use crate::{builtin::builtin_imports::*, serializer::inspect_number, value::fuzzy_round};
+use crate::{builtin::builtin_imports::*, serializer::inspect_number};
 
 use super::ParsedChannels;
 
@@ -351,7 +351,7 @@ pub(crate) fn red(mut args: ArgumentResult, visitor: &mut Visitor) -> SassResult
         .assert_color_with_name("color", args.span())?;
 
     Ok(Value::Dimension(SassNumber::new_unitless(Number(
-        fuzzy_round(color.red().0),
+        color.red().0.round(),
     ))))
 }
 
@@ -362,7 +362,7 @@ pub(crate) fn green(mut args: ArgumentResult, visitor: &mut Visitor) -> SassResu
         .assert_color_with_name("color", args.span())?;
 
     Ok(Value::Dimension(SassNumber::new_unitless(Number(
-        fuzzy_round(color.green().0),
+        color.green().0.round(),
     ))))
 }
 
@@ -373,7 +373,7 @@ pub(crate) fn blue(mut args: ArgumentResult, visitor: &mut Visitor) -> SassResul
         .assert_color_with_name("color", args.span())?;
 
     Ok(Value::Dimension(SassNumber::new_unitless(Number(
-        fuzzy_round(color.blue().0),
+        color.blue().0.round(),
     ))))
 }
 

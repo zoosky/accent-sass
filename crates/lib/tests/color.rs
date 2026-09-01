@@ -626,7 +626,7 @@ test!(
         color: blue(change-color(red, $lightness: 95%));
         color: green(change-color(red, $lightness: 95%));
     }",
-    "a {\n  color: 0deg;\n  color: 100%;\n  color: 50%;\n  color: rgb(100%, 90%, 90%);\n  color: 255;\n  color: 230;\n  color: 230;\n}\n"
+    "a {\n  color: 0deg;\n  color: 100%;\n  color: 50%;\n  color: rgb(100%, 90%, 90%);\n  color: 255;\n  color: 229;\n  color: 229;\n}\n"
 );
 test!(
     slash_list_alpha,
