@@ -391,10 +391,10 @@ error!(
     "@use \"sass:color\";\na {\n  color: color.mix(#cc0f35, #12ab34, $method: nope);\n}\n",
     "Error: $method: Unknown color space \"nope\"."
 );
-error!(
-    mix_method_non_legacy_space_is_unsupported,
+test!(
+    mix_method_oklch,
     "@use \"sass:color\";\na {\n  color: color.mix(#cc0f35, #12ab34, $method: oklch);\n}\n",
-    "Error: $method: Color space oklch is not supported by this implementation (rgb, hsl, and hwb are)."
+    "a {\n  color: hsl(42.4826732136, 247.3743230932%, 20.6427981471%);\n}\n"
 );
 error!(
     mix_weight_out_of_range,

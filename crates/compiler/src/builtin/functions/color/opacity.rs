@@ -1,4 +1,9 @@
-use crate::builtin::builtin_imports::*;
+//! `alpha()`, `opacity()`, and the legacy `opacify()`/`transparentize()`
+//! family.
+
+use crate::{builtin::builtin_imports::*, color::clamp_like_css};
+
+use super::{function_string, legacy_only_error};
 
 /// Check if `s` matches the regex `^[a-zA-Z]+\s*=`
 fn is_ms_filter(s: &str) -> bool {
@@ -30,8 +35,11 @@ mod test {
     }
 }
 
-pub(crate) fn alpha(mut args: ArgumentResult, visitor: &mut Visitor) -> SassResult<Value> {
+/// The shared body of the global `alpha()` and `color.alpha()`, which only
+/// differ in how the legacy-only error names the function.
+fn alpha_inner(mut args: ArgumentResult, function: &str) -> SassResult<Value> {
     if args.len() <= 1 {
+        let span = args.span();
         let color = args.get_err(0, "color")?;
 
         if let Value::String(s, QuoteKind::None) = &color {
@@ -40,9 +48,17 @@ pub(crate) fn alpha(mut args: ArgumentResult, visitor: &mut Visitor) -> SassResu
             }
         }
 
-        let color = color.assert_color_with_name("color", args.span())?;
+        if let Value::Color(color) = &color {
+            if !color.is_legacy() {
+                return Err(legacy_only_error(function, "color.channel()", false, span));
+            }
+        }
 
-        Ok(Value::Dimension(SassNumber::new_unitless(color.alpha())))
+        let color = color.assert_color_with_name("color", span)?;
+
+        Ok(Value::Dimension(SassNumber::new_unitless(Number(
+            color.alpha(),
+        ))))
     } else {
         let err = args.max_args(1);
         let args = args
@@ -64,60 +80,98 @@ pub(crate) fn alpha(mut args: ArgumentResult, visitor: &mut Visitor) -> SassResu
     }
 }
 
-pub(crate) fn opacity(mut args: ArgumentResult, visitor: &mut Visitor) -> SassResult<Value> {
+pub(crate) fn alpha(args: ArgumentResult, _: &mut Visitor) -> SassResult<Value> {
+    alpha_inner(args, "alpha")
+}
+
+/// `color.alpha()` from the `sass:color` module.
+pub(crate) fn module_alpha(args: ArgumentResult, _: &mut Visitor) -> SassResult<Value> {
+    alpha_inner(args, "color.alpha")
+}
+
+/// `opacity($color)`: the alpha of any color. The global function also
+/// passes a number, or a value only CSS can evaluate, through as the
+/// plain-CSS filter function; `color.opacity()` only does so for a number.
+fn opacity_inner(
+    mut args: ArgumentResult,
+    visitor: &mut Visitor,
+    global: bool,
+) -> SassResult<Value> {
     args.max_args(1)?;
+    let span = args.span();
     match args.get_err(0, "color")? {
-        Value::Color(c) => Ok(Value::Dimension(SassNumber::new_unitless(c.alpha()))),
-        Value::Dimension(SassNumber {
-            num,
-            unit,
-            as_slash: _,
-        }) => Ok(Value::String(
-            format!("opacity({}{})", num.inspect(), unit),
-            QuoteKind::None,
-        )),
+        Value::Color(c) => Ok(Value::Dimension(SassNumber::new_unitless(Number(
+            c.alpha(),
+        )))),
+        value
+            if matches!(value, Value::Dimension(..)) || (global && value.is_special_function()) =>
+        {
+            function_string("opacity", &[value], visitor, span)
+        }
         v => Err((
-            format!("$color: {} is not a color.", v.inspect(args.span())?),
-            args.span(),
+            format!("$color: {} is not a color.", v.inspect(span)?),
+            span,
         )
             .into()),
     }
 }
 
-fn opacify(mut args: ArgumentResult, visitor: &mut Visitor) -> SassResult<Value> {
-    args.max_args(2)?;
-    let color = args
-        .get_err(0, "color")?
-        .assert_color_with_name("color", args.span())?;
-    let amount = args
-        .get_err(1, "amount")?
-        .assert_number_with_name("amount", args.span())?;
-
-    amount.assert_bounds_with_unit("amount", 0.0, 1.0, &Unit::None, args.span())?;
-
-    Ok(Value::Color(Arc::new(color.fade_in(amount.num))))
+pub(crate) fn opacity(args: ArgumentResult, visitor: &mut Visitor) -> SassResult<Value> {
+    opacity_inner(args, visitor, true)
 }
 
-fn transparentize(mut args: ArgumentResult, visitor: &mut Visitor) -> SassResult<Value> {
+/// `color.opacity()` from the `sass:color` module.
+pub(crate) fn module_opacity(args: ArgumentResult, visitor: &mut Visitor) -> SassResult<Value> {
+    opacity_inner(args, visitor, false)
+}
+
+/// The shared body of `opacify()`/`fade-in()` and
+/// `transparentize()`/`fade-out()`: adds `sign * $amount` to the alpha of
+/// a legacy color, clamped to `0..1`.
+fn adjust_alpha(mut args: ArgumentResult, name: &str, sign: f64) -> SassResult<Value> {
     args.max_args(2)?;
+    let span = args.span();
     let color = args
         .get_err(0, "color")?
-        .assert_color_with_name("color", args.span())?;
-
+        .assert_color_with_name("color", span)?;
     let amount = args
         .get_err(1, "amount")?
-        .assert_number_with_name("amount", args.span())?;
+        .assert_number_with_name("amount", span)?;
 
-    amount.assert_bounds_with_unit("amount", 0.0, 1.0, &Unit::None, args.span())?;
+    if !color.is_legacy() {
+        return Err(legacy_only_error(name, "color.adjust()", true, span));
+    }
 
-    Ok(Value::Color(Arc::new(color.fade_out(amount.num))))
+    amount.assert_bounds_with_unit("amount", 0.0, 1.0, &Unit::None, span)?;
+
+    Ok(Value::Color(Arc::new(color.change_alpha(clamp_like_css(
+        color.alpha() + sign * amount.num.0,
+        0.0,
+        1.0,
+    )))))
+}
+
+fn opacify(args: ArgumentResult, _: &mut Visitor) -> SassResult<Value> {
+    adjust_alpha(args, "opacify", 1.0)
+}
+
+fn fade_in(args: ArgumentResult, _: &mut Visitor) -> SassResult<Value> {
+    adjust_alpha(args, "fade-in", 1.0)
+}
+
+fn transparentize(args: ArgumentResult, _: &mut Visitor) -> SassResult<Value> {
+    adjust_alpha(args, "transparentize", -1.0)
+}
+
+fn fade_out(args: ArgumentResult, _: &mut Visitor) -> SassResult<Value> {
+    adjust_alpha(args, "fade-out", -1.0)
 }
 
 pub(crate) fn declare(f: &mut GlobalFunctionMap) {
     f.insert("alpha", Builtin::new(alpha));
     f.insert("opacity", Builtin::new(opacity));
     f.insert("opacify", Builtin::new(opacify));
-    f.insert("fade-in", Builtin::new(opacify));
+    f.insert("fade-in", Builtin::new(fade_in));
     f.insert("transparentize", Builtin::new(transparentize));
-    f.insert("fade-out", Builtin::new(transparentize));
+    f.insert("fade-out", Builtin::new(fade_out));
 }

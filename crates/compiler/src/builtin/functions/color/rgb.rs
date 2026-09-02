@@ -1,108 +1,78 @@
+//! `rgb()`, `rgba()`, the legacy rgb channel getters, and `mix()`.
+
 use crate::{
     builtin::builtin_imports::*,
-    color::{ColorSpace, HueInterpolationMethod},
-    serializer::inspect_number,
+    color::{clamp_like_css, ColorSpace, HueInterpolationMethod},
 };
 
 use super::{
-    other::{assert_unquoted_string, parse_space},
-    ParsedChannels,
+    assert_common_list_style, assert_unquoted_string, color_to_string, dart_to_string,
+    function_string, legacy_only_error,
+    parse::{color_from_channels, parse_channels},
+    percentage_or_unitless, space_from_value,
 };
 
-pub(crate) fn function_string(
-    name: &'static str,
-    args: &[Value],
-    visitor: &mut Visitor,
-    span: Span,
-) -> SassResult<String> {
-    let args = args
-        .iter()
-        .map(|arg| arg.to_css_string(span, visitor.options.is_compressed()))
-        .collect::<SassResult<Vec<_>>>()?
-        .join(", ");
-
-    Ok(format!("{}({})", name, args))
-}
-
+/// `rgb($color, $alpha)`: replaces the alpha of a legacy color (Dart
+/// Sass's `_rgbTwoArg`).
 fn inner_rgb_2_arg(
     name: &'static str,
     mut args: ArgumentResult,
     visitor: &mut Visitor,
 ) -> SassResult<Value> {
+    let span = args.span();
     // rgba(var(--foo), 0.5) is valid CSS because --foo might be `123, 456, 789`
     // and functions are parsed after variable substitution.
-    let color = args.get_err(0, "color")?;
-    let alpha = args.get_err(1, "alpha")?;
+    let first = args.get_err(0, "color")?;
+    let second = args.get_err(1, "alpha")?;
 
-    let is_compressed = visitor.options.is_compressed();
-
-    if color.is_var() {
-        return Ok(Value::String(
-            function_string(name, &[color, alpha], visitor, args.span())?,
-            QuoteKind::None,
-        ));
-    } else if alpha.is_var() {
-        match &color {
-            Value::Color(color) => {
-                return Ok(Value::String(
-                    format!(
-                        "{}({}, {}, {}, {})",
-                        name,
-                        color.red().to_string(is_compressed),
-                        color.green().to_string(is_compressed),
-                        color.blue().to_string(is_compressed),
-                        alpha.to_css_string(args.span(), is_compressed)?
-                    ),
-                    QuoteKind::None,
-                ));
-            }
-            _ => {
-                return Ok(Value::String(
-                    function_string(name, &[color, alpha], visitor, args.span())?,
-                    QuoteKind::None,
-                ))
-            }
-        }
-    } else if alpha.is_special_function() {
-        let color = color.assert_color_with_name("color", args.span())?;
-
-        return Ok(Value::String(
-            format!(
-                "{}({}, {}, {}, {})",
-                name,
-                color.red().to_string(is_compressed),
-                color.green().to_string(is_compressed),
-                color.blue().to_string(is_compressed),
-                alpha.to_css_string(args.span(), is_compressed)?
-            ),
-            QuoteKind::None,
-        ));
+    if first.is_var() || (!matches!(first, Value::Color(..)) && second.is_var()) {
+        return function_string(name, &[first, second], visitor, span);
     }
 
-    let color = color.assert_color_with_name("color", args.span())?;
-    let alpha = alpha.assert_number_with_name("alpha", args.span())?;
-    // `rgba($color, $alpha)` rebuilds the color from its rgb channels, so the
-    // result is an rgb-space color whatever `$color` was written in.
-    Ok(Value::Color(Arc::new(
-        color
-            .to_space(ColorSpace::Rgb, false)
-            .with_alpha(Number(percentage_or_unitless(
-                &alpha,
-                1.0,
-                "alpha",
-                args.span(),
-                visitor,
-            )?)),
-    )))
+    let color = first.assert_color_with_name("color", span)?;
+    if !color.is_legacy() {
+        return Err((
+            format!(
+                "${name}: Expected {color} to be in the legacy RGB, HSL, or HWB color space.\n\nRecommendation: color.change({color}, $alpha: {alpha})",
+                name = name,
+                color = color_to_string(&color, span)?,
+                alpha = dart_to_string(&second, span)?,
+            ),
+            span,
+        )
+            .into());
+    }
+
+    let color = color.to_space(ColorSpace::Rgb, true);
+    if second.is_special_function() {
+        let channel =
+            |index: usize| Value::Dimension(SassNumber::new_unitless(Number(color.channel(index))));
+        return function_string(
+            name,
+            &[channel(0), channel(1), channel(2), second],
+            visitor,
+            span,
+        );
+    }
+
+    let alpha = second.assert_number_with_name("alpha", span)?;
+    Ok(Value::Color(Arc::new(color.change_alpha(clamp_like_css(
+        percentage_or_unitless(&alpha, 1.0, "alpha", span)?,
+        0.0,
+        1.0,
+    )))))
 }
 
+/// `rgb($red, $green, $blue, $alpha: 1)` (Dart Sass's `_rgb`).
 fn inner_rgb_3_arg(
     name: &'static str,
     mut args: ArgumentResult,
     visitor: &mut Visitor,
 ) -> SassResult<Value> {
-    let alpha = if args.len() > 3 {
-        args.get(3, "alpha")
+    let span = args.span();
+    let has_alpha = args.len() > 3;
+    let alpha = if has_alpha {
+        args.get(3, "alpha").map(|alpha| alpha.node)
     } else {
         None
     };
@@ -114,208 +84,37 @@ fn inner_rgb_3_arg(
     if red.is_special_function()
         || green.is_special_function()
         || blue.is_special_function()
-        || alpha
-            .as_ref()
-            .map(|alpha| alpha.node.is_special_function())
-            .unwrap_or(false)
+        || alpha.as_ref().map_or(false, Value::is_special_function)
     {
-        let fn_string = if alpha.is_some() {
-            function_string(
-                name,
-                &[red, green, blue, alpha.unwrap().node],
-                visitor,
-                args.span(),
-            )?
-        } else {
-            function_string(name, &[red, green, blue], visitor, args.span())?
-        };
-
-        return Ok(Value::String(fn_string, QuoteKind::None));
+        let mut values = vec![red, green, blue];
+        values.extend(alpha);
+        return function_string(name, &values, visitor, span);
     }
 
-    let span = args.span();
-
-    let red = red.assert_number_with_name("red", span)?;
-    let green = green.assert_number_with_name("green", span)?;
-    let blue = blue.assert_number_with_name("blue", span)?;
-
-    Ok(Value::Color(Arc::new(Color::from_rgba_fn(
-        Number(percentage_or_unitless(&red, 255.0, "red", span, visitor)?),
-        Number(percentage_or_unitless(
-            &green, 255.0, "green", span, visitor,
-        )?),
-        Number(percentage_or_unitless(&blue, 255.0, "blue", span, visitor)?),
-        Number(
-            alpha
-                .map(|alpha| {
-                    percentage_or_unitless(
-                        &alpha.node.assert_number_with_name("alpha", span)?,
-                        1.0,
-                        "alpha",
-                        span,
-                        visitor,
-                    )
-                })
-                .transpose()?
-                .unwrap_or(1.0),
-        ),
-    ))))
-}
-
-pub(crate) fn percentage_or_unitless(
-    number: &SassNumber,
-    max: f64,
-    name: &str,
-    span: Span,
-    visitor: &mut Visitor,
-) -> SassResult<f64> {
-    let value = if number.unit == Unit::None {
-        number.num
-    } else if number.unit == Unit::Percent {
-        (number.num * Number(max)) / Number(100.0)
-    } else {
-        return Err((
-            format!(
-                "${name}: Expected {} to have no units or \"%\".",
-                inspect_number(number, visitor.options, span)?,
-                name = name,
-            ),
-            span,
-        )
-            .into());
+    let alpha = match alpha {
+        Some(alpha) => Some(clamp_like_css(
+            percentage_or_unitless(
+                &alpha.assert_number_with_name("alpha", span)?,
+                1.0,
+                "alpha",
+                span,
+            )?,
+            0.0,
+            1.0,
+        )),
+        None => Some(1.0),
     };
 
-    Ok(value.clamp(0.0, max).0)
-}
-
-fn is_var_slash(value: &Value) -> bool {
-    match value {
-        Value::String(text, QuoteKind::Quoted) => {
-            text.to_ascii_lowercase().starts_with("var(") && text.contains('/')
-        }
-        _ => false,
-    }
-}
-
-pub(crate) fn parse_channels(
-    name: &'static str,
-    arg_names: &[&'static str],
-    mut channels: Value,
-    visitor: &mut Visitor,
-    span: Span,
-) -> SassResult<ParsedChannels> {
-    if channels.is_var() {
-        let fn_string = function_string(name, &[channels], visitor, span)?;
-        return Ok(ParsedChannels::String(fn_string));
-    }
-
-    let original_channels = channels.clone();
-
-    let mut alpha_from_slash_list = None;
-
-    if channels.separator() == ListSeparator::Slash {
-        let list = channels.clone().as_list();
-        if list.len() != 2 {
-            return Err((
-                format!(
-                    "Only 2 slash-separated elements allowed, but {} {} passed.",
-                    list.len(),
-                    if list.len() == 1 { "was" } else { "were" }
-                ),
-                span,
-            )
-                .into());
-        }
-
-        channels = list[0].clone();
-        let inner_alpha_from_slash_list = list[1].clone();
-
-        if !inner_alpha_from_slash_list.is_special_function() {
-            inner_alpha_from_slash_list
-                .clone()
-                .assert_number_with_name("alpha", span)?;
-        }
-
-        alpha_from_slash_list = Some(inner_alpha_from_slash_list);
-
-        if list[0].is_var() {
-            let fn_string = function_string(name, &[original_channels], visitor, span)?;
-            return Ok(ParsedChannels::String(fn_string));
-        }
-    }
-
-    let is_comma_separated = channels.separator() == ListSeparator::Comma;
-    let is_bracketed = matches!(channels, Value::List(_, _, Brackets::Bracketed));
-
-    if is_comma_separated || is_bracketed {
-        let mut err_buffer = "$channels must be".to_owned();
-
-        if is_bracketed {
-            err_buffer.push_str(" an unbracketed");
-        }
-
-        if is_comma_separated {
-            if is_bracketed {
-                err_buffer.push(',');
-            } else {
-                err_buffer.push_str(" a");
-            }
-
-            err_buffer.push_str(" space-separated");
-        }
-
-        err_buffer.push_str(" list.");
-
-        return Err((err_buffer, span).into());
-    }
-
-    let mut list = channels.clone().as_list();
-
-    if list.len() > 3 {
-        return Err((
-            format!("Only 3 elements allowed, but {} were passed.", list.len()),
-            span,
-        )
-            .into());
-    } else if list.len() < 3 {
-        if list.iter().any(Value::is_var)
-            || (!list.is_empty() && is_var_slash(list.last().unwrap()))
-        {
-            let fn_string = function_string(name, &[original_channels], visitor, span)?;
-            return Ok(ParsedChannels::String(fn_string));
-        } else {
-            let argument = arg_names[list.len()];
-            return Err((
-                format!("Missing element ${argument}.", argument = argument),
-                span,
-            )
-                .into());
-        }
-    }
-
-    if let Some(alpha_from_slash_list) = alpha_from_slash_list {
-        list.push(alpha_from_slash_list);
-        return Ok(ParsedChannels::List(list));
-    }
-
-    #[allow(clippy::collapsible_match)]
-    match &list[2] {
-        Value::Dimension(SassNumber { as_slash, .. }) => match as_slash {
-            Some(slash) => Ok(ParsedChannels::List(vec![
-                list[0].clone(),
-                list[1].clone(),
-                // todo: superfluous clones
-                Value::Dimension(slash.0.clone()),
-                Value::Dimension(slash.1.clone()),
-            ])),
-            None => Ok(ParsedChannels::List(list)),
-        },
-        Value::String(text, QuoteKind::None) if text.contains('/') => {
-            let fn_string = function_string(name, &[channels], visitor, span)?;
-            Ok(ParsedChannels::String(fn_string))
-        }
-        _ => Ok(ParsedChannels::List(list)),
-    }
+    Ok(Value::Color(Arc::new(color_from_channels(
+        ColorSpace::Rgb,
+        Some(red.assert_number_with_name("red", span)?),
+        Some(green.assert_number_with_name("green", span)?),
+        Some(blue.assert_number_with_name("blue", span)?),
+        alpha,
+        true,
+        true,
+        span,
+    )?)))
 }
 
 fn inner_rgb(
@@ -327,26 +126,16 @@ fn inner_rgb(
 
     match args.len() {
         0 | 1 => {
-            match parse_channels(
+            let span = args.span();
+            let channels = args.get_err(0, "channels")?;
+            parse_channels(
                 name,
-                &["red", "green", "blue"],
-                args.get_err(0, "channels")?,
+                channels,
+                Some(ColorSpace::Rgb),
+                Some("channels"),
                 visitor,
-                args.span(),
-            )? {
-                ParsedChannels::String(s) => Ok(Value::String(s, QuoteKind::None)),
-                ParsedChannels::List(list) => {
-                    let args = ArgumentResult {
-                        positional: list,
-                        named: BTreeMap::new(),
-                        separator: ListSeparator::Comma,
-                        span: args.span(),
-                        touched: BTreeSet::new(),
-                    };
-
-                    inner_rgb_3_arg(name, args, visitor)
-                }
-            }
+                span,
+            )
         }
         2 => inner_rgb_2_arg(name, args, visitor),
         _ => inner_rgb_3_arg(name, args, visitor),
@@ -361,90 +150,69 @@ pub(crate) fn rgba(args: ArgumentResult, visitor: &mut Visitor) -> SassResult<Va
     inner_rgb("rgba", args, visitor)
 }
 
-pub(crate) fn red(mut args: ArgumentResult, visitor: &mut Visitor) -> SassResult<Value> {
+/// The legacy channel getters (`red()`, `hue()`, `whiteness()`, ...): the
+/// channel as seen through `space`, which only a legacy color has.
+pub(crate) fn legacy_channel_function(
+    mut args: ArgumentResult,
+    name: &str,
+    space: ColorSpace,
+    index: usize,
+    unit: Unit,
+    round: bool,
+) -> SassResult<Value> {
     args.max_args(1)?;
+    let span = args.span();
     let color = args
         .get_err(0, "color")?
-        .assert_color_with_name("color", args.span())?;
+        .assert_color_with_name("color", span)?;
 
-    Ok(Value::Dimension(SassNumber::new_unitless(Number(
-        color.red().0.round(),
-    ))))
+    if !color.is_legacy() {
+        return Err(legacy_only_error(
+            &format!("color.{}", name),
+            "color.channel()",
+            true,
+            span,
+        ));
+    }
+
+    let mut value = color.legacy_channel(space, index);
+    if round {
+        value = value.round();
+    }
+
+    Ok(Value::Dimension(SassNumber {
+        num: Number(value),
+        unit,
+        as_slash: None,
+    }))
 }
 
-pub(crate) fn green(mut args: ArgumentResult, visitor: &mut Visitor) -> SassResult<Value> {
-    args.max_args(1)?;
-    let color = args
-        .get_err(0, "color")?
-        .assert_color_with_name("color", args.span())?;
-
-    Ok(Value::Dimension(SassNumber::new_unitless(Number(
-        color.green().0.round(),
-    ))))
+pub(crate) fn red(args: ArgumentResult, _: &mut Visitor) -> SassResult<Value> {
+    legacy_channel_function(args, "red", ColorSpace::Rgb, 0, Unit::None, true)
 }
 
-pub(crate) fn blue(mut args: ArgumentResult, visitor: &mut Visitor) -> SassResult<Value> {
-    args.max_args(1)?;
-    let color = args
-        .get_err(0, "color")?
-        .assert_color_with_name("color", args.span())?;
-
-    Ok(Value::Dimension(SassNumber::new_unitless(Number(
-        color.blue().0.round(),
-    ))))
+pub(crate) fn green(args: ArgumentResult, _: &mut Visitor) -> SassResult<Value> {
+    legacy_channel_function(args, "green", ColorSpace::Rgb, 1, Unit::None, true)
 }
 
-/// Parses the `$method` of `color.mix()`: a color space, optionally
-/// followed by a hue interpolation method and the word `hue`
-/// (`hsl longer hue`), as a space-separated list.
-fn parse_interpolation_method(
+pub(crate) fn blue(args: ArgumentResult, _: &mut Visitor) -> SassResult<Value> {
+    legacy_channel_function(args, "blue", ColorSpace::Rgb, 2, Unit::None, true)
+}
+
+/// Parses the `$method` of `color.mix()` (Dart Sass's
+/// `InterpolationMethod.fromValue`): a color space, optionally followed by
+/// a hue interpolation method and the word `hue` (`hsl longer hue`), as a
+/// space-separated list.
+pub(crate) fn parse_interpolation_method(
     method: Spanned<Value>,
 ) -> SassResult<(ColorSpace, HueInterpolationMethod)> {
     let span = method.span;
-    // `SassList.toString()` wraps a multi-element list in parentheses.
-    let inspected = match &method.node {
-        Value::List(items, _, Brackets::None) if items.len() > 1 => {
-            format!("({})", method.node.inspect(span)?)
-        }
-        _ => method.node.inspect(span)?,
-    };
+    let list = assert_common_list_style(&method.node, Some("method"), false, span)?;
+    let inspected = dart_to_string(&method.node, span)?;
 
-    let items = match method.node {
-        Value::List(_, _, Brackets::Bracketed) => {
-            return Err((
-                format!("$method: Expected an unbracketed list, was {}", inspected),
-                span,
-            )
-                .into())
-        }
-        Value::List(items, ListSeparator::Comma, _) if items.len() > 1 => {
-            return Err((
-                format!(
-                    "$method: Expected a space-separated list, was {}",
-                    inspected
-                ),
-                span,
-            )
-                .into())
-        }
-        Value::List(items, ListSeparator::Slash, _) if items.len() > 1 => {
-            return Err((
-                format!(
-                    "$method: Expected a space-separated list, was {}",
-                    inspected
-                ),
-                span,
-            )
-                .into())
-        }
-        Value::List(items, ..) => items,
-        Value::ArgList(args) => args.elems,
-        value => vec![value],
-    };
-
-    let mut items = items.into_iter();
+    let mut items = list.into_iter();
     let space = match items.next() {
-        Some(space) => parse_space(space, "method", span)?,
+        Some(space) => space_from_value(space, "method", span)?,
         None => {
             return Err((
                 "$method: Expected a color interpolation method, got an empty list.",
@@ -455,12 +223,7 @@ fn parse_interpolation_method(
     };
 
     let hue_method = match items.next() {
-        None => {
-            return Ok((
-                space.legacy("method", span)?,
-                HueInterpolationMethod::Shorter,
-            ))
-        }
+        None => return Ok((space, HueInterpolationMethod::Shorter)),
         Some(hue_method) => {
             let name = assert_unquoted_string(hue_method, "method", span)?;
             match HueInterpolationMethod::from_name(&name) {
@@ -488,9 +251,9 @@ fn parse_interpolation_method(
                 .into())
         }
         Some(hue) => {
-            let hue_inspected = hue.inspect(span)?;
-            let hue: String = assert_unquoted_string(hue, "method", span)?;
-            if hue.to_ascii_lowercase() != "hue" {
+            let hue_inspected = dart_to_string(&hue, span)?;
+            let hue = assert_unquoted_string(hue, "method", span)?;
+            if !hue.eq_ignore_ascii_case("hue") {
                 return Err((
                     format!(
                         "$method: Expected unquoted string \"hue\" at the end of {}, was {}.",
@@ -523,57 +286,70 @@ fn parse_interpolation_method(
             .into());
     }
 
-    Ok((space.legacy("method", span)?, hue_method))
+    Ok((space, hue_method))
 }
 
 /// `color.mix($color1, $color2, $weight: 50%, $method: null)`.
 ///
-/// Without `$method` this is the legacy rgb mix, which always produces an
-/// rgb-space color. With `$method` the colors are interpolated in the
-/// named space per CSS Color 4 and the result stays in `$color1`'s space.
-pub(crate) fn mix(mut args: ArgumentResult, visitor: &mut Visitor) -> SassResult<Value> {
+/// Without `$method` this is the legacy rgb mix, which only accepts legacy
+/// colors and always produces an rgb-space color. With `$method` the
+/// colors are interpolated in the named space per CSS Color 4 and the
+/// result stays in `$color1`'s space.
+pub(crate) fn mix(mut args: ArgumentResult, _: &mut Visitor) -> SassResult<Value> {
     args.max_args(4)?;
+    let span = args.span();
     let color1 = args
         .get_err(0, "color1")?
-        .assert_color_with_name("color1", args.span())?;
-
+        .assert_color_with_name("color1", span)?;
     let color2 = args
         .get_err(1, "color2")?
-        .assert_color_with_name("color2", args.span())?;
+        .assert_color_with_name("color2", span)?;
 
-    let weight = match args.default_arg(
-        2,
-        "weight",
-        Value::Dimension(SassNumber::new_unitless(50.0)),
-    ) {
-        Value::Dimension(mut num) => {
-            num.assert_bounds("weight", 0.0, 100.0, args.span())?;
-            num.num /= Number(100.0);
-            num.num
-        }
-        v => {
+    let weight = args
+        .default_arg(
+            2,
+            "weight",
+            Value::Dimension(SassNumber {
+                num: Number(50.0),
+                unit: Unit::Percent,
+                as_slash: None,
+            }),
+        )
+        .assert_number_with_name("weight", span)?;
+
+    if let Some(method) = args
+        .get(3, "method")
+        .filter(|method| method.node != Value::Null)
+    {
+        let (space, hue_method) = parse_interpolation_method(method)?;
+        weight.assert_bounds_with_unit("weight", 0.0, 100.0, &Unit::Percent, span)?;
+        return Ok(Value::Color(Arc::new(color1.interpolate(
+            &color2,
+            space,
+            hue_method,
+            weight.num.0 / 100.0,
+            false,
+        ))));
+    }
+
+    for (color, name) in [(&color1, "color1"), (&color2, "color2")] {
+        if !color.is_legacy() {
             return Err((
                 format!(
-                    "$weight: {} is not a number.",
-                    v.to_css_string(args.span(), visitor.options.is_compressed())?
+                    "${name}: To use color.mix() with non-legacy color {color}, you must provide a $method.",
+                    name = name,
+                    color = color_to_string(color, span)?,
                 ),
-                args.span(),
+                span,
             )
-                .into())
+                .into());
         }
-    };
+    }
 
-    let method = match args.get(3, "method") {
-        Some(method) if method.node != Value::Null => Some(parse_interpolation_method(method)?),
-        _ => None,
-    };
-
-    Ok(Value::Color(Arc::new(match method {
-        Some((space, hue_method)) => {
-            color1.interpolate(&color2, space, hue_method, weight.0, false)
-        }
-        None => color1.mix(&color2, weight),
-    })))
+    weight.assert_bounds("weight", 0.0, 100.0, span)?;
+    Ok(Value::Color(Arc::new(
+        color1.mix_legacy(&color2, weight.num.0 / 100.0),
+    )))
 }
 
 pub(crate) fn declare(f: &mut GlobalFunctionMap) {

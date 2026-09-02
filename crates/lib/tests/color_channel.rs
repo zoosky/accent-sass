@@ -97,14 +97,14 @@ error!(
     "Error: $channel: Color #fff has no channel named chroma."
 );
 error!(
-    channel_unsupported_space,
+    channel_missing_in_non_legacy_space,
     "@use \"sass:color\";\na {\n  color: color.channel(#fff, \"red\", $space: oklch);\n}\n",
-    "Error: $space: Color space oklch is not supported by this implementation (rgb, hsl, and hwb are)."
+    "Error: $channel: Color oklch(100% 0 none) has no channel named red."
 );
-error!(
-    adjust_unsupported_space,
+test!(
+    adjust_in_non_legacy_space,
     "@use \"sass:color\";\na {\n  color: color.adjust(#fff, $lightness: -10%, $space: oklch);\n}\n",
-    "Error: $space: Color space oklch is not supported by this implementation (rgb, hsl, and hwb are)."
+    "a {\n  color: rgb(86.9816557231%, 86.9816557231%, 86.9816557231%);\n}\n"
 );
 
 // The shapes below are lifted from real-world consumers of these APIs
