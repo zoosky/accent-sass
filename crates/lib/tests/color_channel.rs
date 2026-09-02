@@ -61,10 +61,10 @@ test!(
     "@use \"sass:color\";\na {\n  color: color.channel(color.hwb(210, 30%, 40%), \"blackness\");\n}\n",
     "a {\n  color: 40%;\n}\n"
 );
-test!(
-    channel_name_is_case_insensitive,
+error!(
+    channel_name_is_case_sensitive,
     "@use \"sass:color\";\na {\n  color: color.channel(#cc0f35, \"RED\", $space: rgb);\n}\n",
-    "a {\n  color: 204;\n}\n"
+    "Error: $channel: Color #cc0f35 has no channel named RED."
 );
 test!(
     channel_space_passed_positionally,
@@ -94,7 +94,7 @@ test!(
 error!(
     channel_unknown_channel_name,
     "@use \"sass:color\";\na {\n  color: color.channel(#fff, \"chroma\");\n}\n",
-    "Error: $channel: Unknown channel name \"chroma\"."
+    "Error: $channel: Color #fff has no channel named chroma."
 );
 error!(
     channel_unsupported_space,
@@ -163,4 +163,44 @@ test!(
     out_of_gamut_hsl_literal_round_trips,
     "a {\n  color: hsl(0, 50%, 150%);\n}\n",
     "a {\n  color: hsl(0, 50%, 150%);\n}\n"
+);
+test!(
+    channel_of_hsl_color_in_hwb_space,
+    "@use \"sass:color\";\na {\n  color: color.channel(hsl(120 50% 50%), \"hue\", $space: hwb);\n}\n",
+    "a {\n  color: 120deg;\n}\n"
+);
+error!(
+    channel_not_in_own_space,
+    "@use \"sass:color\";\na {\n  color: color.channel(#cc0f35, \"hue\");\n}\n",
+    "Error: $channel: Color #cc0f35 has no channel named hue."
+);
+error!(
+    channel_of_hsl_color_not_in_hsl,
+    "@use \"sass:color\";\na {\n  color: color.channel(hsl(120 50% 50%), \"red\");\n}\n",
+    "Error: $channel: Color hsl(120, 50%, 50%) has no channel named red."
+);
+error!(
+    channel_name_must_be_quoted,
+    "@use \"sass:color\";\na {\n  color: color.channel(#cc0f35, hue, $space: hsl);\n}\n",
+    "Error: $channel: Expected hue to be a quoted string."
+);
+test!(
+    channel_hwb_hue_is_stored_even_when_powerless,
+    "@use \"sass:color\";\na {\n  color: color.channel(color.hwb(120 60% 60%), \"hue\");\n}\n",
+    "a {\n  color: 120deg;\n}\n"
+);
+test!(
+    hue_of_powerless_hwb_hue_is_zero,
+    "@use \"sass:color\";\na {\n  color: color.hue(color.hwb(120 60% 60%));\n}\n",
+    "a {\n  color: 0deg;\n}\n"
+);
+test!(
+    channel_whiteness_after_adjust_is_unscaled,
+    "@use \"sass:color\";\na {\n  color: color.channel(color.adjust(color.hwb(120 20% 30%), $whiteness: 90%), \"whiteness\");\n}\n",
+    "a {\n  color: 110%;\n}\n"
+);
+test!(
+    channel_whiteness_after_change_is_scaled,
+    "@use \"sass:color\";\na {\n  color: color.channel(color.change(color.hwb(120 20% 30%), $whiteness: 150%), \"whiteness\");\n}\n",
+    "a {\n  color: 83.3333333333%;\n}\n"
 );

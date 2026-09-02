@@ -1,6 +1,13 @@
-use crate::{builtin::builtin_imports::*, serializer::inspect_number};
+use crate::{
+    builtin::builtin_imports::*,
+    color::{ColorSpace, HueInterpolationMethod},
+    serializer::inspect_number,
+};
 
-use super::ParsedChannels;
+use super::{
+    other::{assert_unquoted_string, parse_space},
+    ParsedChannels,
+};
 
 pub(crate) fn function_string(
     name: &'static str,
@@ -74,9 +81,19 @@ fn inner_rgb_2_arg(
 
     let color = color.assert_color_with_name("color", args.span())?;
     let alpha = alpha.assert_number_with_name("alpha", args.span())?;
-    Ok(Value::Color(Arc::new(color.with_alpha(Number(
-        percentage_or_unitless(&alpha, 1.0, "alpha", args.span(), visitor)?,
-    )))))
+    // `rgba($color, $alpha)` rebuilds the color from its rgb channels, so the
+    // result is an rgb-space color whatever `$color` was written in.
+    Ok(Value::Color(Arc::new(
+        color
+            .to_space(ColorSpace::Rgb, false)
+            .with_alpha(Number(percentage_or_unitless(
+                &alpha,
+                1.0,
+                "alpha",
+                args.span(),
+                visitor,
+            )?)),
+    )))
 }
 
 fn inner_rgb_3_arg(
@@ -377,8 +394,145 @@ pub(crate) fn blue(mut args: ArgumentResult, visitor: &mut Visitor) -> SassResul
     ))))
 }
 
+/// Parses the `$method` of `color.mix()`: a color space, optionally
+/// followed by a hue interpolation method and the word `hue`
+/// (`hsl longer hue`), as a space-separated list.
+fn parse_interpolation_method(
+    method: Spanned<Value>,
+) -> SassResult<(ColorSpace, HueInterpolationMethod)> {
+    let span = method.span;
+    // `SassList.toString()` wraps a multi-element list in parentheses.
+    let inspected = match &method.node {
+        Value::List(items, _, Brackets::None) if items.len() > 1 => {
+            format!("({})", method.node.inspect(span)?)
+        }
+        _ => method.node.inspect(span)?,
+    };
+
+    let items = match method.node {
+        Value::List(_, _, Brackets::Bracketed) => {
+            return Err((
+                format!("$method: Expected an unbracketed list, was {}", inspected),
+                span,
+            )
+                .into())
+        }
+        Value::List(items, ListSeparator::Comma, _) if items.len() > 1 => {
+            return Err((
+                format!(
+                    "$method: Expected a space-separated list, was {}",
+                    inspected
+                ),
+                span,
+            )
+                .into())
+        }
+        Value::List(items, ListSeparator::Slash, _) if items.len() > 1 => {
+            return Err((
+                format!(
+                    "$method: Expected a space-separated list, was {}",
+                    inspected
+                ),
+                span,
+            )
+                .into())
+        }
+        Value::List(items, ..) => items,
+        Value::ArgList(args) => args.elems,
+        value => vec![value],
+    };
+
+    let mut items = items.into_iter();
+    let space = match items.next() {
+        Some(space) => parse_space(space, "method", span)?,
+        None => {
+            return Err((
+                "$method: Expected a color interpolation method, got an empty list.",
+                span,
+            )
+                .into())
+        }
+    };
+
+    let hue_method = match items.next() {
+        None => {
+            return Ok((
+                space.legacy("method", span)?,
+                HueInterpolationMethod::Shorter,
+            ))
+        }
+        Some(hue_method) => {
+            let name = assert_unquoted_string(hue_method, "method", span)?;
+            match HueInterpolationMethod::from_name(&name) {
+                Some(hue_method) => hue_method,
+                None => {
+                    return Err((
+                        format!("$method: Unknown hue interpolation method {}.", name),
+                        span,
+                    )
+                        .into())
+                }
+            }
+        }
+    };
+
+    match items.next() {
+        None => {
+            return Err((
+                format!(
+                    "$method: Expected unquoted string \"hue\" after {}.",
+                    inspected
+                ),
+                span,
+            )
+                .into())
+        }
+        Some(hue) => {
+            let hue_inspected = hue.inspect(span)?;
+            let hue: String = assert_unquoted_string(hue, "method", span)?;
+            if hue.to_ascii_lowercase() != "hue" {
+                return Err((
+                    format!(
+                        "$method: Expected unquoted string \"hue\" at the end of {}, was {}.",
+                        inspected, hue_inspected
+                    ),
+                    span,
+                )
+                    .into());
+            }
+        }
+    }
+
+    if items.next().is_some() {
+        return Err((
+            format!("$method: Expected nothing after \"hue\" in {}.", inspected),
+            span,
+        )
+            .into());
+    }
+
+    if !space.is_polar() {
+        return Err((
+            format!(
+                "$method: Hue interpolation method \"HueInterpolationMethod.{} hue\" may not be set for rectangular color space {}.",
+                hue_method.name(),
+                space.name()
+            ),
+            span,
+        )
+            .into());
+    }
+
+    Ok((space.legacy("method", span)?, hue_method))
+}
+
+/// `color.mix($color1, $color2, $weight: 50%, $method: null)`.
+///
+/// Without `$method` this is the legacy rgb mix, which always produces an
+/// rgb-space color. With `$method` the colors are interpolated in the
+/// named space per CSS Color 4 and the result stays in `$color1`'s space.
 pub(crate) fn mix(mut args: ArgumentResult, visitor: &mut Visitor) -> SassResult<Value> {
-    args.max_args(3)?;
+    args.max_args(4)?;
     let color1 = args
         .get_err(0, "color1")?
         .assert_color_with_name("color1", args.span())?;
@@ -408,7 +562,18 @@ pub(crate) fn mix(mut args: ArgumentResult, visitor: &mut Visitor) -> SassResult
                 .into())
         }
     };
-    Ok(Value::Color(Arc::new(color1.mix(&color2, weight))))
+
+    let method = match args.get(3, "method") {
+        Some(method) if method.node != Value::Null => Some(parse_interpolation_method(method)?),
+        _ => None,
+    };
+
+    Ok(Value::Color(Arc::new(match method {
+        Some((space, hue_method)) => {
+            color1.interpolate(&color2, space, hue_method, weight.0, false)
+        }
+        None => color1.mix(&color2, weight),
+    })))
 }
 
 pub(crate) fn declare(f: &mut GlobalFunctionMap) {
