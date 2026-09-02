@@ -83,9 +83,9 @@ npm run sass-spec -- --impl=dart-sass --command '../target/release/grass' \
 Against the pinned spec revision, this fork achieves the following results:
 
 ```
-2026-09-01
-PASSING: 7687
-FAILING: 6523
+2026-09-02
+PASSING: 7870
+FAILING: 6340
 TOTAL: 14218
 ```
 
@@ -95,13 +95,16 @@ moves by one either way.
 The suite more than doubled between the previously pinned revision (2022-12-08,
 6,905 tests, of which 6,149 passed) and the current one, and nearly all of the
 new tests cover CSS Color 4. `spec/core_functions/color` alone accounts for
-4,953 of the 6,523 failures -- 3,095 of them under `to_space` -- because this
-fork implements only the legacy `rgb`/`hsl`/`hwb` spaces. Excluding that
-subtree, the fork passes 6,205 of 7,783 tests (79.7%); the largest remaining
-groups are `values/calculation` (436, the CSS math functions `round()`,
-`mod()`, `rem()`, `log()` and `tan()` inside calculations) and the new CSS
-`if()` function (164). The rest are largely aesthetic, relating to whitespace
-around comments in expanded mode or to error messages.
+4,774 of the 6,340 failures -- 3,044 of them under `to_space` -- because this
+fork implements only the legacy `rgb`/`hsl`/`hwb` spaces (the color-space
+functions themselves -- `space`, `to-space`, `is-legacy`, `is-in-gamut`,
+`to-gamut`, `same` -- and the `$space`/`$method` arguments exist, but only for
+those three spaces). Excluding that subtree, the fork passes 6,209 of 7,783
+tests (79.8%); the largest remaining groups are `values/calculation` (436, the
+CSS math functions `round()`, `mod()`, `rem()`, `log()` and `tan()` inside
+calculations) and the new CSS `if()` function (164). The rest are largely
+aesthetic, relating to whitespace around comments in expanded mode or to error
+messages.
 
 ## Versioning
 
