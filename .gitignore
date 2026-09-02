@@ -19,6 +19,8 @@ dhat*
 # automation tools
 *.py
 *.sh
+# ...but CI scripts are part of the repository.
+!.github/scripts/*.sh
 *.cmd
 *.exe
 
