@@ -34,6 +34,7 @@ pub(crate) fn angle_value(num: Value, name: &str, span: Span) -> SassResult<Numb
 
 pub(crate) fn declare(f: &mut GlobalFunctionMap) {
     hsl::declare(f);
+    hwb::declare(f);
     opacity::declare(f);
     other::declare(f);
     rgb::declare(f);

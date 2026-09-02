@@ -328,7 +328,7 @@ test!(
 test!(
     change_color_lum_alpha,
     "a {\n  color: change-color(hsl(25, 100%, 80%), $lightness: 40%, $alpha: 0.8);\n}\n",
-    "a {\n  color: rgba(204, 85, 0, 0.8);\n}\n"
+    "a {\n  color: hsla(25, 100%, 40%, 0.8);\n}\n"
 );
 test!(
     adjust_color_blue,
@@ -357,7 +357,7 @@ test!(
 );
 error!(
     scale_color_named_arg_hue,
-    "a {\n  color: scale-color(red, $hue: 10%);\n}\n", "Error: No argument named $hue."
+    "a {\n  color: scale-color(red, $hue: 10%);\n}\n", "Error: $hue: Channel isn't scalable."
 );
 test!(
     scale_color_negative,
@@ -441,7 +441,7 @@ test!(
   color: change-color(hsl(25, 100%, 80%), $lightness: 40%, $alpha: 0.8);
 }
 ",
-    "p {\n  color: #102005;\n  color: rgba(16, 32, 48, 0.325);\n  color: #782005;\n  color: rgba(204, 85, 0, 0.8);\n}\n"
+    "p {\n  color: #102005;\n  color: rgba(16, 32, 48, 0.325);\n  color: #782005;\n  color: hsla(25, 100%, 40%, 0.8);\n}\n"
 );
 test!(
     transparent_from_function,
@@ -746,22 +746,22 @@ error!(
 error!(
     adjust_color_sl_and_wb,
     "a {\n  color: adjust-color(red, $saturation: 50%, $whiteness: 50%);\n}\n",
-    "Error: HSL parameters may not be passed along with HWB parameters."
+    "Error: $whiteness: Color space hsl doesn't have a channel with this name."
 );
 error!(
     adjust_color_rgb_and_sl,
     "a {\n  color: adjust-color(red, $red: 50%, $saturation: 50%);\n}\n",
-    "Error: RGB parameters may not be passed along with HSL parameters."
+    "Error: $saturation: Color space rgb doesn't have a channel with this name."
 );
 error!(
     adjust_color_rgb_and_wb,
     "a {\n  color: adjust-color(red, $red: 50%, $whiteness: 50%);\n}\n",
-    "Error: RGB parameters may not be passed along with HWB parameters."
+    "Error: $whiteness: Color space rgb doesn't have a channel with this name."
 );
 error!(
     adjust_color_two_unknown_named_args,
     "a {\n  color: adjust-color(red, $foo: 50%, $bar: 50%);\n}\n",
-    "Error: No arguments named $foo or $bar."
+    "Error: $foo: Color space rgb doesn't have a channel with this name."
 );
 error!(
     adjust_color_two_positional_args,

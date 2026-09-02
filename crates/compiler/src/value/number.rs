@@ -84,6 +84,10 @@ pub(crate) fn fuzzy_less_than_or_equals(number1: f64, number2: f64) -> bool {
     number1 < number2 || fuzzy_equals(number1, number2)
 }
 
+pub(crate) fn fuzzy_greater_than_or_equals(number1: f64, number2: f64) -> bool {
+    number1 > number2 || fuzzy_equals(number1, number2)
+}
+
 impl Number {
     /// This differs from `std::cmp::min` when either value is NaN
     pub fn min(self, other: Self) -> Self {

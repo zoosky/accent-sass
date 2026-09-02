@@ -75,17 +75,17 @@ test!(
 test!(
     hwb_alpha_unitless,
     "@use \"sass:color\";\na {\n  color: color.hwb(0, 0%, 100%, 0.04);\n}\n",
-    "a {\n  color: rgba(0, 0, 0, 0.04);\n}\n"
+    "a {\n  color: hsla(0, 0%, 0%, 0.04);\n}\n"
 );
 test!(
     hwb_alpha_unit_percent,
     "@use \"sass:color\";\na {\n  color: color.hwb(0, 0%, 100%, 0.04%);\n}\n",
-    "a {\n  color: rgba(0, 0, 0, 0.0004);\n}\n"
+    "a {\n  color: hsla(0, 0%, 0%, 0.0004);\n}\n"
 );
 test!(
     hwb_negative_alpha,
     "@use \"sass:color\";\na {\n  color: color.hwb(0, 0%, 100%, -0.5);\n}\n",
-    "a {\n  color: rgba(0, 0, 0, 0);\n}\n"
+    "a {\n  color: hsla(0, 0%, 0%, 0);\n}\n"
 );
 test!(
     hue_60_whiteness_20_blackness_100,
@@ -117,10 +117,10 @@ error!(
     "@use \"sass:color\";\na {\n  color: color.hwb(#123, 0.5);\n}\n",
     "Error: Only 1 argument allowed, but 2 were passed."
 );
-error!(
-    hwb_blackness_too_high,
+test!(
+    hwb_blackness_over_100_is_scaled_with_whiteness,
     "@use \"sass:color\";\na {\n  color: color.hwb(0, 30%, 101%, 0.5);\n}\n",
-    "Error: $blackness: Expected 101% to be within 0% and 100%."
+    "a {\n  color: hsla(0, 0%, 22.9007633588%, 0.5);\n}\n"
 );
 error!(
     blackness_no_args,

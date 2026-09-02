@@ -4,7 +4,7 @@ use codemap::{CodeMap, Span};
 
 use crate::{
     ast::{CssStmt, MediaQuery, Style, SupportsRule},
-    color::{Color, ColorFormat, NAMED_COLORS},
+    color::{Color, ColorFormat, ColorSpace, NAMED_COLORS},
     common::{BinaryOp, Brackets, ListSeparator, QuoteKind},
     error::SassResult,
     selector::{
@@ -14,8 +14,8 @@ use crate::{
     unit::Unit,
     utils::hex_char_for,
     value::{
-        fuzzy_equals, ArgList, CalculationArg, CalculationName, SassCalculation, SassFunction,
-        SassMap, SassNumber, Value,
+        fuzzy_equals, ArgList, CalculationArg, CalculationName, Number, SassCalculation,
+        SassFunction, SassMap, SassNumber, Value,
     },
     Options,
 };
@@ -404,10 +404,19 @@ impl<'a> Serializer<'a> {
         Ok(())
     }
 
-    fn has_integral_channels(color: &Color) -> bool {
-        fuzzy_equals(color.red().0, color.red().0.round())
-            && fuzzy_equals(color.green().0, color.green().0.round())
-            && fuzzy_equals(color.blue().0, color.blue().0.round())
+    /// Whether the rgb channels can be written as integers. Dart Sass's
+    /// `_asInt` is exact outside inspect mode, so a channel with float
+    /// noise (`204.99999999999994`) makes the whole color print as
+    /// percentages; in inspect mode the check is fuzzy.
+    fn has_integral_channels(&self, color: &Color) -> bool {
+        let is_int = |channel: f64| {
+            if self.inspect {
+                fuzzy_equals(channel, channel.round())
+            } else {
+                channel.round() == channel
+            }
+        };
+        is_int(color.red().0) && is_int(color.green().0) && is_int(color.blue().0)
     }
 
     fn write_rgb(&mut self, color: &Color) {
@@ -419,7 +428,7 @@ impl<'a> Serializer<'a> {
             self.buffer.extend_from_slice(b"rgba(");
         }
 
-        if Self::has_integral_channels(color) {
+        if self.has_integral_channels(color) {
             self.write_float(color.red().0);
             self.buffer.extend_from_slice(b",");
             self.write_optional_space();
@@ -449,6 +458,25 @@ impl<'a> Serializer<'a> {
         self.buffer.push(b')');
     }
 
+    /// Writes one color channel: a finite value as a plain number with
+    /// `unit`, a non-finite one wrapped in `calc(..)` the way Dart Sass's
+    /// `_writeChannel` does (`calc(NaN * 1%)`).
+    fn write_channel(&mut self, value: f64, unit: Unit) {
+        if value.is_finite() {
+            self.write_float(value);
+            let _ = write!(&mut self.buffer, "{}", unit);
+        } else {
+            let number = SassNumber {
+                num: Number(value),
+                unit,
+                as_slash: None,
+            };
+            // Writing a bare number never fails; the `Result` only exists
+            // because the buffer implements `io::Write`.
+            let _ = self.write_number_as_calculation(&number);
+        }
+    }
+
     fn write_hsl(&mut self, color: &Color) {
         let is_opaque = fuzzy_equals(color.alpha().0, 1.0);
 
@@ -458,24 +486,66 @@ impl<'a> Serializer<'a> {
             self.buffer.extend_from_slice(b"hsla(");
         }
 
-        if color.hue().0.is_nan() {
-            // Dart Sass wraps a non-finite channel in calc(..) so the output
-            // stays valid CSS.
-            self.buffer.extend_from_slice(b"calc(NaN)");
-        } else {
-            self.write_float(color.hue().0);
-        }
-        self.buffer.extend_from_slice(b", ");
-        self.write_float(color.saturation().0);
-        self.buffer.extend_from_slice(b"%, ");
-        self.write_float(color.lightness().0);
-        self.buffer.extend_from_slice(b"%");
+        self.write_channel(color.hue().0, Unit::None);
+        self.buffer.push(b',');
+        self.write_optional_space();
+        self.write_channel(color.saturation().0, Unit::Percent);
+        self.buffer.push(b',');
+        self.write_optional_space();
+        self.write_channel(color.lightness().0, Unit::Percent);
 
         if !is_opaque {
-            self.buffer.extend_from_slice(b", ");
+            self.buffer.push(b',');
+            self.write_optional_space();
             self.write_float(color.alpha().0);
         }
 
+        self.buffer.push(b')');
+    }
+
+    /// Writes an hwb color in the modern `hwb(H W% B% / A)` syntax. Dart
+    /// Sass only uses this in inspect mode (`@debug`, `inspect()`).
+    fn write_hwb(&mut self, color: &Color) {
+        self.buffer.extend_from_slice(b"hwb(");
+        self.write_channel(color.hue().0, Unit::None);
+        self.buffer.push(b' ');
+        self.write_channel(color.whiteness().0, Unit::Percent);
+        self.buffer.push(b' ');
+        self.write_channel(color.blackness().0, Unit::Percent);
+        self.write_slash_alpha(color);
+        self.buffer.push(b')');
+    }
+
+    /// Writes ` / A` when the color is not opaque (`/A` when compressed).
+    fn write_slash_alpha(&mut self, color: &Color) {
+        if fuzzy_equals(color.alpha().0, 1.0) {
+            return;
+        }
+        self.write_optional_space();
+        self.buffer.push(b'/');
+        self.write_optional_space();
+        self.write_float(color.alpha().0);
+    }
+
+    /// Writes a polar-space color whose hue is missing. Dart Sass falls
+    /// back to the modern space-separated syntax for it, since the legacy
+    /// `hsl(H, S%, L%)` form cannot express `none`: `hsl(none 0% 50%)` or
+    /// `hwb(none 50% 50%)`, with ` / A` for a non-opaque color.
+    fn write_missing_hue_color(&mut self, color: &Color) {
+        let (channel1, channel2) = match color.space() {
+            ColorSpace::Hwb => {
+                self.buffer.extend_from_slice(b"hwb(none ");
+                (color.whiteness().0, color.blackness().0)
+            }
+            _ => {
+                self.buffer.extend_from_slice(b"hsl(none ");
+                (color.saturation().0, color.lightness().0)
+            }
+        };
+        self.write_channel(channel1, Unit::Percent);
+        self.buffer.push(b' ');
+        self.write_channel(channel2, Unit::Percent);
+        self.write_slash_alpha(color);
         self.buffer.push(b')');
     }
 
@@ -496,38 +566,55 @@ impl<'a> Serializer<'a> {
             && Self::is_symmetrical_hex(color.blue().0.round() as u32)
     }
 
-    fn is_in_gamut(color: &Color) -> bool {
-        let in_range =
-            |c: f64| (0.0..=255.0).contains(&c) || fuzzy_equals(c, 0.0) || fuzzy_equals(c, 255.0);
-        in_range(color.red().0) && in_range(color.green().0) && in_range(color.blue().0)
+    /// Whether every rgb channel is a whole number within `0..=255`, so the
+    /// color can be written as a hex code (Dart Sass's `_canUseHex`).
+    fn can_use_hex(color: &Color) -> bool {
+        let hex_channel = |channel: f64| {
+            fuzzy_equals(channel, channel.round())
+                && (channel > 0.0 || fuzzy_equals(channel, 0.0))
+                && (channel < 256.0 && !fuzzy_equals(channel, 256.0))
+        };
+        hex_channel(color.red().0) && hex_channel(color.green().0) && hex_channel(color.blue().0)
     }
 
+    /// Writes a legacy color, choosing the representation the way Dart
+    /// Sass's `visitColor`/`_writeLegacyColor` do:
+    ///
+    /// 1. a missing hue forces the modern `hsl(none ..)` syntax;
+    /// 2. an out-of-gamut color can only be represented exactly in hsl;
+    /// 3. compressed output takes the shortest of hex, name, rgb, or hsl;
+    /// 4. an hsl-space color always keeps hsl form;
+    /// 5. a color written as `rgb()`, a hex code, or a name keeps that form;
+    /// 6. otherwise an opaque whole-number color becomes a name or hex code,
+    ///    and anything else is `rgb()`, or `hsl()` for an hwb-space color.
     pub fn visit_color(&mut self, color: &Color) {
-        // An out-of-gamut legacy color can only be represented accurately in
-        // hsl form, which is not clamped at parse time. Matches Dart Sass's
-        // _writeLegacyColor.
-        if !Self::is_in_gamut(color) && !self.options.is_compressed() {
+        if color.missing_hue() {
+            self.write_missing_hue_color(color);
+            return;
+        }
+
+        if !color.is_in_gamut() && !self.inspect {
             self.write_hsl(color);
             return;
         }
 
-        let integral = Self::has_integral_channels(color);
+        let opaque = fuzzy_equals(color.alpha().0, 1.0);
+        let can_use_hex = Self::can_use_hex(color);
         let red = color.red().0.round() as u8;
         let green = color.green().0.round() as u8;
         let blue = color.blue().0.round() as u8;
 
-        let name = if integral && fuzzy_equals(color.alpha().0, 1.0) {
+        let name = if can_use_hex && opaque {
             NAMED_COLORS.get_by_rgba([red, green, blue])
         } else {
             None
         };
 
-        #[allow(clippy::unnecessary_unwrap)]
         if self.options.is_compressed() {
-            if fuzzy_equals(color.alpha().0, 1.0) && integral {
+            if opaque && can_use_hex {
                 let hex_length = if Self::can_use_short_hex(color) { 4 } else { 7 };
-                if name.is_some() && name.unwrap().len() <= hex_length {
-                    self.buffer.extend_from_slice(name.unwrap().as_bytes());
+                if let Some(name) = name.filter(|name| name.len() <= hex_length) {
+                    self.buffer.extend_from_slice(name.as_bytes());
                 } else if Self::can_use_short_hex(color) {
                     self.buffer.push(b'#');
                     self.buffer.push(hex_char_for(red as u32 & 0xF) as u8);
@@ -540,30 +627,70 @@ impl<'a> Serializer<'a> {
                     self.write_hex_component(blue as u32);
                 }
             } else {
-                self.write_rgb(color);
+                // Emit whichever of rgb and hsl is shorter, computing hsl
+                // from the rgb channels as Dart Sass does. The two extra
+                // characters account for the `%` signs on saturation and
+                // lightness.
+                let rgb = color.to_space(ColorSpace::Rgb, false);
+                let start = self.buffer.len();
+                self.write_rgb(&rgb);
+                let rgb_string = self.buffer.split_off(start);
+                self.write_hsl(&rgb);
+                let hsl_string = self.buffer.split_off(start);
+                if rgb_string.len() <= hsl_string.len() + 2 {
+                    self.buffer.extend_from_slice(&rgb_string);
+                } else {
+                    self.buffer.extend_from_slice(&hsl_string);
+                }
             }
-        } else if color.format != ColorFormat::Infer {
-            match &color.format {
-                ColorFormat::Rgb => self.write_rgb(color),
-                ColorFormat::Hsl => self.write_hsl(color),
-                ColorFormat::Literal(text) => self.buffer.extend_from_slice(text.as_bytes()),
-                ColorFormat::Infer => unreachable!(),
-            }
-            // Always emit generated transparent colors in rgba format. This works
-            // around an IE bug. See sass/sass#1782.
-        } else if name.is_some() && !fuzzy_equals(color.alpha().0, 0.0) {
-            self.buffer.extend_from_slice(name.unwrap().as_bytes());
-        } else if color.is_hsl_family() && !integral {
-            // A non-integral color written as hsl()/hwb(), or derived from
-            // one, serializes in hsl form, matching Dart Sass. (An integral
-            // one falls through to the name/hex paths below; an hsl() literal
-            // keeps hsl form via its ColorFormat above.)
+            return;
+        }
+
+        if color.space() == ColorSpace::Hsl {
             self.write_hsl(color);
-        } else if fuzzy_equals(color.alpha().0, 1.0) && integral {
-            self.buffer.push(b'#');
-            self.write_hex_component(red as u32);
-            self.write_hex_component(green as u32);
-            self.write_hex_component(blue as u32);
+            return;
+        } else if self.inspect && color.space() == ColorSpace::Hwb {
+            self.write_hwb(color);
+            return;
+        }
+
+        match &color.format {
+            ColorFormat::Rgb => {
+                self.write_rgb(color);
+                return;
+            }
+            ColorFormat::Hsl => {
+                self.write_hsl(color);
+                return;
+            }
+            ColorFormat::Literal(text) => {
+                self.buffer.extend_from_slice(text.as_bytes());
+                return;
+            }
+            ColorFormat::Infer => {}
+        }
+
+        // Always emit generated transparent colors in rgba format. This works
+        // around an IE bug. See sass/sass#1782.
+        if opaque {
+            if let Some(name) = name {
+                self.buffer.extend_from_slice(name.as_bytes());
+                return;
+            }
+            if can_use_hex {
+                self.buffer.push(b'#');
+                self.write_hex_component(red as u32);
+                self.write_hex_component(green as u32);
+                self.write_hex_component(blue as u32);
+                return;
+            }
+        }
+
+        // An hwb color that can't be written as hex is written as hsl
+        // rather than rgb, since that more clearly captures the author's
+        // intent.
+        if color.space() == ColorSpace::Hwb {
+            self.write_hsl(color);
         } else {
             self.write_rgb(color);
         }
