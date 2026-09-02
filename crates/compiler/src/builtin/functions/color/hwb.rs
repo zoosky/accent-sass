@@ -1,114 +1,59 @@
-use crate::builtin::builtin_imports::*;
+//! `hwb()` and the legacy hwb channel getters.
 
-use super::{
-    angle_value,
-    rgb::{parse_channels, percentage_or_unitless},
-    ParsedChannels,
-};
+use crate::{builtin::builtin_imports::*, color::ColorSpace};
 
-pub(crate) fn blackness(mut args: ArgumentResult, visitor: &mut Visitor) -> SassResult<Value> {
-    args.max_args(1)?;
+use super::{parse::parse_channels, rgb::legacy_channel_function};
 
-    let color = args
-        .get_err(0, "color")?
-        .assert_color_with_name("color", args.span())?;
-
-    Ok(Value::Dimension(SassNumber {
-        num: color.blackness(),
-        unit: Unit::Percent,
-        as_slash: None,
-    }))
+pub(crate) fn blackness(args: ArgumentResult, _: &mut Visitor) -> SassResult<Value> {
+    legacy_channel_function(args, "blackness", ColorSpace::Hwb, 2, Unit::Percent, false)
 }
 
-pub(crate) fn whiteness(mut args: ArgumentResult, visitor: &mut Visitor) -> SassResult<Value> {
-    args.max_args(1)?;
-
-    let color = args
-        .get_err(0, "color")?
-        .assert_color_with_name("color", args.span())?;
-
-    Ok(Value::Dimension(SassNumber {
-        num: color.whiteness(),
-        unit: Unit::Percent,
-        as_slash: None,
-    }))
+pub(crate) fn whiteness(args: ArgumentResult, _: &mut Visitor) -> SassResult<Value> {
+    legacy_channel_function(args, "whiteness", ColorSpace::Hwb, 1, Unit::Percent, false)
 }
 
-fn hwb_inner(mut args: ArgumentResult, visitor: &mut Visitor) -> SassResult<Value> {
-    let span = args.span();
-
-    let hue = angle_value(args.get_err(0, "hue")?, "hue", args.span())?;
-
-    // Dart Sass does not range-check whiteness or blackness: a negative
-    // value yields an out-of-gamut color, and a sum above 100% is scaled.
-    let whiteness = args
-        .get_err(1, "whiteness")?
-        .assert_number_with_name("whiteness", span)?;
-    whiteness.assert_unit(&Unit::Percent, "whiteness", span)?;
-
-    let blackness = args
-        .get_err(2, "blackness")?
-        .assert_number_with_name("blackness", span)?;
-    blackness.assert_unit(&Unit::Percent, "blackness", span)?;
-
-    let alpha = args
-        .default_arg(3, "alpha", Value::Dimension(SassNumber::new_unitless(1.0)))
-        .assert_number_with_name("alpha", args.span())?;
-
-    let alpha = percentage_or_unitless(&alpha, 1.0, "alpha", args.span(), visitor)?;
-
-    // Whiteness and blackness that sum to more than 100% are scaled down
-    // proportionally when the color is constructed, as in Dart Sass's
-    // `_colorFromChannels`.
-    let (mut whiteness, mut blackness) = (whiteness.num.0, blackness.num.0);
-    if whiteness + blackness > 100.0 {
-        let sum = whiteness + blackness;
-        whiteness = whiteness / sum * 100.0;
-        blackness = blackness / sum * 100.0;
-    }
-
-    Ok(Value::Color(Arc::new(Color::from_hwb(
-        hue,
-        Number(whiteness),
-        Number(blackness),
-        Number(alpha),
-    ))))
-}
-
+/// `color.hwb($channels)` or `color.hwb($hue, $whiteness, $blackness,
+/// $alpha: 1)`. The comma-separated form is rewritten into the
+/// space-separated syntax and parsed the same way, as Dart Sass does.
 pub(crate) fn hwb(mut args: ArgumentResult, visitor: &mut Visitor) -> SassResult<Value> {
     args.max_args(4)?;
+    let span = args.span();
 
-    if args.len() == 0 || args.len() == 1 {
-        match parse_channels(
+    if args.len() <= 1 {
+        let channels = args.get_err(0, "channels")?;
+        return parse_channels(
             "hwb",
-            &["hue", "whiteness", "blackness"],
-            args.get_err(0, "channels")?,
+            channels,
+            Some(ColorSpace::Hwb),
+            Some("channels"),
             visitor,
-            args.span(),
-        )? {
-            ParsedChannels::String(s) => Err((
-                format!("Expected numeric channels, got \"{}\".", s),
-                args.span(),
-            )
-                .into()),
-            ParsedChannels::List(list) => {
-                let args = ArgumentResult {
-                    positional: list,
-                    named: BTreeMap::new(),
-                    separator: ListSeparator::Comma,
-                    span: args.span(),
-                    touched: BTreeSet::new(),
-                };
-
-                hwb_inner(args, visitor)
-            }
-        }
-    } else if args.len() == 3 || args.len() == 4 {
-        hwb_inner(args, visitor)
-    } else {
-        args.max_args(1)?;
-        unreachable!()
+            span,
+        );
     }
+
+    if args.len() == 2 {
+        args.max_args(1)?;
+    }
+
+    let hue = args.get_err(0, "hue")?;
+    let whiteness = args.get_err(1, "whiteness")?;
+    let blackness = args.get_err(2, "blackness")?;
+    let alpha = args.default_arg(3, "alpha", Value::Dimension(SassNumber::new_unitless(1.0)));
+
+    let channels = Value::List(
+        vec![
+            Value::List(
+                vec![hue, whiteness, blackness],
+                ListSeparator::Space,
+                Brackets::None,
+            ),
+            alpha,
+        ],
+        ListSeparator::Slash,
+        Brackets::None,
+    );
+
+    parse_channels("hwb", channels, Some(ColorSpace::Hwb), None, visitor, span)
 }
 
 /// The global `hwb($channels)` function: the plain-CSS space-separated

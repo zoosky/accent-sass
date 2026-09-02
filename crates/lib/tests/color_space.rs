@@ -161,10 +161,10 @@ error!(
     "@use \"sass:color\";\na {\n  color: color.to-space(#cc0f35, nope);\n}\n",
     "Error: $space: Unknown color space \"nope\"."
 );
-error!(
-    to_space_non_legacy_space_is_unsupported,
+test!(
+    to_space_oklch,
     "@use \"sass:color\";\na {\n  color: color.to-space(#cc0f35, oklch);\n}\n",
-    "Error: $space: Color space oklch is not supported by this implementation (rgb, hsl, and hwb are)."
+    "a {\n  color: oklch(53.8574934869% 0.210710041 20.5019425917deg);\n}\n"
 );
 
 // ---------------------------------------------------------------------------

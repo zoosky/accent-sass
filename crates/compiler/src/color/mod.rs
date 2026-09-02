@@ -1,19 +1,22 @@
-//! A color is a set of rgb channels, an alpha value, and the legacy color
-//! space (`rgb`, `hsl`, or `hwb`) it belongs to.
+//! A color is three channels in a color space, plus an alpha value.
 //!
-//! Colors can be constructed in Sass through names (e.g. red, blue, aqua)
-//! or the builtin functions `rgb()`, `rgba()`, `hsl()`, `hsla()`, and
-//! `hwb()`. Dart Sass 1.79+ remembers which space a color was written in
-//! (or last converted to): the space decides how the color serializes
-//! (`hsl(120, 50%, 50%)` stays in hsl form, `color.hwb(120 20% 30%)` prints
-//! as hsl when it is not a whole-number rgb color), what `color.space()`
-//! reports, which channels `color.channel()` sees, and whether a converted
-//! achromatic color carries a *missing* hue.
+//! Colors can be constructed in Sass through names (e.g. red, blue, aqua),
+//! hex codes, and the color functions: the legacy `rgb()`, `hsl()`, and
+//! `hwb()`, and the CSS Color 4 `lab()`, `lch()`, `oklab()`, `oklch()`,
+//! and `color()`. Dart Sass 1.79+ remembers which space a color was written
+//! in (or last converted to): the space decides how the color serializes
+//! (`hsl(120, 50%, 50%)` stays in hsl form, `lab(50% 10 20)` stays in lab
+//! form), what `color.space()` reports, which channels `color.channel()`
+//! sees, and how the color-space functions behave.
 //!
-//! Every color keeps its rgb channels (unclamped, so out-of-gamut hsl
-//! colors round-trip), plus the native channels of its space when that
-//! space is hsl or hwb. Values are computed with the same operation order
-//! as Dart Sass so serialized channels match it bit for bit; e.g.
+//! Any channel, and the alpha, can be *missing* (`none` in CSS). A missing
+//! channel reads as `0` wherever a number is needed, serializes as `none`,
+//! and refuses to be modified by `color.adjust()` and friends. Conversions
+//! carry a missing channel over to its analogue in the destination space
+//! (see [`space`]).
+//!
+//! Channel values are computed with the same operation order as Dart Sass
+//! so serialized channels match it bit for bit; e.g.
 //! `hsla(.999999999999, 100, 100, 1)` retains its full precision.
 //!
 //! Color values matching named colors are implicitly converted to named colors
@@ -22,12 +25,15 @@
 //! Named colors retain their original casing,
 //! so `rEd` should be emitted as `rEd`.
 
-use crate::value::{fuzzy_equals, fuzzy_round, Number};
+use crate::value::{fuzzy_equals, fuzzy_less_than, Number};
+pub(crate) use channel::{ChannelKind, ColorChannel};
 pub(crate) use gamut::{clamp_like_css, GamutMapMethod};
 pub(crate) use name::NAMED_COLORS;
+use space::dart_mod;
 pub(crate) use space::ColorSpace;
-use space::{hsl_to_rgb, hwb_to_rgb, rgb_to_hsl, rgb_to_hwb};
 
+mod channel;
+mod conversions;
 mod gamut;
 mod name;
 mod space;
@@ -65,29 +71,27 @@ impl HueInterpolationMethod {
     }
 }
 
-// todo: only store alpha once on color
+/// A color in one of the CSS Color 4 spaces (Dart Sass's `SassColor`).
 #[derive(Debug, Clone)]
 pub struct Color {
-    rgba: Rgb,
-    /// The native channels when `space` is hsl; `None` otherwise.
-    hsla: Option<Hsl>,
-    /// The native channels when `space` is hwb; `None` otherwise.
-    hwb: Option<Hwb>,
-    alpha: Number,
-    pub(crate) format: ColorFormat,
-    /// The legacy space the color was written in or last converted to.
+    /// The space the color was written in or last converted to.
     space: ColorSpace,
-    /// Whether the hue channel is missing (`none`). Only a color in a polar
-    /// space can have a missing hue; it arises when an achromatic color is
-    /// converted into hsl or hwb. Dart Sass serializes such a color as
-    /// `hsl(none 0% 50%)` and refuses to modify the missing channel.
-    missing_hue: bool,
+    /// The three channels in the space's own units. `None` is a missing
+    /// channel.
+    channels: [Option<f64>; 3],
+    /// The alpha, within `0..1`. `None` is a missing alpha.
+    alpha: Option<f64>,
+    /// How the color was written, when that decides its serialization.
+    pub(crate) format: ColorFormat,
 }
 
+/// How a legacy color was written in the stylesheet, when that affects the
+/// serialization.
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub(crate) enum ColorFormat {
+    /// Written with the `rgb()` or `rgba()` function, so it serializes as
+    /// `rgb()` even when it could be a hex code.
     Rgb,
-    Hsl,
     /// Literal string from source text. Either a named color like `red` or a hex color
     // todo: make this is a span and lookup text from codemap
     Literal(String),
@@ -95,406 +99,314 @@ pub(crate) enum ColorFormat {
     Infer,
 }
 
-impl PartialEq for Color {
-    fn eq(&self, other: &Self) -> bool {
-        if self.alpha != other.alpha
-            && !(self.alpha >= Number::one() && other.alpha >= Number::one())
-        {
-            return false;
-        }
+/// `fuzzyEqualsNullable`: two missing channels are equal, a missing and a
+/// present channel are not.
+fn fuzzy_equals_nullable(a: Option<f64>, b: Option<f64>) -> bool {
+    match (a, b) {
+        (None, None) => true,
+        (Some(a), Some(b)) => fuzzy_equals(a, b),
+        _ => false,
+    }
+}
 
-        self.rgba == other.rgba
+impl PartialEq for Color {
+    /// Dart Sass's `SassColor.==`: legacy colors compare by their rgb
+    /// values (channel by channel when in the same space), non-legacy
+    /// colors only equal a color in the same space with the same channels.
+    fn eq(&self, other: &Self) -> bool {
+        if self.is_legacy() {
+            if !other.is_legacy() {
+                return false;
+            }
+            if !fuzzy_equals_nullable(self.alpha, other.alpha) {
+                return false;
+            }
+            if self.space == other.space {
+                self.channels
+                    .iter()
+                    .zip(other.channels.iter())
+                    .all(|(a, b)| fuzzy_equals_nullable(*a, *b))
+            } else {
+                self.to_space(ColorSpace::Rgb, true) == other.to_space(ColorSpace::Rgb, true)
+            }
+        } else {
+            self.space == other.space
+                && self
+                    .channels
+                    .iter()
+                    .zip(other.channels.iter())
+                    .all(|(a, b)| fuzzy_equals_nullable(*a, *b))
+                && fuzzy_equals_nullable(self.alpha, other.alpha)
+        }
     }
 }
 
 impl Eq for Color {}
 
+/// Dart Sass's `_normalizeHue`: wraps a hue to `0..360`, rotating it by
+/// 180 degrees when `invert` is set (for a negative saturation or chroma).
+fn normalize_hue(hue: Option<f64>, invert: bool) -> Option<f64> {
+    hue.map(|hue| {
+        dart_mod(
+            dart_mod(hue, 360.0) + 360.0 + if invert { 180.0 } else { 0.0 },
+            360.0,
+        )
+    })
+}
+
 impl Color {
-    pub(crate) const fn new_rgba(
+    /// Builds a color in `space` from raw channel values in that space's
+    /// units, without clamping (Dart Sass's `SassColor.forSpaceInternal`).
+    ///
+    /// Hues are normalized to `0..360`. A negative saturation or chroma is
+    /// folded into the hue by rotating it 180 degrees, as CSS Color 4
+    /// specifies. Alpha is clamped to `0..1`.
+    pub(crate) fn for_space(
+        space: ColorSpace,
+        channel0: Option<f64>,
+        channel1: Option<f64>,
+        channel2: Option<f64>,
+        alpha: Option<f64>,
+    ) -> Color {
+        debug_assert!(
+            space != ColorSpace::Lms,
+            "a color is never in the lms space"
+        );
+
+        let alpha = alpha.map(|alpha| clamp_like_css(alpha, 0.0, 1.0));
+        let negative = |channel: Option<f64>| channel.map_or(false, |c| fuzzy_less_than(c, 0.0));
+
+        let channels = match space {
+            ColorSpace::Hsl => [
+                normalize_hue(channel0, negative(channel1)),
+                channel1.map(f64::abs),
+                channel2,
+            ],
+            ColorSpace::Hwb => [normalize_hue(channel0, false), channel1, channel2],
+            ColorSpace::Lch | ColorSpace::Oklch => [
+                channel0,
+                channel1.map(f64::abs),
+                normalize_hue(channel2, negative(channel1)),
+            ],
+            _ => [channel0, channel1, channel2],
+        };
+
+        Color {
+            space,
+            channels,
+            alpha,
+            format: ColorFormat::Infer,
+        }
+    }
+
+    /// An opaque rgb color from a named-color table entry, keeping the
+    /// name's spelling for serialization.
+    pub fn new(red: u8, green: u8, blue: u8, alpha: u8, format: String) -> Self {
+        let alpha = f64::from(alpha);
+        Color {
+            space: ColorSpace::Rgb,
+            channels: [
+                Some(f64::from(red)),
+                Some(f64::from(green)),
+                Some(f64::from(blue)),
+            ],
+            alpha: Some(if alpha > 1.0 { alpha / 255.0 } else { alpha }),
+            format: ColorFormat::Literal(format),
+        }
+    }
+
+    /// An rgb color from unclamped channels with the given format.
+    pub(crate) fn new_rgba(
         red: Number,
         green: Number,
         blue: Number,
         alpha: Number,
         format: ColorFormat,
     ) -> Color {
-        Color {
-            rgba: Rgb::new(red, green, blue),
-            alpha,
-            hsla: None,
-            hwb: None,
-            format,
-            space: ColorSpace::Rgb,
-            missing_hue: false,
-        }
+        Color::for_space(
+            ColorSpace::Rgb,
+            Some(red.0),
+            Some(green.0),
+            Some(blue.0),
+            Some(alpha.0),
+        )
+        .with_format(format)
     }
 
-    /// The legacy space this color is in.
+    /// Sets the serialization format. Only an rgb-space color has one.
+    pub(crate) fn with_format(mut self, format: ColorFormat) -> Color {
+        debug_assert!(format == ColorFormat::Infer || self.space == ColorSpace::Rgb);
+        self.format = format;
+        self
+    }
+
+    /// The space this color is in.
     pub(crate) fn space(&self) -> ColorSpace {
         self.space
     }
 
-    /// Whether the hue channel is missing.
-    pub(crate) fn missing_hue(&self) -> bool {
-        self.missing_hue
+    /// Whether the color is in one of the legacy spaces (rgb, hsl, hwb).
+    pub(crate) fn is_legacy(&self) -> bool {
+        self.space.is_legacy()
     }
 
-    /// Marks the hue missing (or present). A color in the rgb space has no
-    /// hue, so the flag is only ever set on a polar-space color.
-    pub(crate) fn with_missing_hue(mut self, missing: bool) -> Color {
-        self.missing_hue = missing && self.space.is_polar();
-        self
+    /// The three channels, with `None` for a missing channel.
+    pub(crate) fn channels_or_none(&self) -> [Option<f64>; 3] {
+        self.channels
     }
 
-    /// Converts a derived color back into the space of the color an
-    /// operation was applied to, dropping any missing channel. This is what
-    /// Dart Sass does at the end of nearly every color function
-    /// (`.toSpace(color.space, legacyMissing: false)`).
-    pub(crate) fn inherit_space(self, source: &Color) -> Color {
-        self.to_space(source.space, false)
+    /// The three channels, with a missing channel reading as `0`.
+    pub(crate) fn channels(&self) -> [f64; 3] {
+        [self.channel0(), self.channel1(), self.channel2()]
+    }
+
+    /// The channel at `index`, with a missing channel reading as `0`.
+    pub(crate) fn channel(&self, index: usize) -> f64 {
+        self.channels[index].unwrap_or(0.0)
+    }
+
+    pub(crate) fn channel0(&self) -> f64 {
+        self.channel(0)
+    }
+
+    pub(crate) fn channel1(&self) -> f64 {
+        self.channel(1)
+    }
+
+    pub(crate) fn channel2(&self) -> f64 {
+        self.channel(2)
+    }
+
+    /// The alpha, with a missing alpha reading as `0`.
+    pub fn alpha(&self) -> f64 {
+        self.alpha.unwrap_or(0.0)
+    }
+
+    /// The alpha, or `None` when it is missing.
+    pub(crate) fn alpha_or_none(&self) -> Option<f64> {
+        self.alpha
+    }
+
+    pub(crate) fn is_alpha_missing(&self) -> bool {
+        self.alpha.is_none()
+    }
+
+    /// Whether the channel at `index` is missing.
+    pub(crate) fn is_channel_missing(&self, index: usize) -> bool {
+        self.channels[index].is_none()
+    }
+
+    /// Whether the channel at `index` is [powerless]: present, but with no
+    /// effect on the color. That is the hue of an hsl color with zero
+    /// saturation, of an hwb color whose whiteness and blackness sum to at
+    /// least 100%, and of an lch or oklch color with zero chroma.
+    ///
+    /// [powerless]: https://www.w3.org/TR/css-color-4/#powerless
+    pub(crate) fn is_channel_powerless(&self, index: usize) -> bool {
+        match (self.space, index) {
+            (ColorSpace::Hsl, 0) => fuzzy_equals(self.channel1(), 0.0),
+            (ColorSpace::Hwb, 0) => {
+                crate::value::fuzzy_greater_than_or_equals(self.channel1() + self.channel2(), 100.0)
+            }
+            (ColorSpace::Lch | ColorSpace::Oklch, 2) => fuzzy_equals(self.channel1(), 0.0),
+            _ => false,
+        }
+    }
+
+    /// Whether any channel, or the alpha, is missing.
+    pub(crate) fn has_missing_channel(&self) -> bool {
+        self.channels.iter().any(Option::is_none) || self.alpha.is_none()
     }
 
     /// Converts this color to `space`.
     ///
-    /// A color already in `space` is returned unchanged, missing hue and
-    /// all. Otherwise the channels are recomputed from rgb. When
-    /// `legacy_missing` is true, an achromatic result in a polar space (or
-    /// a source whose hue was already missing) gets a missing hue, as it
-    /// does in Dart Sass's `SassColor.toSpace`; when false, that hue is `0`.
+    /// A color already in `space` is returned unchanged, missing channels
+    /// and all. Otherwise the channels are converted (see
+    /// [`ColorSpace::convert`]) and a missing alpha becomes `0`. When `legacy_missing` is false, a legacy
+    /// result has its missing channels replaced by `0`, which is what most
+    /// color functions do so that a legacy color never surprises a
+    /// stylesheet with `none`.
     pub(crate) fn to_space(&self, space: ColorSpace, legacy_missing: bool) -> Color {
         if self.space == space {
             return self.clone();
         }
 
-        match space {
-            ColorSpace::Rgb => Color::new_rgba(
-                self.red(),
-                self.green(),
-                self.blue(),
-                self.alpha(),
-                ColorFormat::Infer,
-            ),
-            ColorSpace::Hsl | ColorSpace::Hwb => {
-                let (red, green, blue) = self.unit_rgb();
-                Color::from_unit_rgb_in_space(
-                    space,
-                    red,
-                    green,
-                    blue,
-                    self.alpha(),
-                    legacy_missing,
-                    self.missing_hue,
-                )
-            }
-        }
-    }
+        // Dart Sass passes the non-null alpha here, so a missing alpha
+        // reads as `0` after any conversion.
+        let converted = self.space.convert(
+            space,
+            self.channels[0],
+            self.channels[1],
+            self.channels[2],
+            Some(self.alpha()),
+        );
 
-    /// Builds a color in `space` from unit-scale rgb, the way Dart Sass's
-    /// `SrgbColorSpace.convert` does. See [`Color::to_space`] for the
-    /// missing-hue rules.
-    fn from_unit_rgb_in_space(
-        space: ColorSpace,
-        red: f64,
-        green: f64,
-        blue: f64,
-        alpha: Number,
-        legacy_missing: bool,
-        source_missing_hue: bool,
-    ) -> Color {
-        let polar = match space {
-            ColorSpace::Rgb => {
-                return Color::new_rgba(
-                    Number(red * 255.0),
-                    Number(green * 255.0),
-                    Number(blue * 255.0),
-                    alpha,
-                    ColorFormat::Infer,
-                );
-            }
-            ColorSpace::Hsl => rgb_to_hsl(red, green, blue),
-            ColorSpace::Hwb => rgb_to_hwb(red, green, blue),
-        };
-
-        let powerless = source_missing_hue || polar.achromatic;
-        let hue = Number(if powerless { 0.0 } else { polar.hue_or_zero() });
-        let color = match space {
-            ColorSpace::Hsl => {
-                Color::from_hsla(hue, Number(polar.channel1), Number(polar.channel2), alpha)
-            }
-            _ => Color::from_hwb(hue, Number(polar.channel1), Number(polar.channel2), alpha),
-        };
-
-        color.with_missing_hue(legacy_missing && powerless)
-    }
-
-    /// Builds a color in `space` from raw channel values in that space's
-    /// units, without clamping (Dart Sass's `SassColor.forSpaceInternal`).
-    pub(crate) fn in_space(
-        space: ColorSpace,
-        channel0: Number,
-        channel1: Number,
-        channel2: Number,
-        alpha: Number,
-    ) -> Color {
-        match space {
-            ColorSpace::Rgb => {
-                Color::new_rgba(channel0, channel1, channel2, alpha, ColorFormat::Infer)
-            }
-            ColorSpace::Hsl => Color::from_hsla(channel0, channel1, channel2, alpha),
-            ColorSpace::Hwb => Color::from_hwb(channel0, channel1, channel2, alpha),
-        }
-    }
-
-    /// The rgb channels on the `0..1` scale, recomputed from the native
-    /// channels of an hsl or hwb color so a conversion out of those spaces
-    /// takes the same arithmetic path as in Dart Sass.
-    fn unit_rgb(&self) -> (f64, f64, f64) {
-        if let Some(hsl) = &self.hsla {
-            hsl_to_rgb(hsl.hue, hsl.saturation, hsl.lightness)
-        } else if let Some(hwb) = &self.hwb {
-            hwb_to_rgb(hwb.hue, hwb.whiteness, hwb.blackness)
-        } else {
-            (
-                self.red().0 / 255.0,
-                self.green().0 / 255.0,
-                self.blue().0 / 255.0,
+        if !legacy_missing && converted.is_legacy() && converted.has_missing_channel() {
+            Color::for_space(
+                converted.space,
+                Some(converted.channel0()),
+                Some(converted.channel1()),
+                Some(converted.channel2()),
+                Some(converted.alpha()),
             )
-        }
-    }
-
-    /// The hsl channels (degrees, percent, percent): native for an hsl
-    /// color, otherwise converted from rgb. A missing hue reads as `0`.
-    fn hsl_view(&self) -> (f64, f64, f64) {
-        match &self.hsla {
-            Some(hsl) => (hsl.hue, hsl.saturation, hsl.lightness),
-            None => {
-                let (red, green, blue) = self.unit_rgb();
-                let polar = rgb_to_hsl(red, green, blue);
-                (polar.hue_or_zero(), polar.channel1, polar.channel2)
-            }
-        }
-    }
-
-    /// The hwb channels (degrees, percent, percent): native for an hwb
-    /// color, otherwise converted from rgb. A missing hue reads as `0`.
-    fn hwb_view(&self) -> (f64, f64, f64) {
-        match &self.hwb {
-            Some(hwb) => (hwb.hue, hwb.whiteness, hwb.blackness),
-            None => {
-                let (red, green, blue) = self.unit_rgb();
-                let polar = rgb_to_hwb(red, green, blue);
-                (polar.hue_or_zero(), polar.channel1, polar.channel2)
-            }
-        }
-    }
-
-    /// The channels of the color's own space, in that space's units, or
-    /// `None` when the space has no channel with that name. A missing hue
-    /// reads as `0`, as `color.channel()` reports it.
-    pub(crate) fn native_channel(&self, name: &str) -> Option<Number> {
-        let index = self
-            .space
-            .channel_names()
-            .iter()
-            .position(|channel| *channel == name)?;
-
-        let channels = match self.space {
-            ColorSpace::Rgb => [self.red().0, self.green().0, self.blue().0],
-            ColorSpace::Hsl => {
-                let (hue, saturation, lightness) = self.hsl_view();
-                [hue, saturation, lightness]
-            }
-            ColorSpace::Hwb => {
-                let (hue, whiteness, blackness) = self.hwb_view();
-                [hue, whiteness, blackness]
-            }
-        };
-
-        Some(Number(channels[index]))
-    }
-
-    /// The three channels of the color's own space, with the hue as `None`
-    /// when it is missing.
-    pub(crate) fn channels_or_none(&self) -> [Option<f64>; 3] {
-        let names = self.space.channel_names();
-        let channel = |name: &str| self.native_channel(name).map(|n| n.0);
-        let hue = if self.missing_hue {
-            None
         } else {
-            channel(names[0])
-        };
-        [hue, channel(names[1]), channel(names[2])]
-    }
-
-    /// Whether two colors are the same color for `color.same()`.
-    ///
-    /// Colors in the same space compare channel by channel, with a missing
-    /// hue reading as `0`; colors in different spaces compare by their rgb
-    /// values. Dart Sass compares the latter in XYZ; the rgb comparison
-    /// here is equivalent up to the fuzzy-equality epsilon.
-    pub(crate) fn same(&self, other: &Color) -> bool {
-        if !fuzzy_equals(self.alpha().0, other.alpha().0) {
-            return false;
-        }
-
-        if self.space == other.space {
-            let mine = self.channels_or_none();
-            let theirs = other.channels_or_none();
-            mine.iter()
-                .zip(theirs.iter())
-                .all(|(a, b)| fuzzy_equals(a.unwrap_or(0.0), b.unwrap_or(0.0)))
-        } else {
-            let (r1, g1, b1) = self.unit_rgb();
-            let (r2, g2, b2) = other.unit_rgb();
-            fuzzy_equals(r1, r2) && fuzzy_equals(g1, g2) && fuzzy_equals(b1, b2)
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-struct Rgb {
-    red: Number,
-    green: Number,
-    blue: Number,
-}
-
-impl PartialEq for Rgb {
-    fn eq(&self, other: &Self) -> bool {
-        if self.red != other.red && !(self.red >= Number(255.0) && other.red >= Number(255.0)) {
-            return false;
-        }
-        if self.green != other.green
-            && !(self.green >= Number(255.0) && other.green >= Number(255.0))
-        {
-            return false;
-        }
-        if self.blue != other.blue && !(self.blue >= Number(255.0) && other.blue >= Number(255.0)) {
-            return false;
-        }
-        true
-    }
-}
-
-impl Eq for Rgb {}
-
-impl Rgb {
-    pub const fn new(red: Number, green: Number, blue: Number) -> Self {
-        Rgb { red, green, blue }
-    }
-}
-
-/// The native channels of an hsl color: hue in degrees (normalized to
-/// `0..360`), saturation and lightness as percentages.
-#[derive(Debug, Clone)]
-struct Hsl {
-    hue: f64,
-    saturation: f64,
-    lightness: f64,
-}
-
-/// The native channels of an hwb color: hue in degrees (normalized to
-/// `0..360`), whiteness and blackness as percentages. Whiteness and
-/// blackness are stored as given; a sum above 100% is only scaled down when
-/// computing rgb, as the CSS algorithm specifies.
-#[derive(Debug, Clone)]
-struct Hwb {
-    hue: f64,
-    whiteness: f64,
-    blackness: f64,
-}
-
-// RGBA color functions
-impl Color {
-    pub fn new(red: u8, green: u8, blue: u8, alpha: u8, format: String) -> Self {
-        Color {
-            rgba: Rgb::new(red.into(), green.into(), blue.into()),
-            hsla: None,
-            hwb: None,
-            alpha: alpha.into(),
-            format: ColorFormat::Literal(format),
-            space: ColorSpace::Rgb,
-            missing_hue: false,
+            converted
         }
     }
 
-    /// Create a new `Color` with just RGBA values.
-    /// Color representation is created automatically.
-    pub fn from_rgba(
-        mut red: Number,
-        mut green: Number,
-        mut blue: Number,
-        mut alpha: Number,
-    ) -> Self {
-        red = red.clamp(0.0, 255.0);
-        green = green.clamp(0.0, 255.0);
-        blue = blue.clamp(0.0, 255.0);
-        alpha = alpha.clamp(0.0, 1.0);
-
-        Color::new_rgba(red, green, blue, alpha, ColorFormat::Infer)
+    /// Replaces the alpha, keeping the space and channels. Missing
+    /// channels read as `0` afterwards, as in Dart Sass's `changeAlpha`.
+    pub(crate) fn change_alpha(&self, alpha: f64) -> Color {
+        Color::for_space(
+            self.space,
+            Some(self.channel0()),
+            Some(self.channel1()),
+            Some(self.channel2()),
+            Some(alpha),
+        )
     }
 
-    pub fn from_rgba_fn(
-        mut red: Number,
-        mut green: Number,
-        mut blue: Number,
-        mut alpha: Number,
-    ) -> Self {
-        red = red.clamp(0.0, 255.0);
-        green = green.clamp(0.0, 255.0);
-        blue = blue.clamp(0.0, 255.0);
-        alpha = alpha.clamp(0.0, 1.0);
-
-        Color::new_rgba(red, green, blue, alpha, ColorFormat::Rgb)
+    /// A channel as seen through a legacy space, for the legacy `red()`,
+    /// `hue()`, etc. functions. The caller checks that the color is legacy.
+    pub(crate) fn legacy_channel(&self, space: ColorSpace, index: usize) -> f64 {
+        self.to_space(space, true).channel(index)
     }
 
-    pub fn red(&self) -> Number {
-        self.rgba.red
-    }
-
-    pub fn blue(&self) -> Number {
-        self.rgba.blue
-    }
-
-    pub fn green(&self) -> Number {
-        self.rgba.green
-    }
-
-    /// Mix two colors together with weight
-    /// Algorithm adapted from
-    /// <https://github.com/sass/dart-sass/blob/0d0270cb12a9ac5cce73a4d0785fecb00735feee/lib/src/functions/color.dart#L718>
-    ///
-    /// This is the legacy `mix()` (no `$method`); the result is always an
-    /// rgb-space color, whatever the inputs were written in.
-    pub fn mix(&self, other: &Color, weight: Number) -> Self {
-        let weight = weight.clamp(0.0, 100.0);
-        let normalized_weight = weight * Number(2.0) - Number::one();
+    /// The legacy `mix()`: blends the rgb channels of two legacy colors,
+    /// with `weight_scale` (`0..1`) the share of `self`. The result is
+    /// always an rgb-space color. Adapted from
+    /// <https://github.com/sass/dart-sass/blob/0d0270cb12a9ac5cce73a4d0785fecb00735feee/lib/src/functions/color.dart#L718>.
+    pub(crate) fn mix_legacy(&self, other: &Color, weight_scale: f64) -> Color {
+        let rgb1 = self.to_space(ColorSpace::Rgb, true);
+        let rgb2 = other.to_space(ColorSpace::Rgb, true);
+        let normalized_weight = weight_scale * 2.0 - 1.0;
         let alpha_distance = self.alpha() - other.alpha();
 
-        let combined_weight1 = if normalized_weight * alpha_distance == Number(-1.0) {
+        let combined_weight1 = if normalized_weight * alpha_distance == -1.0 {
             normalized_weight
         } else {
-            (normalized_weight + alpha_distance)
-                / (Number::one() + normalized_weight * alpha_distance)
+            (normalized_weight + alpha_distance) / (1.0 + normalized_weight * alpha_distance)
         };
-        let weight1 = (combined_weight1 + Number::one()) / Number(2.0);
-        let weight2 = Number::one() - weight1;
+        let weight1 = (combined_weight1 + 1.0) / 2.0;
+        let weight2 = 1.0 - weight1;
 
-        Color::new_rgba(
-            self.red() * weight1 + other.red() * weight2,
-            self.green() * weight1 + other.green() * weight2,
-            self.blue() * weight1 + other.blue() * weight2,
-            self.alpha() * weight + other.alpha() * (Number::one() - weight),
-            ColorFormat::Infer,
+        Color::for_space(
+            ColorSpace::Rgb,
+            Some(rgb1.channel0() * weight1 + rgb2.channel0() * weight2),
+            Some(rgb1.channel1() * weight1 + rgb2.channel1() * weight2),
+            Some(rgb1.channel2() * weight1 + rgb2.channel2() * weight2),
+            Some(rgb1.alpha() * weight_scale + rgb2.alpha() * (1.0 - weight_scale)),
         )
     }
 
     /// Interpolates between two colors in `space` according to the CSS
     /// Color 4 [color interpolation] procedure, with premultiplied alpha and
     /// the given hue method for polar spaces. `weight` is the share of
-    /// `self` in the result. A missing hue on one side takes the other
-    /// side's hue; missing on both sides stays missing.
+    /// `self` in the result. A missing channel on one side takes the other
+    /// side's value; missing on both sides stays missing.
     ///
     /// The result is converted back to `self`'s space; `legacy_missing`
-    /// says whether that conversion keeps a missing hue.
+    /// says whether that conversion keeps missing channels.
     ///
     /// [color interpolation]: https://www.w3.org/TR/css-color-4/#interpolation
     pub(crate) fn interpolate(
@@ -514,46 +426,51 @@ impl Color {
 
         let color1 = self.to_space(space, true);
         let color2 = other.to_space(space, true);
-        let channels1 = color1.channels_or_none();
-        let channels2 = color2.channels_or_none();
 
-        let alpha1 = self.alpha().0;
-        let alpha2 = other.alpha().0;
-        let this_multiplier = alpha1 * weight;
-        let other_multiplier = alpha2 * (1.0 - weight);
-        let mixed_alpha = alpha1 * weight + alpha2 * (1.0 - weight);
+        let channels1 = [
+            color1.channels[0].or(color2.channels[0]),
+            color1.channels[1].or(color2.channels[1]),
+            color1.channels[2].or(color2.channels[2]),
+        ];
+        let channels2 = [
+            color2.channels[0].or(color1.channels[0]),
+            color2.channels[1].or(color1.channels[1]),
+            color2.channels[2].or(color1.channels[2]),
+        ];
 
-        let pair = |index: usize| match (
-            channels1[index].or(channels2[index]),
-            channels2[index].or(channels1[index]),
-        ) {
-            (Some(a), Some(b)) => Some((a, b)),
-            _ => None,
-        };
-        let mixed = |index: usize| {
-            pair(index).map(|(a, b)| (a * this_multiplier + b * other_multiplier) / mixed_alpha)
-        };
-
-        let (channel0, channel1, channel2) = if space.is_polar() {
-            (
-                pair(0).map(|(hue1, hue2)| interpolate_hues(hue1, hue2, hue_method, weight)),
-                mixed(1),
-                mixed(2),
-            )
+        let alpha1 = self.alpha.unwrap_or_else(|| other.alpha());
+        let alpha2 = other.alpha.unwrap_or_else(|| self.alpha());
+        let this_multiplier = self.alpha.unwrap_or(1.0) * weight;
+        let other_multiplier = other.alpha.unwrap_or(1.0) * (1.0 - weight);
+        let mixed_alpha = if self.is_alpha_missing() && other.is_alpha_missing() {
+            None
         } else {
-            (mixed(0), mixed(1), mixed(2))
+            Some(alpha1 * weight + alpha2 * (1.0 - weight))
         };
 
-        let unwrap = |channel: Option<f64>| Number(channel.unwrap_or(0.0));
-        Color::in_space(
-            space,
-            unwrap(channel0),
-            unwrap(channel1),
-            unwrap(channel2),
-            Number(mixed_alpha),
-        )
-        .with_missing_hue(channel0.is_none())
-        .to_space(self.space, legacy_missing)
+        let mixed = |index: usize| {
+            channels1[index].map(|channel1| {
+                (channel1 * this_multiplier + channels2[index].unwrap_or(0.0) * other_multiplier)
+                    / mixed_alpha.unwrap_or(1.0)
+            })
+        };
+        let hue = |index: usize| {
+            channels1[index].map(|hue1| {
+                interpolate_hues(hue1, channels2[index].unwrap_or(0.0), hue_method, weight)
+            })
+        };
+
+        let result = match space {
+            ColorSpace::Hsl | ColorSpace::Hwb => {
+                Color::for_space(space, hue(0), mixed(1), mixed(2), mixed_alpha)
+            }
+            ColorSpace::Lch | ColorSpace::Oklch => {
+                Color::for_space(space, mixed(0), mixed(1), hue(2), mixed_alpha)
+            }
+            _ => Color::for_space(space, mixed(0), mixed(1), mixed(2), mixed_alpha),
+        };
+
+        result.to_space(self.space, legacy_missing)
     }
 }
 
@@ -597,325 +514,76 @@ fn interpolate_hues(
     hue1 * weight + hue2 * (1.0 - weight)
 }
 
-/// HSLA color functions
-impl Color {
-    /// The hue in degrees, as seen through the hsl space (`color.hue()`).
-    pub fn hue(&self) -> Number {
-        Number(self.hsl_view().0)
-    }
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-    /// The saturation as a percentage, as seen through the hsl space.
-    pub fn saturation(&self) -> Number {
-        Number(self.hsl_view().1)
-    }
-
-    /// The lightness as a percentage, as seen through the hsl space.
-    pub fn lightness(&self) -> Number {
-        Number(self.hsl_view().2)
-    }
-
-    /// The color as (hue, saturation%, lightness%, alpha).
-    pub fn as_hsla(&self) -> (Number, Number, Number, Number) {
-        let (hue, saturation, lightness) = self.hsl_view();
-        (
-            Number(hue),
-            Number(saturation),
-            Number(lightness),
-            self.alpha(),
-        )
-    }
-
-    pub fn adjust_hue(&self, degrees: Number) -> Self {
-        let (hue, saturation, lightness, alpha) = self.as_hsla();
-        Color::from_hsla(hue + degrees, saturation, lightness, alpha).inherit_space(self)
-    }
-
-    /// Adds `amount` percentage points of lightness, clamped to `0..100`.
-    pub fn lighten(&self, amount: Number) -> Self {
-        let (hue, saturation, lightness, alpha) = self.as_hsla();
-        Color::from_hsla(
-            hue,
-            saturation,
-            (lightness + amount).clamp(0.0, 100.0),
-            alpha,
-        )
-        .inherit_space(self)
-    }
-
-    /// Removes `amount` percentage points of lightness, clamped to `0..100`.
-    pub fn darken(&self, amount: Number) -> Self {
-        let (hue, saturation, lightness, alpha) = self.as_hsla();
-        Color::from_hsla(
-            hue,
-            saturation,
-            (lightness - amount).clamp(0.0, 100.0),
-            alpha,
-        )
-        .inherit_space(self)
-    }
-
-    /// Adds `amount` percentage points of saturation, clamped to `0..100`.
-    pub fn saturate(&self, amount: Number) -> Self {
-        let (hue, saturation, lightness, alpha) = self.as_hsla();
-        Color::from_hsla(
-            hue,
-            (saturation + amount).clamp(0.0, 100.0),
-            lightness,
-            alpha,
-        )
-        .inherit_space(self)
-    }
-
-    /// Removes `amount` percentage points of saturation, clamped to `0..100`.
-    pub fn desaturate(&self, amount: Number) -> Self {
-        let (hue, saturation, lightness, alpha) = self.as_hsla();
-        Color::from_hsla(
-            hue,
-            (saturation - amount).clamp(0.0, 100.0),
-            lightness,
-            alpha,
-        )
-        .inherit_space(self)
-    }
-
-    /// `hsl()` as written in a stylesheet: the CSS channel is lower-clamped,
-    /// so a negative saturation is parsed as `0%`.
-    pub fn from_hsla_fn(hue: Number, saturation: Number, lightness: Number, alpha: Number) -> Self {
-        let mut color = Self::from_hsla(hue, Number(saturation.0.max(0.0)), lightness, alpha);
-        color.format = ColorFormat::Hsl;
-        color
-    }
-
-    /// Creates an hsl-space color from hue (degrees), saturation and
-    /// lightness (percentages), and alpha.
-    ///
-    /// The channels are not clamped, so out-of-gamut legacy colors
-    /// round-trip. Like Dart Sass's `SassColor.forSpaceInternal`, a
-    /// negative saturation is folded into the hue by rotating it 180
-    /// degrees, and the hue is normalized to `0..360`.
-    pub fn from_hsla(hue: Number, saturation: Number, lightness: Number, alpha: Number) -> Self {
-        let invert = saturation.0 < 0.0 && !fuzzy_equals(saturation.0, 0.0);
-        let hue =
-            (hue.0.rem_euclid(360.0) + 360.0 + if invert { 180.0 } else { 0.0 }).rem_euclid(360.0);
-        let saturation = saturation.0.abs();
-        let lightness = lightness.0;
-
-        let (red, green, blue) = hsl_to_rgb(hue, saturation, lightness);
-
-        Color {
-            rgba: Rgb::new(
-                Number(red * 255.0),
-                Number(green * 255.0),
-                Number(blue * 255.0),
-            ),
-            hsla: Some(Hsl {
-                hue,
-                saturation,
-                lightness,
-            }),
-            hwb: None,
-            alpha,
-            format: ColorFormat::Infer,
-            space: ColorSpace::Hsl,
-            missing_hue: false,
-        }
-    }
-
-    /// Inverts the color in its own space, as `color.invert()` with a
-    /// `$space` does: rgb channels flip around their range, the hue rotates
-    /// 180 degrees, hsl lightness flips, and hwb whiteness and blackness
-    /// swap. The hue must not be missing; the caller checks that.
-    pub(crate) fn invert_channels(&self) -> Self {
-        let alpha = self.alpha();
-        match self.space {
-            ColorSpace::Rgb => Color::new_rgba(
-                Number(255.0) - self.red(),
-                Number(255.0) - self.green(),
-                Number(255.0) - self.blue(),
-                alpha,
-                ColorFormat::Infer,
-            ),
-            ColorSpace::Hsl => {
-                let (hue, saturation, lightness) = self.hsl_view();
-                Color::from_hsla(
-                    Number((hue + 180.0).rem_euclid(360.0)),
-                    Number(saturation),
-                    Number(100.0 - lightness),
-                    alpha,
-                )
-            }
-            ColorSpace::Hwb => {
-                let (hue, whiteness, blackness) = self.hwb_view();
-                Color::from_hwb(
-                    Number((hue + 180.0).rem_euclid(360.0)),
-                    Number(blackness),
-                    Number(whiteness),
-                    alpha,
-                )
-            }
-        }
-    }
-
-    /// The legacy `invert()` without a `$space`: inverts the rgb channels,
-    /// mixes the result with the original by `weight` (`0..1`), and
-    /// converts back to the original space keeping a missing hue, so an
-    /// achromatic result written in hsl or hwb comes out as `hsl(none ..)`.
-    pub fn invert(&self, weight: Number) -> Self {
-        let inverse = Color::new_rgba(
-            Number(255.0) - self.red(),
-            Number(255.0) - self.green(),
-            Number(255.0) - self.blue(),
-            self.alpha(),
-            ColorFormat::Infer,
+    #[test]
+    fn negative_saturation_rotates_the_hue_on_construction() {
+        let color = Color::for_space(
+            ColorSpace::Hsl,
+            Some(30.0),
+            Some(-50.0),
+            Some(50.0),
+            Some(1.0),
         );
-
-        inverse.mix(self, weight).to_space(self.space, true)
+        assert_eq!(color.channels(), [210.0, 50.0, 50.0]);
     }
 
-    /// Rotates the hue of a polar-space color by `degrees`. The hue must
-    /// not be missing; the caller checks that.
-    pub(crate) fn rotate_hue(&self, degrees: f64) -> Self {
-        let alpha = self.alpha();
-        match self.space {
-            ColorSpace::Rgb => self.clone(),
-            ColorSpace::Hsl => {
-                let (hue, saturation, lightness) = self.hsl_view();
-                Color::from_hsla(
-                    Number(hue + degrees),
-                    Number(saturation),
-                    Number(lightness),
-                    alpha,
-                )
-            }
-            ColorSpace::Hwb => {
-                let (hue, whiteness, blackness) = self.hwb_view();
-                Color::from_hwb(
-                    Number(hue + degrees),
-                    Number(whiteness),
-                    Number(blackness),
-                    alpha,
-                )
-            }
-        }
+    #[test]
+    fn hues_wrap_on_construction() {
+        let hsl = Color::for_space(
+            ColorSpace::Hsl,
+            Some(-30.0),
+            Some(50.0),
+            Some(50.0),
+            Some(1.0),
+        );
+        assert_eq!(hsl.channel0(), 330.0);
+
+        let oklch = Color::for_space(
+            ColorSpace::Oklch,
+            Some(0.5),
+            Some(0.1),
+            Some(400.0),
+            Some(1.0),
+        );
+        assert_eq!(oklch.channel2(), 40.0);
     }
 
-    /// The legacy `complement()`: rotates the hsl hue by 180 degrees and
-    /// converts back to the original space.
-    pub fn complement(&self) -> Self {
-        self.to_space(ColorSpace::Hsl, false)
-            .rotate_hue(180.0)
-            .inherit_space(self)
+    #[test]
+    fn legacy_colors_compare_through_rgb() {
+        let rgb = Color::for_space(
+            ColorSpace::Rgb,
+            Some(0.0),
+            Some(255.0),
+            Some(0.0),
+            Some(1.0),
+        );
+        let hsl = Color::for_space(
+            ColorSpace::Hsl,
+            Some(120.0),
+            Some(100.0),
+            Some(50.0),
+            Some(1.0),
+        );
+        assert_eq!(rgb, hsl);
+
+        let srgb = Color::for_space(ColorSpace::Srgb, Some(0.0), Some(1.0), Some(0.0), Some(1.0));
+        assert_ne!(rgb, srgb);
     }
 
-    /// `grayscale()`: drops the saturation in hsl and converts back to the
-    /// original space. An hsl color keeps its hue (Dart Sass does not
-    /// convert a color already in hsl), including a missing one.
-    pub fn grayscale(&self) -> Self {
-        let hsl = self.to_space(ColorSpace::Hsl, true);
-        let (hue, _, lightness) = hsl.hsl_view();
-        Color::from_hsla(Number(hue), Number(0.0), Number(lightness), hsl.alpha())
-            .with_missing_hue(hsl.missing_hue)
-            .inherit_space(self)
-    }
-}
-
-/// Opacity color functions
-impl Color {
-    pub fn alpha(&self) -> Number {
-        if self.alpha > Number::one() {
-            self.alpha / Number(255.0)
-        } else {
-            self.alpha
-        }
-    }
-
-    /// Change `alpha` to value given, keeping the color's space and channels.
-    /// The source text of a literal no longer describes the color, so the
-    /// result serializes from its channels.
-    pub fn with_alpha(&self, alpha: Number) -> Self {
-        let mut color = self.clone();
-        color.alpha = alpha.clamp(0.0, 1.0);
-        color.format = ColorFormat::Infer;
-        color
-    }
-
-    /// Makes a color more opaque.
-    /// Takes a color and a number between 0 and 1,
-    /// and returns a color with the opacity increased by that amount.
-    ///
-    /// Unlike `color.adjust($alpha: ..)`, the legacy alpha functions
-    /// rebuild the color and so drop a missing hue, as in Dart Sass.
-    pub fn fade_in(&self, amount: Number) -> Self {
-        self.with_alpha(self.alpha() + amount)
-            .with_missing_hue(false)
-    }
-
-    /// Makes a color more transparent.
-    /// Takes a color and a number between 0 and 1,
-    /// and returns a color with the opacity decreased by that amount.
-    pub fn fade_out(&self, amount: Number) -> Self {
-        self.with_alpha(self.alpha() - amount)
-            .with_missing_hue(false)
-    }
-}
-
-/// Other color functions
-impl Color {
-    pub fn to_ie_hex_str(&self) -> String {
-        format!(
-            "#{:02X}{:02X}{:02X}{:02X}",
-            fuzzy_round(self.alpha().0 * 255.0) as u8,
-            fuzzy_round(self.red().0) as u8,
-            fuzzy_round(self.green().0) as u8,
-            fuzzy_round(self.blue().0) as u8
-        )
-    }
-}
-
-/// HWB color functions
-impl Color {
-    /// Creates an hwb-space color from hue (degrees), whiteness and
-    /// blackness (percentages), and alpha.
-    ///
-    /// Whiteness and blackness are stored as given. When they sum to more
-    /// than 100% the rgb channels are computed from the proportionally
-    /// scaled values, as the CSS algorithm specifies; `color.hwb()` and
-    /// `color.change()` scale the stored channels themselves, while
-    /// `color.adjust()` and `color.scale()` leave them out of gamut.
-    pub fn from_hwb(hue: Number, whiteness: Number, blackness: Number, alpha: Number) -> Color {
-        let hue = space::normalize_hue(hue.0);
-        let whiteness = whiteness.0;
-        let blackness = blackness.0;
-        let alpha = alpha.clamp(0.0, 1.0);
-
-        let (red, green, blue) = hwb_to_rgb(hue, whiteness, blackness);
-
-        Color {
-            rgba: Rgb::new(
-                Number(red * 255.0),
-                Number(green * 255.0),
-                Number(blue * 255.0),
-            ),
-            hsla: None,
-            hwb: Some(Hwb {
-                hue,
-                whiteness,
-                blackness,
-            }),
-            alpha,
-            format: ColorFormat::Infer,
-            space: ColorSpace::Hwb,
-            missing_hue: false,
-        }
-    }
-
-    /// The whiteness as a percentage, as seen through the hwb space.
-    pub fn whiteness(&self) -> Number {
-        Number(self.hwb_view().1)
-    }
-
-    /// The blackness as a percentage, as seen through the hwb space.
-    pub fn blackness(&self) -> Number {
-        Number(self.hwb_view().2)
+    #[test]
+    fn missing_channels_are_dropped_from_legacy_conversions_on_request() {
+        let gray = Color::for_space(
+            ColorSpace::Rgb,
+            Some(128.0),
+            Some(128.0),
+            Some(128.0),
+            Some(1.0),
+        );
+        assert!(gray.to_space(ColorSpace::Hsl, true).is_channel_missing(0));
+        assert!(!gray.to_space(ColorSpace::Hsl, false).is_channel_missing(0));
+        assert!(gray.to_space(ColorSpace::Lch, false).is_channel_missing(2));
     }
 }

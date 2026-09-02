@@ -14,8 +14,9 @@ use crate::{
     unit::Unit,
     utils::hex_char_for,
     value::{
-        fuzzy_equals, ArgList, CalculationArg, CalculationName, Number, SassCalculation,
-        SassFunction, SassMap, SassNumber, Value,
+        fuzzy_equals, fuzzy_greater_than_or_equals, fuzzy_less_than, fuzzy_less_than_or_equals,
+        ArgList, CalculationArg, CalculationName, Number, SassCalculation, SassFunction, SassMap,
+        SassNumber, Value,
     },
     Options,
 };
@@ -42,19 +43,6 @@ pub(crate) fn serialize_calculation_arg(
     let mut serializer = Serializer::new(options, &map, false, span);
 
     serializer.write_calculation_arg(arg)?;
-
-    Ok(serializer.finish_for_expr())
-}
-
-pub(crate) fn serialize_number(
-    number: &SassNumber,
-    options: &Options,
-    span: Span,
-) -> SassResult<String> {
-    let map = CodeMap::new();
-    let mut serializer = Serializer::new(options, &map, false, span);
-
-    serializer.visit_number(number)?;
 
     Ok(serializer.finish_for_expr())
 }
@@ -404,71 +392,99 @@ impl<'a> Serializer<'a> {
         Ok(())
     }
 
-    /// Whether the rgb channels can be written as integers. Dart Sass's
-    /// `_asInt` is exact outside inspect mode, so a channel with float
-    /// noise (`204.99999999999994`) makes the whole color print as
-    /// percentages; in inspect mode the check is fuzzy.
-    fn has_integral_channels(&self, color: &Color) -> bool {
-        let is_int = |channel: f64| {
-            if self.inspect {
-                fuzzy_equals(channel, channel.round())
-            } else {
-                channel.round() == channel
-            }
+    /// Dart Sass's `_asInt`: the channel as a whole number, or `None`. The
+    /// check is exact outside inspect mode, so a channel with float noise
+    /// (`204.99999999999994`) makes the whole color print as percentages;
+    /// in inspect mode the check is fuzzy.
+    fn as_int(&self, channel: f64) -> Option<f64> {
+        let rounded = channel.round();
+        let is_int = if self.inspect {
+            fuzzy_equals(channel, rounded)
+        } else {
+            channel == rounded
         };
-        is_int(color.red().0) && is_int(color.green().0) && is_int(color.blue().0)
+        if is_int {
+            Some(rounded)
+        } else {
+            None
+        }
     }
 
-    fn write_rgb(&mut self, color: &Color) {
-        let is_opaque = fuzzy_equals(color.alpha().0, 1.0);
+    /// Writes the three channels of an rgb-space color as comma-separated
+    /// integers, or writes nothing and returns false when one of them is
+    /// not a whole number.
+    fn try_integer_rgb_channels(&mut self, rgb: &Color) -> bool {
+        let red = match self.as_int(rgb.channel0()) {
+            Some(red) => red,
+            None => return false,
+        };
+        let green = match self.as_int(rgb.channel1()) {
+            Some(green) => green,
+            None => return false,
+        };
+        let blue = match self.as_int(rgb.channel2()) {
+            Some(blue) => blue,
+            None => return false,
+        };
 
-        if is_opaque {
+        self.write_float(red);
+        self.write_comma_separator();
+        self.write_float(green);
+        self.write_comma_separator();
+        self.write_float(blue);
+        true
+    }
+
+    /// Writes a legacy color in the `rgb()`/`rgba()` syntax. Non-integral
+    /// channels are written as percentages of 255, as Dart Sass does.
+    fn write_rgb(&mut self, color: &Color) {
+        let opaque = fuzzy_equals(color.alpha(), 1.0);
+        let rgb = color.to_space(ColorSpace::Rgb, true);
+
+        if opaque {
             self.buffer.extend_from_slice(b"rgb(");
         } else {
             self.buffer.extend_from_slice(b"rgba(");
         }
 
-        if self.has_integral_channels(color) {
-            self.write_float(color.red().0);
-            self.buffer.extend_from_slice(b",");
-            self.write_optional_space();
-            self.write_float(color.green().0);
-            self.buffer.extend_from_slice(b",");
-            self.write_optional_space();
-            self.write_float(color.blue().0);
-        } else {
-            // Dart Sass serializes non-integral legacy rgb channels as
-            // percentages of 255.
-            self.write_float(color.red().0 / 255.0 * 100.0);
-            self.buffer.extend_from_slice(b"%,");
-            self.write_optional_space();
-            self.write_float(color.green().0 / 255.0 * 100.0);
-            self.buffer.extend_from_slice(b"%,");
-            self.write_optional_space();
-            self.write_float(color.blue().0 / 255.0 * 100.0);
-            self.buffer.extend_from_slice(b"%");
+        if !self.try_integer_rgb_channels(&rgb) {
+            self.write_channel(Some(rgb.channel0() * 100.0 / 255.0), Some(Unit::Percent));
+            self.write_comma_separator();
+            self.write_channel(Some(rgb.channel1() * 100.0 / 255.0), Some(Unit::Percent));
+            self.write_comma_separator();
+            self.write_channel(Some(rgb.channel2() * 100.0 / 255.0), Some(Unit::Percent));
         }
 
-        if !is_opaque {
-            self.buffer.extend_from_slice(b",");
-            self.write_optional_space();
-            self.write_float(color.alpha().0);
+        if !opaque {
+            self.write_comma_separator();
+            self.write_float(color.alpha());
         }
 
         self.buffer.push(b')');
     }
 
-    /// Writes one color channel: a finite value as a plain number with
-    /// `unit`, a non-finite one wrapped in `calc(..)` the way Dart Sass's
-    /// `_writeChannel` does (`calc(NaN * 1%)`).
-    fn write_channel(&mut self, value: f64, unit: Unit) {
+    /// Writes one color channel the way Dart Sass's `_writeChannel` does:
+    /// `none` for a missing channel, a plain number with `unit` for a
+    /// finite one, and a `calc(..)` for a non-finite one
+    /// (`calc(NaN * 1%)`).
+    fn write_channel(&mut self, channel: Option<f64>, unit: Option<Unit>) {
+        let value = match channel {
+            Some(value) => value,
+            None => {
+                self.buffer.extend_from_slice(b"none");
+                return;
+            }
+        };
+
         if value.is_finite() {
             self.write_float(value);
-            let _ = write!(&mut self.buffer, "{}", unit);
+            if let Some(unit) = unit {
+                let _ = write!(&mut self.buffer, "{}", unit);
+            }
         } else {
             let number = SassNumber {
                 num: Number(value),
-                unit,
+                unit: unit.unwrap_or(Unit::None),
                 as_slash: None,
             };
             // Writing a bare number never fails; the `Result` only exists
@@ -477,27 +493,27 @@ impl<'a> Serializer<'a> {
         }
     }
 
+    /// Writes a legacy color in the `hsl()`/`hsla()` syntax, converting
+    /// to hsl first. A missing hue reads as `0`.
     fn write_hsl(&mut self, color: &Color) {
-        let is_opaque = fuzzy_equals(color.alpha().0, 1.0);
+        let opaque = fuzzy_equals(color.alpha(), 1.0);
+        let hsl = color.to_space(ColorSpace::Hsl, true);
 
-        if is_opaque {
+        if opaque {
             self.buffer.extend_from_slice(b"hsl(");
         } else {
             self.buffer.extend_from_slice(b"hsla(");
         }
 
-        self.write_channel(color.hue().0, Unit::None);
-        self.buffer.push(b',');
-        self.write_optional_space();
-        self.write_channel(color.saturation().0, Unit::Percent);
-        self.buffer.push(b',');
-        self.write_optional_space();
-        self.write_channel(color.lightness().0, Unit::Percent);
+        self.write_channel(Some(hsl.channel0()), None);
+        self.write_comma_separator();
+        self.write_channel(Some(hsl.channel1()), Some(Unit::Percent));
+        self.write_comma_separator();
+        self.write_channel(Some(hsl.channel2()), Some(Unit::Percent));
 
-        if !is_opaque {
-            self.buffer.push(b',');
-            self.write_optional_space();
-            self.write_float(color.alpha().0);
+        if !opaque {
+            self.write_comma_separator();
+            self.write_float(color.alpha());
         }
 
         self.buffer.push(b')');
@@ -506,45 +522,47 @@ impl<'a> Serializer<'a> {
     /// Writes an hwb color in the modern `hwb(H W% B% / A)` syntax. Dart
     /// Sass only uses this in inspect mode (`@debug`, `inspect()`).
     fn write_hwb(&mut self, color: &Color) {
+        let hwb = color.to_space(ColorSpace::Hwb, true);
+
         self.buffer.extend_from_slice(b"hwb(");
-        self.write_channel(color.hue().0, Unit::None);
+        self.write_float(hwb.channel0());
         self.buffer.push(b' ');
-        self.write_channel(color.whiteness().0, Unit::Percent);
+        self.write_float(hwb.channel1());
+        self.buffer.push(b'%');
         self.buffer.push(b' ');
-        self.write_channel(color.blackness().0, Unit::Percent);
-        self.write_slash_alpha(color);
+        self.write_float(hwb.channel2());
+        self.buffer.push(b'%');
+
+        if !fuzzy_equals(color.alpha(), 1.0) {
+            self.buffer.extend_from_slice(b" / ");
+            self.write_float(color.alpha());
+        }
+
         self.buffer.push(b')');
     }
 
-    /// Writes ` / A` when the color is not opaque (`/A` when compressed).
+    /// Writes ` / A` when the color is not opaque (`/A` when compressed),
+    /// with `none` for a missing alpha.
     fn write_slash_alpha(&mut self, color: &Color) {
-        if fuzzy_equals(color.alpha().0, 1.0) {
+        if fuzzy_equals(color.alpha(), 1.0) {
             return;
         }
         self.write_optional_space();
         self.buffer.push(b'/');
         self.write_optional_space();
-        self.write_float(color.alpha().0);
+        self.write_channel(color.alpha_or_none(), None);
     }
 
-    /// Writes a polar-space color whose hue is missing. Dart Sass falls
-    /// back to the modern space-separated syntax for it, since the legacy
-    /// `hsl(H, S%, L%)` form cannot express `none`: `hsl(none 0% 50%)` or
-    /// `hwb(none 50% 50%)`, with ` / A` for a non-opaque color.
-    fn write_missing_hue_color(&mut self, color: &Color) {
-        let (channel1, channel2) = match color.space() {
-            ColorSpace::Hwb => {
-                self.buffer.extend_from_slice(b"hwb(none ");
-                (color.whiteness().0, color.blackness().0)
-            }
-            _ => {
-                self.buffer.extend_from_slice(b"hsl(none ");
-                (color.saturation().0, color.lightness().0)
-            }
-        };
-        self.write_channel(channel1, Unit::Percent);
-        self.buffer.push(b' ');
-        self.write_channel(channel2, Unit::Percent);
+    /// Writes a color in the `color(<space> c0 c1 c2 / A)` syntax, which
+    /// is how every space without a dedicated CSS function serializes.
+    fn write_color_function(&mut self, color: &Color) {
+        self.buffer.extend_from_slice(b"color(");
+        self.buffer
+            .extend_from_slice(color.space().name().as_bytes());
+        for channel in color.channels_or_none() {
+            self.buffer.push(b' ');
+            self.write_channel(channel, None);
+        }
         self.write_slash_alpha(color);
         self.buffer.push(b')');
     }
@@ -560,88 +578,108 @@ impl<'a> Serializer<'a> {
         channel & 0xF == channel >> 4
     }
 
-    fn can_use_short_hex(color: &Color) -> bool {
-        Self::is_symmetrical_hex(color.red().0.round() as u32)
-            && Self::is_symmetrical_hex(color.green().0.round() as u32)
-            && Self::is_symmetrical_hex(color.blue().0.round() as u32)
+    fn can_use_short_hex(red: u32, green: u32, blue: u32) -> bool {
+        Self::is_symmetrical_hex(red)
+            && Self::is_symmetrical_hex(green)
+            && Self::is_symmetrical_hex(blue)
     }
 
-    /// Whether every rgb channel is a whole number within `0..=255`, so the
-    /// color can be written as a hex code (Dart Sass's `_canUseHex`).
-    fn can_use_hex(color: &Color) -> bool {
-        let hex_channel = |channel: f64| {
+    /// Whether every channel of an rgb-space color is a whole number
+    /// within `0..=255`, so the color can be written as a hex code (Dart
+    /// Sass's `_canUseHex`).
+    fn can_use_hex(rgb: &Color) -> bool {
+        rgb.channels().iter().all(|&channel| {
             fuzzy_equals(channel, channel.round())
-                && (channel > 0.0 || fuzzy_equals(channel, 0.0))
-                && (channel < 256.0 && !fuzzy_equals(channel, 256.0))
-        };
-        hex_channel(color.red().0) && hex_channel(color.green().0) && hex_channel(color.blue().0)
+                && fuzzy_greater_than_or_equals(channel, 0.0)
+                && fuzzy_less_than(channel, 256.0)
+        })
     }
 
-    /// Writes a legacy color, choosing the representation the way Dart
-    /// Sass's `visitColor`/`_writeLegacyColor` do:
-    ///
-    /// 1. a missing hue forces the modern `hsl(none ..)` syntax;
-    /// 2. an out-of-gamut color can only be represented exactly in hsl;
-    /// 3. compressed output takes the shortest of hex, name, rgb, or hsl;
-    /// 4. an hsl-space color always keeps hsl form;
-    /// 5. a color written as `rgb()`, a hex code, or a name keeps that form;
-    /// 6. otherwise an opaque whole-number color becomes a name or hex code,
-    ///    and anything else is `rgb()`, or `hsl()` for an hwb-space color.
-    pub fn visit_color(&mut self, color: &Color) {
-        if color.missing_hue() {
-            self.write_missing_hue_color(color);
-            return;
+    /// The rounded channels of an rgb-space color that can be written as
+    /// hex.
+    fn hex_channels(rgb: &Color) -> (u32, u32, u32) {
+        let [red, green, blue] = rgb.channels();
+        (
+            red.round() as u32,
+            green.round() as u32,
+            blue.round() as u32,
+        )
+    }
+
+    /// The color's name, when an opaque rgb-space color matches one.
+    fn color_name(rgb: &Color) -> Option<&'static str> {
+        if !Self::can_use_hex(rgb) {
+            return None;
         }
+        let (red, green, blue) = Self::hex_channels(rgb);
+        NAMED_COLORS
+            .get_by_rgba([red as u8, green as u8, blue as u8])
+            .copied()
+    }
+
+    /// Writes an opaque rgb-space color as whichever of its name, short
+    /// hex, or long hex is shortest, or writes nothing and returns false
+    /// when it cannot be written as hex.
+    fn try_hex_or_named_rgb(&mut self, rgb: &Color) -> bool {
+        if !Self::can_use_hex(rgb) {
+            return false;
+        }
+
+        let (red, green, blue) = Self::hex_channels(rgb);
+        let short_hex = Self::can_use_short_hex(red, green, blue);
+        let max_name_length = if short_hex { 4 } else { 7 };
+
+        if let Some(name) = Self::color_name(rgb).filter(|name| name.len() <= max_name_length) {
+            self.buffer.extend_from_slice(name.as_bytes());
+        } else if short_hex {
+            self.buffer.push(b'#');
+            self.buffer.push(hex_char_for(red & 0xF) as u8);
+            self.buffer.push(hex_char_for(green & 0xF) as u8);
+            self.buffer.push(hex_char_for(blue & 0xF) as u8);
+        } else {
+            self.buffer.push(b'#');
+            self.write_hex_component(red);
+            self.write_hex_component(green);
+            self.write_hex_component(blue);
+        }
+        true
+    }
+
+    /// Writes a legacy color with no missing channels, choosing the
+    /// representation the way Dart Sass's `_writeLegacyColor` does:
+    ///
+    /// 1. an out-of-gamut color can only be represented exactly in hsl;
+    /// 2. compressed output takes the shortest of hex, name, rgb, or hsl;
+    /// 3. an hsl-space color always keeps hsl form;
+    /// 4. a color written as `rgb()`, a hex code, or a name keeps that form;
+    /// 5. otherwise an opaque whole-number color becomes a name or hex code,
+    ///    and anything else is `rgb()`, or `hsl()` for an hwb-space color.
+    fn write_legacy_color(&mut self, color: &Color) {
+        let opaque = fuzzy_equals(color.alpha(), 1.0);
 
         if !color.is_in_gamut() && !self.inspect {
             self.write_hsl(color);
             return;
         }
 
-        let opaque = fuzzy_equals(color.alpha().0, 1.0);
-        let can_use_hex = Self::can_use_hex(color);
-        let red = color.red().0.round() as u8;
-        let green = color.green().0.round() as u8;
-        let blue = color.blue().0.round() as u8;
-
-        let name = if can_use_hex && opaque {
-            NAMED_COLORS.get_by_rgba([red, green, blue])
-        } else {
-            None
-        };
-
         if self.options.is_compressed() {
-            if opaque && can_use_hex {
-                let hex_length = if Self::can_use_short_hex(color) { 4 } else { 7 };
-                if let Some(name) = name.filter(|name| name.len() <= hex_length) {
-                    self.buffer.extend_from_slice(name.as_bytes());
-                } else if Self::can_use_short_hex(color) {
-                    self.buffer.push(b'#');
-                    self.buffer.push(hex_char_for(red as u32 & 0xF) as u8);
-                    self.buffer.push(hex_char_for(green as u32 & 0xF) as u8);
-                    self.buffer.push(hex_char_for(blue as u32 & 0xF) as u8);
-                } else {
-                    self.buffer.push(b'#');
-                    self.write_hex_component(red as u32);
-                    self.write_hex_component(green as u32);
-                    self.write_hex_component(blue as u32);
-                }
+            let rgb = color.to_space(ColorSpace::Rgb, true);
+            if opaque && self.try_hex_or_named_rgb(&rgb) {
+                return;
+            }
+
+            // Emit whichever of rgb and hsl is shorter, computing hsl from
+            // the rgb channels as Dart Sass does. The two extra characters
+            // account for the `%` signs on saturation and lightness.
+            let start = self.buffer.len();
+            self.write_rgb(&rgb);
+            let rgb_string = self.buffer.split_off(start);
+            self.write_hsl(&rgb.to_space(ColorSpace::Hsl, true));
+            let hsl_string = self.buffer.split_off(start);
+            if rgb_string.len() <= hsl_string.len() + 2 {
+                self.buffer.extend_from_slice(&rgb_string);
             } else {
-                // Emit whichever of rgb and hsl is shorter, computing hsl
-                // from the rgb channels as Dart Sass does. The two extra
-                // characters account for the `%` signs on saturation and
-                // lightness.
-                let rgb = color.to_space(ColorSpace::Rgb, false);
-                let start = self.buffer.len();
-                self.write_rgb(&rgb);
-                let rgb_string = self.buffer.split_off(start);
-                self.write_hsl(&rgb);
-                let hsl_string = self.buffer.split_off(start);
-                if rgb_string.len() <= hsl_string.len() + 2 {
-                    self.buffer.extend_from_slice(&rgb_string);
-                } else {
-                    self.buffer.extend_from_slice(&hsl_string);
-                }
+                self.buffer.extend_from_slice(&hsl_string);
             }
             return;
         }
@@ -659,10 +697,6 @@ impl<'a> Serializer<'a> {
                 self.write_rgb(color);
                 return;
             }
-            ColorFormat::Hsl => {
-                self.write_hsl(color);
-                return;
-            }
             ColorFormat::Literal(text) => {
                 self.buffer.extend_from_slice(text.as_bytes());
                 return;
@@ -673,15 +707,18 @@ impl<'a> Serializer<'a> {
         // Always emit generated transparent colors in rgba format. This works
         // around an IE bug. See sass/sass#1782.
         if opaque {
-            if let Some(name) = name {
+            let rgb = color.to_space(ColorSpace::Rgb, true);
+            if let Some(name) = Self::color_name(&rgb) {
                 self.buffer.extend_from_slice(name.as_bytes());
                 return;
             }
-            if can_use_hex {
+
+            if Self::can_use_hex(&rgb) {
+                let (red, green, blue) = Self::hex_channels(&rgb);
                 self.buffer.push(b'#');
-                self.write_hex_component(red as u32);
-                self.write_hex_component(green as u32);
-                self.write_hex_component(blue as u32);
+                self.write_hex_component(red);
+                self.write_hex_component(green);
+                self.write_hex_component(blue);
                 return;
             }
         }
@@ -693,6 +730,113 @@ impl<'a> Serializer<'a> {
             self.write_hsl(color);
         } else {
             self.write_rgb(color);
+        }
+    }
+
+    /// Writes a color the way Dart Sass's `visitColor` does. A legacy color
+    /// with no missing channels takes the legacy syntax; anything else uses
+    /// the CSS Color 4 syntax of its space, with `none` for missing
+    /// channels. A lab-family color whose lightness is out of range (or
+    /// whose chroma is negative) has no direct CSS form, so it is written
+    /// as a `color-mix()` from its xyz value, or with a relative `from`
+    /// prefix when it also has missing channels.
+    pub fn visit_color(&mut self, color: &Color) {
+        let space = color.space();
+        let compressed = self.options.is_compressed();
+        let [channel0, channel1, channel2] = color.channels_or_none();
+        let missing0 = channel0.is_none();
+        let missing1 = channel1.is_none();
+        let missing2 = channel2.is_none();
+        let fuzzy_in_range = |number: f64, min: f64, max: f64| {
+            fuzzy_greater_than_or_equals(number, min) && fuzzy_less_than_or_equals(number, max)
+        };
+
+        match space {
+            ColorSpace::Rgb | ColorSpace::Hsl | ColorSpace::Hwb if !color.has_missing_channel() => {
+                self.write_legacy_color(color);
+            }
+            ColorSpace::Rgb => {
+                self.buffer.extend_from_slice(b"rgb(");
+                self.write_channel(channel0, None);
+                self.buffer.push(b' ');
+                self.write_channel(channel1, None);
+                self.buffer.push(b' ');
+                self.write_channel(channel2, None);
+                self.write_slash_alpha(color);
+                self.buffer.push(b')');
+            }
+            ColorSpace::Hsl | ColorSpace::Hwb => {
+                self.buffer.extend_from_slice(space.name().as_bytes());
+                self.buffer.push(b'(');
+                self.write_channel(channel0, if compressed { None } else { Some(Unit::Deg) });
+                self.buffer.push(b' ');
+                self.write_channel(channel1, Some(Unit::Percent));
+                self.buffer.push(b' ');
+                self.write_channel(channel2, Some(Unit::Percent));
+                self.write_slash_alpha(color);
+                self.buffer.push(b')');
+            }
+            ColorSpace::Lab | ColorSpace::Lch | ColorSpace::Oklab | ColorSpace::Oklch => {
+                let polar = space.is_polar();
+                let lightness_max = match space {
+                    ColorSpace::Lab | ColorSpace::Lch => 100.0,
+                    _ => 1.0,
+                };
+                let lightness_out_of_range = !fuzzy_in_range(color.channel0(), 0.0, lightness_max);
+                let negative_chroma = polar && fuzzy_less_than(color.channel1(), 0.0);
+
+                if !self.inspect
+                    && ((lightness_out_of_range && !missing1 && !missing2)
+                        || (negative_chroma && !missing0 && !missing1))
+                {
+                    self.buffer.extend_from_slice(b"color-mix(in ");
+                    self.buffer.extend_from_slice(space.name().as_bytes());
+                    self.write_comma_separator();
+                    self.write_color_function(&color.to_space(ColorSpace::XyzD65, true));
+                    self.write_optional_space();
+                    self.buffer.extend_from_slice(b"100%");
+                    self.write_comma_separator();
+                    self.buffer
+                        .extend_from_slice(if compressed { b"red" } else { b"black" });
+                    self.buffer.push(b')');
+                    return;
+                }
+
+                self.buffer.extend_from_slice(space.name().as_bytes());
+                self.buffer.push(b'(');
+
+                // Dart Sass checks the lightness against `0..100` here for
+                // every lab-family space, oklab and oklch included.
+                if !self.inspect
+                    && (!fuzzy_in_range(color.channel0(), 0.0, 100.0) || negative_chroma)
+                {
+                    self.buffer.extend_from_slice(b"from ");
+                    self.buffer
+                        .extend_from_slice(if compressed { b"red" } else { b"black" });
+                    self.buffer.push(b' ');
+                }
+
+                if !compressed && !missing0 {
+                    self.write_float(color.channel0() * 100.0 / lightness_max);
+                    self.buffer.push(b'%');
+                } else {
+                    self.write_channel(channel0, None);
+                }
+                self.buffer.push(b' ');
+                self.write_channel(channel1, None);
+                self.buffer.push(b' ');
+                self.write_channel(
+                    channel2,
+                    if polar && !compressed {
+                        Some(Unit::Deg)
+                    } else {
+                        None
+                    },
+                );
+                self.write_slash_alpha(color);
+                self.buffer.push(b')');
+            }
+            _ => self.write_color_function(color),
         }
     }
 
@@ -789,6 +933,11 @@ impl<'a> Serializer<'a> {
         Ok(())
     }
 
+    /// Writes a number the way Dart Sass's `_writeNumber` does: a whole
+    /// number as an integer, a short decimal as-is, and a longer one
+    /// rounded to ten decimal places by decimal digit. Compressed output
+    /// drops the zero before the decimal point (`.5`), except on a short
+    /// negative number, which Dart Sass leaves alone (`-0.5`).
     fn write_float(&mut self, float: f64) {
         if float.is_infinite() && float.is_sign_negative() {
             self.buffer.extend_from_slice(b"-Infinity");
@@ -796,36 +945,150 @@ impl<'a> Serializer<'a> {
         } else if float.is_infinite() {
             self.buffer.extend_from_slice(b"Infinity");
             return;
+        } else if float.is_nan() {
+            self.buffer.extend_from_slice(b"NaN");
+            return;
         }
 
-        // todo: can optimize away intermediate buffer
-        let mut buffer = String::with_capacity(3);
-
-        if float < 0.0 {
-            buffer.push('-');
-        }
-
-        let num = float.abs();
-
-        if self.options.is_compressed() && num < 1.0 {
-            buffer.push_str(
-                format!("{:.10}", num)[1..]
-                    .trim_end_matches('0')
-                    .trim_end_matches('.'),
-            );
+        let rounded = float.round();
+        let is_int = if self.inspect {
+            fuzzy_equals(float, rounded)
         } else {
-            buffer.push_str(
-                format!("{:.10}", num)
-                    .trim_end_matches('0')
-                    .trim_end_matches('.'),
-            );
+            float == rounded
+        };
+        if is_int {
+            // Dart rounds to a 64-bit integer and prints its exact digits;
+            // beyond that range the shortest representation is all that is
+            // left.
+            if rounded == 0.0 {
+                self.buffer.push(b'0');
+            } else if rounded.abs() < 9.0e18 {
+                let _ = write!(&mut self.buffer, "{}", rounded as i64);
+            } else {
+                let _ = write!(&mut self.buffer, "{}", rounded);
+            }
+            return;
         }
 
-        if buffer.is_empty() || buffer == "-" || buffer == "-0" {
-            buffer = "0".to_owned();
+        // Rust's `Display` for `f64` is the shortest round-trip
+        // representation without an exponent, which is what Dart's
+        // `toString()` gives after `_removeExponent`.
+        let mut text = float.to_string();
+
+        if self.inspect {
+            self.buffer.extend_from_slice(text.as_bytes());
+            return;
         }
 
-        self.buffer.append(&mut buffer.into_bytes());
+        // `SassNumber.precision + 2`
+        if text.len() < 12 {
+            if self.options.is_compressed() && text.starts_with('0') {
+                text.remove(0);
+            }
+            self.buffer.extend_from_slice(text.as_bytes());
+            return;
+        }
+
+        self.write_rounded(&text);
+    }
+
+    /// Dart Sass's `_writeRounded`: rounds a decimal string to ten
+    /// fractional digits by looking at the eleventh, carrying into the
+    /// integer part when needed, and drops trailing zeros.
+    fn write_rounded(&mut self, text: &str) {
+        const PRECISION: usize = 10;
+
+        if let Some(integer) = text.strip_suffix(".0") {
+            self.buffer.extend_from_slice(integer.as_bytes());
+            return;
+        }
+
+        let bytes = text.as_bytes();
+        // One extra leading slot to carry into.
+        let mut digits = vec![0u8; bytes.len() + 1];
+        let mut digits_index = 1;
+
+        let mut text_index = 0;
+        let negative = bytes[0] == b'-';
+        if negative {
+            text_index += 1;
+        }
+        loop {
+            if text_index == bytes.len() {
+                self.buffer.extend_from_slice(bytes);
+                return;
+            }
+
+            let byte = bytes[text_index];
+            text_index += 1;
+            if byte == b'.' {
+                break;
+            }
+            digits[digits_index] = byte - b'0';
+            digits_index += 1;
+        }
+        let first_fractional_digit = digits_index;
+
+        let index_after_precision = text_index + PRECISION;
+        if index_after_precision >= bytes.len() {
+            self.buffer.extend_from_slice(bytes);
+            return;
+        }
+
+        while text_index < index_after_precision {
+            digits[digits_index] = bytes[text_index] - b'0';
+            digits_index += 1;
+            text_index += 1;
+        }
+
+        if bytes[text_index] - b'0' >= 5 {
+            loop {
+                digits[digits_index - 1] += 1;
+                if digits[digits_index - 1] != 10 {
+                    break;
+                }
+                digits_index -= 1;
+            }
+        }
+
+        // Pad the integer part back out if the carry consumed it, then
+        // drop trailing zeros from the fraction.
+        while digits_index < first_fractional_digit {
+            digits[digits_index] = 0;
+            digits_index += 1;
+        }
+        while digits_index > first_fractional_digit && digits[digits_index - 1] == 0 {
+            digits_index -= 1;
+        }
+
+        if digits_index == 2 && digits[0] == 0 && digits[1] == 0 {
+            self.buffer.push(b'0');
+            return;
+        }
+
+        if negative {
+            self.buffer.push(b'-');
+        }
+
+        let mut written_index = 0;
+        if digits[0] == 0 {
+            written_index += 1;
+            if self.options.is_compressed() && digits[1] == 0 {
+                written_index += 1;
+            }
+        }
+        while written_index < first_fractional_digit {
+            self.buffer.push(b'0' + digits[written_index]);
+            written_index += 1;
+        }
+
+        if digits_index > first_fractional_digit {
+            self.buffer.push(b'.');
+            while written_index < digits_index {
+                self.buffer.push(b'0' + digits[written_index]);
+                written_index += 1;
+            }
+        }
     }
 
     pub fn visit_group(

@@ -227,7 +227,7 @@ test!(
 test!(
     plain_invert_nan,
     "a {\n  color: invert((0 / 0));\n}\n",
-    "a {\n  color: invert(NaN);\n}\n"
+    "a {\n  color: invert(calc(NaN));\n}\n"
 );
 error!(
     plain_invert_two_args,
@@ -642,7 +642,7 @@ test!(
         color: rgb(red, 0/0);
         color: opacity(rgb(red, 0/0));
     }",
-    "a {\n  color: red;\n  color: 1;\n}\n"
+    "a {\n  color: rgba(255, 0, 0, 0);\n  color: 0;\n}\n"
 );
 error!(
     rgb_more_than_4_args,
@@ -693,7 +693,7 @@ test!(
 test!(
     opacity_nan,
     "a {\n  color: opacity(0/0);\n}\n",
-    "a {\n  color: opacity(NaN);\n}\n"
+    "a {\n  color: opacity(calc(NaN));\n}\n"
 );
 test!(
     change_color_no_change,

@@ -84,8 +84,8 @@ Against the pinned spec revision, this fork achieves the following results:
 
 ```
 2026-09-02
-PASSING: 7870
-FAILING: 6340
+PASSING: 12491
+FAILING: 1719
 TOTAL: 14218
 ```
 
@@ -94,17 +94,16 @@ moves by one either way.
 
 The suite more than doubled between the previously pinned revision (2022-12-08,
 6,905 tests, of which 6,149 passed) and the current one, and nearly all of the
-new tests cover CSS Color 4. `spec/core_functions/color` alone accounts for
-4,774 of the 6,340 failures -- 3,044 of them under `to_space` -- because this
-fork implements only the legacy `rgb`/`hsl`/`hwb` spaces (the color-space
-functions themselves -- `space`, `to-space`, `is-legacy`, `is-in-gamut`,
-`to-gamut`, `same` -- and the `$space`/`$method` arguments exist, but only for
-those three spaces). Excluding that subtree, the fork passes 6,209 of 7,783
-tests (79.8%); the largest remaining groups are `values/calculation` (436, the
-CSS math functions `round()`, `mod()`, `rem()`, `log()` and `tan()` inside
-calculations) and the new CSS `if()` function (164). The rest are largely
-aesthetic, relating to whitespace around comments in expanded mode or to error
-messages.
+new tests cover CSS Color 4, which this fork now implements in full (every
+color space, missing channels, and the color-space functions). Of the 6,435
+tests under `spec/core_functions/color`, 177 still fail, and nearly all of
+those pass `calc(infinity)`, `calc(-infinity)`, or `calc(NaN)` as a channel,
+which the calculation parser does not accept yet. The largest remaining groups
+are `values/calculation` (436, the CSS math functions `round()`, `mod()`,
+`rem()`, `log()` and `tan()` inside calculations, and those same keywords),
+the new CSS `if()` function (164), and `core_functions/meta` (152). The rest
+are largely aesthetic, relating to whitespace around comments in expanded mode
+or to error messages.
 
 ## Versioning
 

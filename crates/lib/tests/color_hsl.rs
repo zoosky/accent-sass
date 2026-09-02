@@ -359,7 +359,7 @@ test!(
 error!(
     hsl_one_arg_bracketed,
     "a {\n  color: hsl([1, 2, 3]);\n}\n",
-    "Error: $channels must be an unbracketed, space-separated list."
+    "Error: $channels: Expected an unbracketed, space- or slash-separated list, was [1, 2, 3]"
 );
 error!(
     hue_arg_not_color,
