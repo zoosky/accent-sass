@@ -105,6 +105,44 @@ jobs:
               exit 1
           fi
 
+  # Compiles a corpus of real-world frameworks -- Bulma, Pico, Foundation and
+  # USWDS -- with both engines and compares the output. These exercise the
+  # modern colour APIs, so this is the regression guard for the colour
+  # pipeline: a difference in a colour value fails the job. Rule grouping and
+  # ordering differences are reported but tolerated. See
+  # .github/scripts/frameworks.sh.
+  frameworks:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Build binary
+        run: cargo build --release
+
+      - name: Install dart-sass 1.103.1
+        run: |
+          wget -q https://github.com/sass/dart-sass/releases/download/1.103.1/dart-sass-1.103.1-linux-x64.tar.gz
+          tar -xzf dart-sass-1.103.1-linux-x64.tar.gz
+
+      - name: Install lightningcss
+        run: npm install -g lightningcss-cli
+
+      - name: Compare against dart-sass
+        env:
+          GRASS: ./target/release/grass
+          SASS: ./dart-sass/sass
+          NORMALISE: lightningcss
+        run: .github/scripts/frameworks.sh
+
   # Conformance against the official Sass spec suite (the `sass-spec`
   # submodule). Advisory only -- `continue-on-error` keeps it from gating a
   # merge, because most failures are the CSS Color 4 colour spaces this fork
