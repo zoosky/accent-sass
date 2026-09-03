@@ -36,6 +36,25 @@ impl CssTree {
         self.stmts[idx.0].borrow()
     }
 
+    /// The number of statements added so far, used to mark where a module's
+    /// CSS begins.
+    pub fn stmt_count(&self) -> usize {
+        self.stmts.len()
+    }
+
+    /// The statements added since `start` whose parent was already in the
+    /// tree at that point -- the roots of everything one module execution
+    /// emitted, without the nested children those roots already own.
+    pub fn top_level_stmts_since(&self, start: usize) -> Vec<CssTreeIdx> {
+        (start..self.stmts.len())
+            .map(CssTreeIdx)
+            .filter(|idx| match self.child_to_parent.get(idx) {
+                Some(parent) => parent.0 < start,
+                None => true,
+            })
+            .collect()
+    }
+
     pub fn get_mut(&self, idx: CssTreeIdx) -> RefMut<Option<CssStmt>> {
         self.stmts[idx.0].borrow_mut()
     }

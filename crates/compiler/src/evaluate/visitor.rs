@@ -128,6 +128,16 @@ pub struct Visitor<'a> {
     pub current_import_path: PathBuf,
     pub(crate) is_plain_css: bool,
     pub(crate) modules: BTreeMap<PathBuf, Arc<RefCell<Module>>>,
+    /// The top-level CSS statements each cached module emitted when it first
+    /// executed, so an `@import` of an already-loaded module can emit that CSS
+    /// again. `@use` never replays -- a used module's CSS appears once.
+    module_css: BTreeMap<PathBuf, Vec<CssTreeIdx>>,
+    /// True while evaluating a stylesheet loaded by `@import` that loads
+    /// modules. Modules executed in this context keep the caller's CSS
+    /// position, so their CSS lands where the `@import` is written, and a
+    /// cache hit replays the module's recorded CSS instead of emitting
+    /// nothing.
+    in_import_context: bool,
     pub(crate) active_modules: BTreeSet<PathBuf>,
     css_tree: CssTree,
     parent: Option<CssTreeIdx>,
@@ -174,6 +184,8 @@ impl<'a> Visitor<'a> {
             is_plain_css: false,
             import_nodes: Vec::new(),
             modules: BTreeMap::new(),
+            module_css: BTreeMap::new(),
+            in_import_context: false,
             active_modules: BTreeSet::new(),
             options,
             empty_span,
@@ -552,6 +564,7 @@ impl<'a> Visitor<'a> {
 
         // todo: use canonical url for modules
         if let Some(already_loaded) = self.modules.get(&stylesheet.url) {
+            let already_loaded = Arc::clone(already_loaded);
             let current_configuration =
                 configuration.unwrap_or_else(|| Rc::clone(&self.configuration));
 
@@ -579,7 +592,14 @@ impl<'a> Visitor<'a> {
                 //   }
             }
 
-            return Ok(Arc::clone(already_loaded));
+            // A module keeps its state from the first load, but `@import`ing
+            // it again is meant to emit its CSS again, so replay what it
+            // emitted the first time.
+            if self.in_import_context {
+                self.replay_module_css(&url);
+            }
+
+            return Ok(already_loaded);
         }
 
         let env = Environment::new();
@@ -595,10 +615,26 @@ impl<'a> Visitor<'a> {
         // per-module implementation).
         let extension_store = ExtensionStore::new(self.empty_span);
 
+        let css_start = self.css_tree.stmt_count();
+
         self.with_environment::<SassResult<()>, _>(env.new_closure(), |visitor| {
             let old_parent = visitor.parent;
-            let old_style_rule = visitor.style_rule_ignoring_at_root.take();
-            let old_media_queries = visitor.media_queries.take();
+            // In an import context the module's CSS belongs where the
+            // `@import` is written -- nested under its style rule and inside
+            // its media queries -- so the caller's CSS position is kept, the
+            // way `meta.load-css` keeps it. Outside an import the module is
+            // hermetic and its CSS goes to the root.
+            let in_import_context = visitor.in_import_context;
+            let old_style_rule = if in_import_context {
+                None
+            } else {
+                visitor.style_rule_ignoring_at_root.take()
+            };
+            let old_media_queries = if in_import_context {
+                None
+            } else {
+                visitor.media_queries.take()
+            };
             let old_declaration_name = visitor.declaration_name.take();
             let old_in_unknown_at_rule = visitor.flags.in_unknown_at_rule();
             let old_at_root_excluding_style_rule = visitor.flags.at_root_excluding_style_rule();
@@ -608,12 +644,14 @@ impl<'a> Visitor<'a> {
             } else {
                 None
             };
-            visitor.parent = None;
-            visitor.flags.set(ContextFlags::IN_UNKNOWN_AT_RULE, false);
-            visitor
-                .flags
-                .set(ContextFlags::AT_ROOT_EXCLUDING_STYLE_RULE, false);
-            visitor.flags.set(ContextFlags::IN_KEYFRAMES, false);
+            if !in_import_context {
+                visitor.parent = None;
+                visitor.flags.set(ContextFlags::IN_UNKNOWN_AT_RULE, false);
+                visitor
+                    .flags
+                    .set(ContextFlags::AT_ROOT_EXCLUDING_STYLE_RULE, false);
+                visitor.flags.set(ContextFlags::IN_KEYFRAMES, false);
+            }
 
             visitor.visit_stylesheet(stylesheet)?;
 
@@ -623,8 +661,10 @@ impl<'a> Visitor<'a> {
             visitor.parent = old_parent;
             // visitor.end_of_imports = old_end_of_imports;
             // visitor.out_of_order_imports = old_out_of_order_imports;
-            visitor.style_rule_ignoring_at_root = old_style_rule;
-            visitor.media_queries = old_media_queries;
+            if !in_import_context {
+                visitor.style_rule_ignoring_at_root = old_style_rule;
+                visitor.media_queries = old_media_queries;
+            }
             visitor.declaration_name = old_declaration_name;
             visitor
                 .flags
@@ -645,9 +685,60 @@ impl<'a> Visitor<'a> {
 
         let module = env.to_module(extension_store);
 
+        // Record what the module emitted -- including CSS from modules it
+        // loaded in turn, matching how Dart Sass combines a module's CSS with
+        // its upstream modules' -- so a later `@import` of it can replay the
+        // CSS. The statements are frozen as emitted on this first load:
+        // selectors were resolved against this load's context, which is also
+        // when the module's variables were configured.
+        self.module_css
+            .insert(url.clone(), self.css_tree.top_level_stmts_since(css_start));
+
         self.modules.insert(url, Arc::clone(&module));
 
         Ok(module)
+    }
+
+    /// Emits a copy of the CSS a cached module produced when it was first
+    /// executed, at the current position in the tree.
+    ///
+    /// The copied statements share their selectors with the originals, so an
+    /// `@extend` -- whether it ran before or after the copy -- applies to both:
+    /// the shared extension store resolves selectors when the document is
+    /// serialized, not when statements are added.
+    fn replay_module_css(&mut self, url: &Path) {
+        let top_level = match self.module_css.get(url) {
+            Some(top_level) => top_level.clone(),
+            None => return,
+        };
+
+        for idx in top_level {
+            let stmt = match (*self.css_tree.get(idx)).clone() {
+                Some(stmt) => stmt,
+                None => continue,
+            };
+
+            let new_idx = self.add_child(stmt, Some(CssStmt::is_style_rule));
+            self.replay_css_children(idx, new_idx);
+        }
+    }
+
+    /// Copies the recorded children of `old_idx` beneath `new_idx`.
+    fn replay_css_children(&mut self, old_idx: CssTreeIdx, new_idx: CssTreeIdx) {
+        let children = match self.css_tree.parent_to_child.get(&old_idx) {
+            Some(children) => children.clone(),
+            None => return,
+        };
+
+        for child in children {
+            let stmt = match (*self.css_tree.get(child)).clone() {
+                Some(stmt) => stmt,
+                None => continue,
+            };
+
+            let new_child = self.css_tree.add_child(stmt, new_idx);
+            self.replay_css_children(child, new_child);
+        }
     }
 
     pub(crate) fn load_module(
@@ -879,7 +970,18 @@ impl<'a> Visitor<'a> {
     /// resolved by whichever was checked first. A partial and its non-partial
     /// spelling are the same group, so `_other.scss` beside `other.scss` is an
     /// error too.
-    pub fn find_import(&self, path: &Path, span: Span) -> SassResult<Option<PathBuf>> {
+    ///
+    /// `for_import` is true only for `@import`: the `.import.*` files exist to
+    /// give `@import` a different view of a module, so `@use`, `@forward` and
+    /// `meta.load-css` never see them. Without this distinction, the
+    /// `@forward "other"` inside `_other.import.scss` resolves back to the
+    /// import-only file itself and reports a module loop.
+    pub fn find_import(
+        &self,
+        path: &Path,
+        for_import: bool,
+        span: Span,
+    ) -> SassResult<Option<PathBuf>> {
         let path_buf = if path.is_absolute() {
             path.into()
         } else {
@@ -905,9 +1007,10 @@ impl<'a> Visitor<'a> {
         {
             let extension = path_buf.extension().unwrap().to_str().unwrap().to_owned();
 
-            resolve!(
-                self.import_candidates(&path_buf.with_extension(format!(".import{}", extension)))
-            );
+            if for_import {
+                resolve!(self
+                    .import_candidates(&path_buf.with_extension(format!(".import{}", extension))));
+            }
             resolve!(self.import_candidates(&path_buf));
 
             // todo: consider load paths
@@ -919,6 +1022,10 @@ impl<'a> Visitor<'a> {
                 let base = $base;
 
                 for extensions in [["import.sass", "import.scss"], ["sass", "scss"]] {
+                    if !for_import && extensions[0].starts_with("import") {
+                        continue;
+                    }
+
                     let mut candidates = Vec::new();
 
                     for extension in extensions {
@@ -928,7 +1035,9 @@ impl<'a> Visitor<'a> {
                     resolve!(candidates);
                 }
 
-                resolve!(self.import_candidates(&base.with_extension("import.css")));
+                if for_import {
+                    resolve!(self.import_candidates(&base.with_extension("import.css")));
+                }
                 resolve!(self.import_candidates(&base.with_extension("css")));
             };
         }
@@ -1015,10 +1124,10 @@ impl<'a> Visitor<'a> {
     fn import_like_node(
         &mut self,
         url: &str,
-        _for_import: bool,
+        for_import: bool,
         span: Span,
     ) -> SassResult<StyleSheet> {
-        if let Some(name) = self.find_import(url.as_ref(), span)? {
+        if let Some(name) = self.find_import(url.as_ref(), for_import, span)? {
             let name = self.options.fs.canonicalize(&name).unwrap_or(name);
             if let Some(style_sheet) = self.import_cache.get(&name) {
                 return Ok(style_sheet.clone());
@@ -1073,29 +1182,23 @@ impl<'a> Visitor<'a> {
         self.active_modules.insert(url.clone());
 
         // If the imported stylesheet doesn't use any modules, we can inject its
-        // CSS directly into the current stylesheet. If it does use modules, we
-        // need to put its CSS into an intermediate [ModifiableCssStylesheet] so
-        // that we can hermetically resolve `@extend`s before injecting it.
+        // CSS directly into the current stylesheet.
         if stylesheet.uses.is_empty() && stylesheet.forwards.is_empty() {
             self.visit_stylesheet(stylesheet)?;
             return Ok(());
         }
 
-        // todo:
-        let loads_user_defined_modules = true;
+        // The stylesheet loads modules, so its modules execute in import
+        // context: their CSS keeps the position of this `@import` -- nested
+        // under its style rule where Dart Sass re-nests the injected CSS --
+        // and a module that is already cached replays its recorded CSS here
+        // instead of emitting nothing.
+        let old_in_import_context = mem::replace(&mut self.in_import_context, true);
 
-        // this todo should be unreachable, as we currently do not push
-        // to stylesheet.uses or stylesheet.forwards
-        // let mut children = Vec::new();
         let env = self.env.for_import();
 
-        self.with_environment::<SassResult<()>, _>(env.clone(), |visitor| {
-            let old_parent = visitor.parent;
+        let result = self.with_environment::<SassResult<()>, _>(env.clone(), |visitor| {
             let old_configuration = Rc::clone(&visitor.configuration);
-
-            if loads_user_defined_modules {
-                visitor.parent = Some(CssTree::ROOT);
-            }
 
             // This configuration is only used if it passes through a `@forward`
             // rule, so we avoid creating unnecessary ones for performance reasons.
@@ -1103,39 +1206,22 @@ impl<'a> Visitor<'a> {
                 visitor.configuration = Rc::new(RefCell::new(env.to_implicit_configuration()));
             }
 
-            visitor.visit_stylesheet(stylesheet)?;
+            let result = visitor.visit_stylesheet(stylesheet);
 
-            if loads_user_defined_modules {
-                visitor.parent = old_parent;
-            }
             visitor.configuration = old_configuration;
 
-            Ok(())
-        })?;
+            result
+        });
+
+        self.in_import_context = old_in_import_context;
+
+        result?;
 
         // Create a dummy module with empty CSS and no extensions to make forwarded
         // members available in the current import context and to combine all the
         // CSS from modules used by [stylesheet].
         let module = env.to_dummy_module(self.empty_span);
         self.env.import_forwards(module);
-
-        if loads_user_defined_modules {
-            // todo:
-            //     if (module.transitivelyContainsCss) {
-            //       // If any transitively used module contains extensions, we need to
-            //       // clone all modules' CSS. Otherwise, it's possible that they'll be
-            //       // used or imported from another location that shouldn't have the same
-            //       // extensions applied.
-            //       await _combineCss(module,
-            //               clone: module.transitivelyContainsExtensions)
-            //           .accept(this);
-            //     }
-
-            //     var visitor = _ImportedCssVisitor(this);
-            //     for (var child in children) {
-            //       child.accept(visitor);
-            //     }
-        }
 
         self.active_modules.remove(&url);
 
