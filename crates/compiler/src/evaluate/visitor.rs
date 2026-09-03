@@ -2580,6 +2580,7 @@ impl<'a> Visitor<'a> {
             }
             AstExpr::FunctionCall(func_call) => self.visit_function_call_expr(func_call)?,
             AstExpr::If(if_expr) => self.visit_ternary((*if_expr).clone())?,
+            AstExpr::CssIf(if_expr) => self.visit_css_if(&if_expr)?,
             AstExpr::InterpolatedFunction(func) => {
                 self.visit_interpolated_func_expr((*func).clone())?
             }
@@ -2592,6 +2593,154 @@ impl<'a> Visitor<'a> {
             AstExpr::Supports(condition) => Value::String(
                 self.visit_supports_condition((*condition).clone())?,
                 QuoteKind::None,
+            ),
+        })
+    }
+
+    /// Evaluates a CSS `if()`.
+    ///
+    /// Branches are walked in order and stop at the first one that is decided:
+    /// a condition Sass can settle either selects the branch or drops it. The
+    /// first condition Sass cannot settle turns the whole expression into CSS
+    /// text -- that branch and every one after it, with conditions simplified
+    /// as far as they go and values evaluated. With nothing left and no
+    /// `else`, the result is null and the declaration is elided.
+    fn visit_css_if(&mut self, if_expr: &CssIfExpr) -> SassResult<Value> {
+        let span = self.empty_span;
+
+        for (idx, branch) in if_expr.branches.iter().enumerate() {
+            match self.simplify_css_if_condition(&branch.condition)? {
+                CssIfDecision::Known(true) => return self.visit_expr(branch.value.clone()),
+                CssIfDecision::Known(false) => continue,
+                CssIfDecision::Unknown(condition) => {
+                    return self.emit_css_if(if_expr, idx, condition, span)
+                }
+            }
+        }
+
+        Ok(Value::Null)
+    }
+
+    /// Renders an `if()` the browser has to resolve, starting at the branch
+    /// whose condition could not be decided.
+    fn emit_css_if(
+        &mut self,
+        if_expr: &CssIfExpr,
+        first: usize,
+        first_condition: String,
+        span: Span,
+    ) -> SassResult<Value> {
+        let mut branches = vec![(
+            first_condition,
+            self.evaluate_to_css(
+                if_expr.branches[first].value.clone(),
+                QuoteKind::Quoted,
+                span,
+            )?,
+        )];
+
+        for branch in &if_expr.branches[first + 1..] {
+            let condition = match self.simplify_css_if_condition(&branch.condition)? {
+                // A branch that can never match adds nothing to the output.
+                CssIfDecision::Known(false) => continue,
+                // One that always matches is the last one worth emitting, and
+                // `else` is how CSS spells it.
+                CssIfDecision::Known(true) => "else".to_owned(),
+                CssIfDecision::Unknown(condition) => condition,
+            };
+
+            let is_else = condition == "else";
+
+            branches.push((
+                condition,
+                self.evaluate_to_css(branch.value.clone(), QuoteKind::Quoted, span)?,
+            ));
+
+            if is_else {
+                break;
+            }
+        }
+
+        let rendered = branches
+            .into_iter()
+            .map(|(condition, value)| format!("{}: {}", condition, value))
+            .collect::<Vec<_>>()
+            .join("; ");
+
+        Ok(Value::String(format!("if({})", rendered), QuoteKind::None))
+    }
+
+    /// Decides a condition as far as Sass can.
+    ///
+    /// `and` and `or` are lazy: once an operand settles the result, the rest
+    /// are neither evaluated nor interpolated, so an undefined variable in a
+    /// branch that cannot be reached is not an error.
+    fn simplify_css_if_condition(
+        &mut self,
+        condition: &CssIfCondition,
+    ) -> SassResult<CssIfDecision> {
+        Ok(match condition {
+            CssIfCondition::Else => CssIfDecision::Known(true),
+            CssIfCondition::Sass(expr) => {
+                CssIfDecision::Known(self.visit_expr((**expr).clone())?.is_truthy())
+            }
+            CssIfCondition::Raw(interpolation) => CssIfDecision::Unknown(
+                self.perform_interpolation((**interpolation).clone(), false)?,
+            ),
+            CssIfCondition::Paren(inner) => match self.simplify_css_if_condition(inner)? {
+                CssIfDecision::Known(known) => CssIfDecision::Known(known),
+                CssIfDecision::Unknown(text) => CssIfDecision::Unknown(format!("({})", text)),
+            },
+            CssIfCondition::Not(inner) => match self.simplify_css_if_condition(inner)? {
+                CssIfDecision::Known(known) => CssIfDecision::Known(!known),
+                CssIfDecision::Unknown(text) => CssIfDecision::Unknown(format!("not {}", text)),
+            },
+            CssIfCondition::And(operands) => self.simplify_css_if_chain(operands, false, "and")?,
+            CssIfCondition::Or(operands) => self.simplify_css_if_chain(operands, true, "or")?,
+        })
+    }
+
+    /// Simplifies an `and` or `or` chain.
+    ///
+    /// `short_circuit` is the operand value that settles the chain on its own:
+    /// `false` for `and`, `true` for `or`. Operands with the opposite value
+    /// contribute nothing and are dropped.
+    fn simplify_css_if_chain(
+        &mut self,
+        operands: &[CssIfCondition],
+        short_circuit: bool,
+        operator: &str,
+    ) -> SassResult<CssIfDecision> {
+        let mut remaining: Vec<(&CssIfCondition, String)> = Vec::new();
+
+        for operand in operands {
+            match self.simplify_css_if_condition(operand)? {
+                CssIfDecision::Known(known) if known == short_circuit => {
+                    return Ok(CssIfDecision::Known(short_circuit))
+                }
+                CssIfDecision::Known(..) => continue,
+                CssIfDecision::Unknown(text) => remaining.push((operand, text)),
+            }
+        }
+
+        Ok(match remaining.len() {
+            0 => CssIfDecision::Known(!short_circuit),
+            // The chain is gone, so the parentheses that only separated it from
+            // its neighbours go with it.
+            1 => {
+                let (operand, text) = remaining.remove(0);
+
+                CssIfDecision::Unknown(match operand {
+                    CssIfCondition::Paren(..) => text[1..text.len() - 1].to_owned(),
+                    _ => text,
+                })
+            }
+            _ => CssIfDecision::Unknown(
+                remaining
+                    .into_iter()
+                    .map(|(_, text)| text)
+                    .collect::<Vec<_>>()
+                    .join(&format!(" {} ", operator)),
             ),
         })
     }
@@ -3240,4 +3389,12 @@ impl<'a> Visitor<'a> {
 
         Ok(None)
     }
+}
+
+/// How far Sass could settle a CSS `if()` condition.
+enum CssIfDecision {
+    Known(bool),
+    /// The condition, simplified as far as Sass could take it, for the browser
+    /// to resolve.
+    Unknown(String),
 }
