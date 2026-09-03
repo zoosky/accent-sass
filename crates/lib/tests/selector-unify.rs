@@ -1,6 +1,9 @@
 #[macro_use]
 mod macros;
 
+// The compound-order expectations in this file were re-verified against the
+// dart-sass 1.103.1 binary when unification learned to keep the first operand's
+// simple selectors first.
 test!(
     no_overlap,
     "a {\n  color: selector-unify(\".c.d\", \".e.f\");\n}\n",
@@ -319,7 +322,7 @@ test!(
 test!(
     combinator_child_and_child_distinct,
     "a {\n  color: selector-unify(\".c > .d\", \".e > .f\");\n}\n",
-    "a {\n  color: .e.c > .d.f;\n}\n"
+    "a {\n  color: .c.e > .d.f;\n}\n"
 );
 test!(
     combinator_child_and_child_super_selector,
@@ -329,7 +332,7 @@ test!(
 test!(
     combinator_child_and_child_overlap,
     "a {\n  color: selector-unify(\".c.s1-1 > .s1-2\", \".c.s2-1 > .s2-2\");\n}\n",
-    "a {\n  color: .c.s2-1.s1-1 > .s1-2.s2-2;\n}\n"
+    "a {\n  color: .c.s1-1.s2-1 > .s1-2.s2-2;\n}\n"
 );
 test!(
     combinator_child_and_child_conflict,
@@ -359,7 +362,7 @@ test!(
 test!(
     combinator_sibling_and_sibling_distinct,
     "a {\n  color: selector-unify(\".c ~ .d\", \".e ~ .f\");\n}\n",
-    "a {\n  color: .c ~ .e ~ .d.f, .e ~ .c ~ .d.f, .e.c ~ .d.f;\n}\n"
+    "a {\n  color: .c ~ .e ~ .d.f, .e ~ .c ~ .d.f, .c.e ~ .d.f;\n}\n"
 );
 test!(
     combinator_sibling_and_sibling_same,
@@ -374,7 +377,7 @@ test!(
 test!(
     combinator_sibling_and_sibling_overlap,
     "a {\n  color: selector-unify(\".c.s1-1 ~ .s1-2\", \".c.s2-1 ~ .s2-2\");\n}\n",
-    "a {\n  color: .c.s1-1 ~ .c.s2-1 ~ .s1-2.s2-2, .c.s2-1 ~ .c.s1-1 ~ .s1-2.s2-2, .c.s2-1.s1-1 ~ .s1-2.s2-2;\n}\n"
+    "a {\n  color: .c.s1-1 ~ .c.s2-1 ~ .s1-2.s2-2, .c.s2-1 ~ .c.s1-1 ~ .s1-2.s2-2, .c.s1-1.s2-1 ~ .s1-2.s2-2;\n}\n"
 );
 test!(
     combinator_sibling_and_sibling_conflict,
@@ -384,7 +387,7 @@ test!(
 test!(
     combinator_sibling_and_next_sibling_distinct,
     "a {\n  color: selector-unify(\".c ~ .d\", \".e + .f\");\n}\n",
-    "a {\n  color: .c ~ .e + .d.f, .e.c + .d.f;\n}\n"
+    "a {\n  color: .c ~ .e + .d.f, .c.e + .d.f;\n}\n"
 );
 test!(
     combinator_sibling_and_next_sibling_identical,
@@ -399,7 +402,7 @@ test!(
 test!(
     combinator_sibling_and_next_sibling_overlap,
     "a {\n  color: selector-unify(\".c.s1-1 ~ .s1-2\", \".c.s2-1 + .s2-2\");\n}\n",
-    "a {\n  color: .c.s1-1 ~ .c.s2-1 + .s1-2.s2-2, .c.s2-1.s1-1 + .s1-2.s2-2;\n}\n"
+    "a {\n  color: .c.s1-1 ~ .c.s2-1 + .s1-2.s2-2, .c.s1-1.s2-1 + .s1-2.s2-2;\n}\n"
 );
 test!(
     combinator_sibling_and_next_sibling_conflict,
@@ -439,7 +442,7 @@ test!(
 test!(
     combinator_next_sibling_and_next_sibling_distinct,
     "a {\n  color: selector-unify(\".c + .d\", \".e + .f\");\n}\n",
-    "a {\n  color: .e.c + .d.f;\n}\n"
+    "a {\n  color: .c.e + .d.f;\n}\n"
 );
 test!(
     combinator_next_sibling_and_next_sibling_super_selector,
@@ -449,7 +452,7 @@ test!(
 test!(
     combinator_next_sibling_and_next_sibling_overlap,
     "a {\n  color: selector-unify(\".c.s1-1 + .s1-2\", \".c.s2-1 + .s2-2\");\n}\n",
-    "a {\n  color: .c.s2-1.s1-1 + .s1-2.s2-2;\n}\n"
+    "a {\n  color: .c.s1-1.s2-1 + .s1-2.s2-2;\n}\n"
 );
 test!(
     combinator_next_sibling_and_next_sibling_conflict,
@@ -566,7 +569,7 @@ test!(
 test!(
     root_in_both_can_unify,
     "a {\n  color: selector-unify(\".c:root .d\", \".e:root .f\");\n}\n",
-    "a {\n  color: .e.c:root .d.f;\n}\n"
+    "a {\n  color: .c.e:root .d.f;\n}\n"
 );
 error!(
     parent_in_first_arg,

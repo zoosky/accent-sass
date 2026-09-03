@@ -9,7 +9,9 @@ use crate::{
     value::{CalculationName, Number},
 };
 
-use super::{ArgumentInvocation, AstSupportsCondition, Interpolation, InterpolationPart};
+use super::{
+    ArgumentInvocation, AstSupportsCondition, CssIfExpr, Interpolation, InterpolationPart,
+};
 
 /// Represented by the `if` function
 #[derive(Debug, Clone)]
@@ -58,6 +60,9 @@ pub enum AstExpr {
         name: CalculationName,
         args: Vec<Self>,
     },
+    /// The CSS `if()` function, as opposed to the Sass ternary in
+    /// [`AstExpr::If`]
+    CssIf(Arc<CssIfExpr>),
     Color(Arc<Color>),
     FunctionCall(FunctionCallExpr),
     If(Arc<Ternary>),
@@ -169,7 +174,11 @@ impl AstExpr {
 
     pub fn is_slash_operand(&self) -> bool {
         match self {
-            Self::Number { .. } | Self::Calculation { .. } => true,
+            Self::Number { .. } => true,
+            // `min`, `max`, `round` and `abs` are Sass functions first, so a
+            // slash beside them is division (`2px / abs(1.5)` is 1.333px)
+            // rather than the literal separator a real calculation keeps.
+            Self::Calculation { name, .. } => !name.falls_back_to_function(),
             Self::BinaryOp(binop) => binop.allows_slash,
             _ => false,
         }

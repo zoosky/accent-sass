@@ -6,13 +6,17 @@ test!(
     "a {\n  color: calc(       1      );\n}\n",
     "a {\n  color: 1;\n}\n"
 );
+// An empty argument list parses; the missing argument is reported when the
+// calculation is evaluated. Verified against dart-sass 1.103.1.
 error!(
     calc_newline,
-    "a {\n  color: calc(\n);\n}\n", "Error: Expected number, variable, function, or calculation."
+    "a {\n  color: calc(\n);\n}\n", "Error: Missing argument."
 );
+// The whole list is parsed and the arity checked afterwards, so the error names
+// the count. Verified against dart-sass 1.103.1.
 error!(
     calc_multiple_args,
-    "a {\n  color: calc(1, 2, a, b, c);\n}\n", r#"Error: expected "+", "-", "*", "/", or ")"."#
+    "a {\n  color: calc(1, 2, a, b, c);\n}\n", "Error: Only 1 argument allowed, but 5 were passed."
 );
 test!(
     calc_does_evaluate_arithmetic,
@@ -38,9 +42,10 @@ error!(
     calc_retains_silent_comment,
     "a {\n  color: calc(//);\n}\n", "Error: Expected number, variable, function, or calculation."
 );
+// See `calc_newline`. Verified against dart-sass 1.103.1.
 error!(
     calc_retains_multiline_comment,
-    "a {\n  color: calc(/**/);\n}\n", "Error: Expected number, variable, function, or calculation."
+    "a {\n  color: calc(/**/);\n}\n", "Error: Missing argument."
 );
 error!(
     calc_complex_unit,
@@ -301,23 +306,33 @@ test!(
     "a {\n  color: calc((var(--a)) + 1rem);\n}\n",
     "a {\n  color: calc((var(--a)) + 1rem);\n}\n"
 );
+// Parentheses around a plain CSS function call are kept, exactly as they are
+// around `var()`: only the browser knows whether they matter. Verified against
+// dart-sass 1.103.1.
 test!(
-    removes_superfluous_parens_around_function_call_in_calc,
+    retains_parens_around_function_call_in_calc,
     "a {\n  color: calc((foo(--a)) + 1rem);\n}\n",
-    "a {\n  color: calc(foo(--a) + 1rem);\n}\n"
+    "a {\n  color: calc((foo(--a)) + 1rem);\n}\n"
 );
 test!(
     calculation_inside_calc,
     "a {\n  color: calc(calc(1px + 1rem) * calc(2px - 2in));\n}\n",
     "a {\n  color: calc((1px + 1rem) * -190px);\n}\n"
 );
-error!(
+// An escaped paren is an ordinary identifier character, so this is a bare
+// identifier in a calculation rather than a syntax error. Verified against
+// dart-sass 1.103.1.
+test!(
     escaped_close_paren_inside_calc,
-    "a {\n  color: calc(\\));\n}\n", r#"Error: Expected "(" or "."."#
+    "a {\n  color: calc(\\));\n}\n",
+    "a {\n  color: calc(\\));\n}\n"
 );
+// Deliberately differs from dart-sass 1.103.1, which reports `expected ")"`.
+// grass lists every token that could continue the list, a comma included, since
+// its calculation parser puts no upper bound on the argument count.
 error!(
     nothing_after_last_arg,
-    "a { color: calc(1 + 1", r#"Error: expected "+", "-", "*", "/", or ")"."#
+    "a { color: calc(1 + 1", r#"Error: expected "+", "-", "*", "/", ",", or ")"."#
 );
 error!(
     progid_nothing_after,

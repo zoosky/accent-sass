@@ -228,6 +228,16 @@ impl SassNumber {
             return false;
         }
 
+        // Two numbers can only ever be compatible if they carry the same shape
+        // of units, so a unitless number is incompatible with any real unit --
+        // even an unknown one, where the compatibility table has nothing to say.
+        let (numer, denom) = self.unit.clone().numer_and_denom();
+        let (other_numer, other_denom) = other.unit.clone().numer_and_denom();
+
+        if numer.len() != other_numer.len() || denom.len() != other_denom.len() {
+            return false;
+        }
+
         let known_compatibilities = match known_compatibilities_by_unit(&self.unit) {
             Some(known_compatibilities) => known_compatibilities,
             None => return true,

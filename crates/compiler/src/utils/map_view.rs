@@ -5,6 +5,8 @@ use std::{
     sync::Arc,
 };
 
+use indexmap::IndexSet;
+
 use crate::common::Identifier;
 
 pub(crate) trait MapView: fmt::Debug {
@@ -22,6 +24,14 @@ pub(crate) trait MapView: fmt::Debug {
     // todo: wildly ineffecient to return vec here, because of the arbitrary nesting of Self
     fn keys(&self) -> Vec<Identifier>;
     fn iter(&self) -> Vec<(Identifier, Self::Value)>;
+
+    /// Identifies the map that actually holds `name`, seen through however many
+    /// views wrap it.
+    ///
+    /// Two modules that forward the same declaration are not in conflict, so
+    /// conflict checks compare identities rather than names. `None` means the
+    /// name is absent.
+    fn identity(&self, name: Identifier) -> Option<usize>;
 }
 
 impl<T> MapView for Arc<dyn MapView<Value = T>> {
@@ -44,6 +54,10 @@ impl<T> MapView for Arc<dyn MapView<Value = T>> {
 
     fn iter(&self) -> Vec<(Identifier, Self::Value)> {
         (**self).iter()
+    }
+
+    fn identity(&self, name: Identifier) -> Option<usize> {
+        (**self).identity(name)
     }
 }
 
@@ -93,6 +107,14 @@ impl<T: fmt::Debug + Clone> MapView for BaseMapView<T> {
     fn iter(&self) -> Vec<(Identifier, Self::Value)> {
         (*self.0).borrow().clone().into_iter().collect()
     }
+
+    fn identity(&self, name: Identifier) -> Option<usize> {
+        if !(*self.0).borrow().contains_key(&name) {
+            return None;
+        }
+
+        Some(Arc::as_ptr(&self.0) as *const () as usize)
+    }
 }
 
 impl<V: fmt::Debug + Clone, T: MapView<Value = V> + Clone> MapView for UnprefixedMapView<V, T> {
@@ -126,7 +148,20 @@ impl<V: fmt::Debug + Clone, T: MapView<Value = V> + Clone> MapView for Unprefixe
     }
 
     fn iter(&self) -> Vec<(Identifier, Self::Value)> {
-        unimplemented!()
+        self.0
+            .iter()
+            .into_iter()
+            .filter_map(|(key, value)| {
+                let stripped = key.as_str().strip_prefix(&*self.1)?;
+
+                Some((Identifier::from(stripped), value))
+            })
+            .collect()
+    }
+
+    fn identity(&self, name: Identifier) -> Option<usize> {
+        self.0
+            .identity(Identifier::from(format!("{}{}", self.1, name)))
     }
 }
 
@@ -167,16 +202,27 @@ impl<V: fmt::Debug + Clone, T: MapView<Value = V> + Clone> MapView for PrefixedM
     }
 
     fn keys(&self) -> Vec<Identifier> {
+        // Every key of the underlying map is visible through this view; it is
+        // the view's names that carry the prefix, not the map's.
         self.0
             .keys()
             .into_iter()
-            .filter(|key| key.as_str().starts_with(&self.1))
             .map(|key| Identifier::from(format!("{}{}", self.1, key)))
             .collect()
     }
 
     fn iter(&self) -> Vec<(Identifier, Self::Value)> {
-        unimplemented!()
+        self.0
+            .iter()
+            .into_iter()
+            .map(|(key, value)| (Identifier::from(format!("{}{}", self.1, key)), value))
+            .collect()
+    }
+
+    fn identity(&self, name: Identifier) -> Option<usize> {
+        let name = name.as_str().strip_prefix(&*self.1)?;
+
+        self.0.identity(Identifier::from(name))
     }
 }
 
@@ -194,18 +240,22 @@ impl<V: fmt::Debug + Clone, T: MapView<Value = V> + Clone> MapView for PrefixedM
 #[derive(Debug, Clone)]
 pub(crate) struct LimitedMapView<V: fmt::Debug + Clone, T: MapView<Value = V> + Clone>(
     pub T,
-    pub HashSet<Identifier>,
+    // Ordered, so that the members this view exposes come out in the same order
+    // every run -- `meta.module-variables` and friends return them.
+    pub IndexSet<Identifier>,
 );
 
 impl<V: fmt::Debug + Clone, T: MapView<Value = V> + Clone> LimitedMapView<V, T> {
     pub fn safelist(map: T, keys: &HashSet<Identifier>) -> Self {
-        let keys = keys
-            .iter()
-            .copied()
-            .filter(|key| map.contains_key(*key))
+        // Iterating the underlying map rather than the safelist keeps the
+        // map's own order.
+        let allowed = map
+            .keys()
+            .into_iter()
+            .filter(|key| keys.contains(key))
             .collect();
 
-        Self(map, keys)
+        Self(map, allowed)
     }
 
     pub fn blocklist(map: T, blocklist: &HashSet<Identifier>) -> Self {
@@ -254,22 +304,37 @@ impl<V: fmt::Debug + Clone, T: MapView<Value = V> + Clone> MapView for LimitedMa
     }
 
     fn iter(&self) -> Vec<(Identifier, Self::Value)> {
-        unimplemented!()
+        self.1
+            .iter()
+            .filter_map(|key| Some((*key, self.0.get(*key)?)))
+            .collect()
+    }
+
+    fn identity(&self, name: Identifier) -> Option<usize> {
+        if !self.1.contains(&name) {
+            return None;
+        }
+
+        self.0.identity(name)
     }
 }
 
 #[derive(Debug)]
 pub(crate) struct MergedMapView<V: fmt::Debug + Clone>(
     pub Vec<Arc<dyn MapView<Value = V>>>,
-    HashSet<Identifier>,
+    // An ordered set, not a hash set: `meta.module-variables` and friends
+    // return these keys, and a map whose order changes from run to run is not
+    // something a stylesheet can rely on.
+    IndexSet<Identifier>,
 );
 
 impl<V: fmt::Debug + Clone> MergedMapView<V> {
     pub fn new(maps: Vec<Arc<dyn MapView<Value = V>>>) -> Self {
-        let unique_keys: HashSet<Identifier> = maps.iter().fold(HashSet::new(), |mut keys, map| {
-            keys.extend(&map.keys());
-            keys
-        });
+        let unique_keys: IndexSet<Identifier> =
+            maps.iter().fold(IndexSet::new(), |mut keys, map| {
+                keys.extend(map.keys());
+                keys
+            });
 
         Self(maps, unique_keys)
     }
@@ -309,6 +374,10 @@ impl<V: fmt::Debug + Clone> MapView for MergedMapView<V> {
             .copied()
             .map(|name| (name, self.get(name).unwrap()))
             .collect()
+    }
+
+    fn identity(&self, name: Identifier) -> Option<usize> {
+        self.0.iter().rev().find_map(|map| map.identity(name))
     }
 }
 
@@ -360,5 +429,13 @@ impl<V: fmt::Debug + Clone, T: MapView<Value = V> + Clone> MapView for PublicMem
             .into_iter()
             .filter(|(name, _)| Identifier::is_public(name))
             .collect()
+    }
+
+    fn identity(&self, name: Identifier) -> Option<usize> {
+        if !name.is_public() {
+            return None;
+        }
+
+        self.0.identity(name)
     }
 }

@@ -3,6 +3,7 @@ use std::io::Write;
 use codemap::{CodeMap, Span};
 
 use crate::{
+    ast::Mixin,
     ast::{CssStmt, MediaQuery, Style, SupportsRule},
     color::{Color, ColorFormat, ColorSpace, NAMED_COLORS},
     common::{BinaryOp, Brackets, ListSeparator, QuoteKind},
@@ -92,6 +93,20 @@ pub(crate) fn inspect_function_ref(
     let mut serializer = Serializer::new(options, &code_map, true, span);
 
     serializer.visit_function_ref(func, span)?;
+
+    Ok(serializer.finish_for_expr())
+}
+
+/// Serializes a first-class mixin the way `meta.inspect` does.
+pub(crate) fn inspect_mixin_ref(
+    mixin: &Mixin,
+    options: &Options,
+    span: Span,
+) -> SassResult<String> {
+    let code_map = CodeMap::new();
+    let mut serializer = Serializer::new(options, &code_map, true, span);
+
+    serializer.visit_mixin_ref(mixin, span)?;
 
     Ok(serializer.finish_for_expr())
 }
@@ -303,12 +318,7 @@ impl<'a> Serializer<'a> {
     }
 
     fn write_calculation_name(&mut self, name: CalculationName) {
-        match name {
-            CalculationName::Calc => self.buffer.extend_from_slice(b"calc"),
-            CalculationName::Min => self.buffer.extend_from_slice(b"min"),
-            CalculationName::Max => self.buffer.extend_from_slice(b"max"),
-            CalculationName::Clamp => self.buffer.extend_from_slice(b"clamp"),
-        }
+        self.buffer.extend_from_slice(name.as_str().as_bytes());
     }
 
     fn visit_calculation(&mut self, calculation: &SassCalculation) -> SassResult<()> {
@@ -331,7 +341,27 @@ impl<'a> Serializer<'a> {
 
     fn write_calculation_arg(&mut self, arg: &CalculationArg) -> SassResult<()> {
         match arg {
-            CalculationArg::Number(num) => self.visit_number(num)?,
+            // A number inside a calculation is written inline rather than as a
+            // nested `calc()`: `calc(infinity * 1px)`, not
+            // `calc(calc(infinity * 1px))`.
+            CalculationArg::Number(num) => {
+                let has_plain_css_form = num.num.0.is_finite() && !num.unit.is_complex();
+
+                if num.as_slash.is_none() && !has_plain_css_form {
+                    self.write_calculation_number_body(num)?;
+                } else {
+                    self.visit_number(num)?;
+                }
+            }
+            CalculationArg::Space(args) => {
+                for (idx, arg) in args.iter().enumerate() {
+                    if idx > 0 {
+                        self.buffer.push(b' ');
+                    }
+
+                    self.write_calculation_arg(arg)?;
+                }
+            }
             CalculationArg::Calculation(calc) => {
                 self.visit_calculation(calc)?;
             }
@@ -340,7 +370,6 @@ impl<'a> Serializer<'a> {
             }
             CalculationArg::Operation { lhs, op, rhs } => {
                 let paren_left = match &**lhs {
-                    CalculationArg::Interpolation(..) => true,
                     CalculationArg::Operation { op: op2, .. } => op2.precedence() < op.precedence(),
                     _ => false,
                 };
@@ -370,9 +399,15 @@ impl<'a> Serializer<'a> {
                 }
 
                 let paren_right = match &**rhs {
-                    CalculationArg::Interpolation(..) => true,
                     CalculationArg::Operation { op: op2, .. } => {
                         CalculationArg::parenthesize_calculation_rhs(*op, *op2)
+                    }
+                    // A number written with unit factors behaves like a
+                    // multiplication for precedence: `calc(a / (infinity * 1px))`.
+                    CalculationArg::Number(num)
+                        if num.as_slash.is_none() && Self::number_has_calculation_factors(num) =>
+                    {
+                        CalculationArg::parenthesize_calculation_rhs(*op, BinaryOp::Mul)
                     }
                     _ => false,
                 };
@@ -895,7 +930,27 @@ impl<'a> Serializer<'a> {
     /// numerator unit attached (`calc(1px / 1em)`).
     fn write_number_as_calculation(&mut self, number: &SassNumber) -> SassResult<()> {
         self.buffer.extend_from_slice(b"calc(");
+        self.write_calculation_number_body(number)?;
+        self.buffer.push(b')');
 
+        Ok(())
+    }
+
+    /// Whether [`Serializer::write_calculation_number_body`] writes more than a
+    /// single term for this number, which decides whether it needs parentheses
+    /// in an enclosing calculation operation.
+    fn number_has_calculation_factors(number: &SassNumber) -> bool {
+        if !number.num.0.is_finite() {
+            return number.unit != Unit::None;
+        }
+
+        number.unit.is_complex()
+    }
+
+    /// Writes the body of a number's `calc()` form -- everything between the
+    /// parentheses -- so that a number appearing inside a larger calculation is
+    /// inlined (`calc(1% + infinity * 1px)`) instead of nested.
+    fn write_calculation_number_body(&mut self, number: &SassNumber) -> SassResult<()> {
         let (numer, denom) = number.unit.clone().numer_and_denom();
         let value = number.num.0;
         let mut factors: &[Unit] = &numer;
@@ -927,8 +982,6 @@ impl<'a> Serializer<'a> {
             self.write_optional_space();
             write!(&mut self.buffer, "1{}", unit)?;
         }
-
-        self.buffer.push(b')');
 
         Ok(())
     }
@@ -1264,7 +1317,13 @@ impl<'a> Serializer<'a> {
     }
 
     fn write_map_element(&mut self, value: &Value, span: Span) -> SassResult<()> {
-        let needs_parens = matches!(value, Value::List(_, ListSeparator::Comma, Brackets::None));
+        // An argument list is a comma-separated list too, so it needs the same
+        // parentheses to keep the map unambiguous: `(positional: (1, 2))`, not
+        // `(positional: 1, 2)`.
+        let needs_parens = matches!(
+            value,
+            Value::List(_, ListSeparator::Comma, Brackets::None) | Value::ArgList(..)
+        );
 
         if needs_parens {
             self.buffer.push(b'(');
@@ -1421,6 +1480,27 @@ impl<'a> Serializer<'a> {
         Ok(())
     }
 
+    /// Writes a first-class mixin. Like a function reference, it has no plain
+    /// CSS form, so it is only ever written under `inspect`.
+    fn visit_mixin_ref(&mut self, mixin: &Mixin, span: Span) -> SassResult<()> {
+        if !self.inspect {
+            return Err((
+                format!(
+                    "{} isn't a valid CSS value.",
+                    inspect_mixin_ref(mixin, self.options, span)?
+                ),
+                span,
+            )
+                .into());
+        }
+
+        self.buffer.extend_from_slice(b"get-mixin(");
+        self.visit_quoted_string(false, mixin.name().as_str());
+        self.buffer.push(b')');
+
+        Ok(())
+    }
+
     fn visit_arglist(&mut self, arglist: &ArgList, span: Span) -> SassResult<()> {
         self.visit_list(&arglist.elems, ListSeparator::Comma, Brackets::None, span)
     }
@@ -1440,6 +1520,7 @@ impl<'a> Serializer<'a> {
             }
             Value::Map(map) => self.visit_map(map, span)?,
             Value::FunctionRef(func) => self.visit_function_ref(func, span)?,
+            Value::MixinRef(mixin) => self.visit_mixin_ref(mixin.inner(), span)?,
             Value::String(s, QuoteKind::Quoted) => self.visit_quoted_string(false, s),
             Value::String(s, QuoteKind::None) => self.visit_unquoted_string(s),
             Value::ArgList(arglist) => self.visit_arglist(arglist, span)?,
