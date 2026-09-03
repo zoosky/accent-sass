@@ -1541,8 +1541,29 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
         )
     }
 
+    /// The calculation-only constants, matched case-insensitively.
+    ///
+    /// They are ordinary identifiers outside a calculation, so this lookup only
+    /// ever runs from [`ValueParser::parse_calculation_value`]. Note that only
+    /// `infinity` has a negated spelling; `-pi` and `-e` stay identifiers.
+    fn calculation_constant_value(lowercase: &str) -> Option<f64> {
+        Some(match lowercase {
+            "pi" => std::f64::consts::PI,
+            "e" => std::f64::consts::E,
+            "infinity" => f64::INFINITY,
+            "-infinity" => f64::NEG_INFINITY,
+            "nan" => f64::NAN,
+            _ => return None,
+        })
+    }
+
     fn parse_calculation_value(parser: &mut P) -> SassResult<Spanned<AstExpr>> {
         match parser.toks().peek() {
+            // A leading `-` starts an identifier in `-infinity` and `-webkit-x`
+            // but a number in `-1px`, so the identifier check comes first.
+            Some(Token { kind: '-', .. }) if parser.looking_at_identifier() => {
+                ValueParser::parse_calculation_identifier(parser)
+            }
             Some(Token {
                 kind: '+' | '-' | '.' | '0'..='9',
                 ..
@@ -1570,45 +1591,67 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
                 parser.toks().current_span(),
             )
                 .into()),
-            _ => {
-                let start = parser.toks().cursor();
-                let ident = parser.parse_identifier(false, false)?;
-                let ident_span = parser.toks_mut().span_from(start);
-                if parser.scan_char('.') {
-                    return ValueParser::namespaced_expression(
-                        Spanned {
-                            node: Identifier::from(&ident),
-                            span: ident_span,
-                        },
-                        start,
-                        parser,
-                    );
-                }
+            _ => ValueParser::parse_calculation_identifier(parser),
+        }
+    }
 
-                if !parser.toks().next_char_is('(') {
-                    return Err(("Expected \"(\" or \".\".", parser.toks().current_span()).into());
-                }
+    /// Parses an identifier appearing inside a calculation.
+    ///
+    /// It is a nested calculation or function call when followed by `(`, a
+    /// namespaced expression when followed by `.`, one of the calc constants
+    /// when it names one, and otherwise a bare unquoted string that is carried
+    /// through to the output (`calc(1px + foo)`).
+    fn parse_calculation_identifier(parser: &mut P) -> SassResult<Spanned<AstExpr>> {
+        let start = parser.toks().cursor();
+        let ident = parser.parse_identifier(false, false)?;
+        let ident_span = parser.toks_mut().span_from(start);
 
-                let lowercase = ident.to_ascii_lowercase();
-                let calculation = ValueParser::try_parse_calculation(parser, &lowercase, start)?;
+        if parser.scan_char('.') {
+            return ValueParser::namespaced_expression(
+                Spanned {
+                    node: Identifier::from(&ident),
+                    span: ident_span,
+                },
+                start,
+                parser,
+            );
+        }
 
-                if let Some(calc) = calculation {
-                    Ok(calc)
-                } else if lowercase == "if" {
-                    Ok(AstExpr::If(Arc::new(Ternary(
-                        parser.parse_argument_invocation(false, false)?,
-                    )))
-                    .span(parser.toks_mut().span_from(start)))
-                } else {
-                    Ok(AstExpr::FunctionCall(FunctionCallExpr {
-                        namespace: None,
-                        name: Identifier::from(ident),
-                        arguments: Arc::new(parser.parse_argument_invocation(false, false)?),
-                        span: parser.toks_mut().span_from(start),
-                    })
-                    .span(parser.toks_mut().span_from(start)))
+        let lowercase = ident.to_ascii_lowercase();
+
+        if !parser.toks().next_char_is('(') {
+            if let Some(constant) = Self::calculation_constant_value(&lowercase) {
+                return Ok(AstExpr::Number {
+                    n: Number(constant),
+                    unit: Unit::None,
                 }
+                .span(ident_span));
             }
+
+            return Ok(AstExpr::String(
+                StringExpr(Interpolation::new_plain(ident), QuoteKind::None),
+                ident_span,
+            )
+            .span(ident_span));
+        }
+
+        let calculation = ValueParser::try_parse_calculation(parser, &lowercase, start)?;
+
+        if let Some(calc) = calculation {
+            Ok(calc)
+        } else if lowercase == "if" {
+            Ok(AstExpr::If(Arc::new(Ternary(
+                parser.parse_argument_invocation(false, false)?,
+            )))
+            .span(parser.toks_mut().span_from(start)))
+        } else {
+            Ok(AstExpr::FunctionCall(FunctionCallExpr {
+                namespace: None,
+                name: Identifier::from(ident),
+                arguments: Arc::new(parser.parse_argument_invocation(false, false)?),
+                span: parser.toks_mut().span_from(start),
+            })
+            .span(parser.toks_mut().span_from(start)))
         }
     }
     fn parse_calculation_product(parser: &mut P) -> SassResult<Spanned<AstExpr>> {
@@ -1695,16 +1738,60 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
                     }))
                     .span(span);
                 }
+                // Two values written next to each other with only whitespace
+                // between them are legal in a calculation when at least one is
+                // opaque, as in `calc(var(--c) 1)`. Only a variable or an
+                // identifier (which is how `var()` starts) can begin such a
+                // continuation; a bare number there is still the "missing math
+                // operator" error.
+                Some(Token {
+                    kind: '$' | '(' | '#' | '.' | '0'..='9',
+                    ..
+                }) => {
+                    sum = ValueParser::parse_calculation_adjacent(parser, sum)?;
+                }
+                Some(..) if parser.looking_at_identifier() => {
+                    sum = ValueParser::parse_calculation_adjacent(parser, sum)?;
+                }
                 _ => return Ok(sum),
             }
         }
     }
 
-    fn parse_calculation_arguments(
+    /// Collects a whitespace-separated continuation of a calculation value into
+    /// a space-separated list.
+    fn parse_calculation_adjacent(
         parser: &mut P,
-        max_args: Option<usize>,
-        start: usize,
-    ) -> SassResult<Vec<AstExpr>> {
+        first: Spanned<AstExpr>,
+    ) -> SassResult<Spanned<AstExpr>> {
+        let next = ValueParser::parse_calculation_product(parser)?;
+        let span = first.span.merge(next.span);
+
+        let mut elems = match first.node {
+            AstExpr::List(list)
+                if list.separator == ListSeparator::Space && list.brackets == Brackets::None =>
+            {
+                list.elems
+            }
+            node => vec![node.span(first.span)],
+        };
+
+        elems.push(next);
+
+        Ok(AstExpr::List(ListExpr {
+            elems,
+            separator: ListSeparator::Space,
+            brackets: Brackets::None,
+        })
+        .span(span))
+    }
+
+    /// Parses the parenthesized argument list of a CSS math function.
+    ///
+    /// The list may be empty and may carry a trailing comma; how many arguments
+    /// a given function actually accepts is checked during evaluation, which is
+    /// where Dart Sass reports it too.
+    fn parse_calculation_arguments(parser: &mut P, start: usize) -> SassResult<Vec<AstExpr>> {
         parser.expect_char('(')?;
         if let Some(interpolation) =
             ValueParser::try_parse_calculation_interpolation(parser, start)?
@@ -1714,25 +1801,36 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
         }
 
         parser.whitespace()?;
-        let mut arguments = vec![ValueParser::parse_calculation_sum(parser)?.node];
 
-        while (max_args.is_none() || arguments.len() < max_args.unwrap()) && parser.scan_char(',') {
-            parser.whitespace()?;
+        let mut arguments = Vec::new();
+
+        if !parser.toks().next_char_is(')') {
             arguments.push(ValueParser::parse_calculation_sum(parser)?.node);
+            parser.whitespace()?;
+
+            while parser.scan_char(',') {
+                parser.whitespace()?;
+
+                if parser.toks().next_char_is(')') {
+                    break;
+                }
+
+                arguments.push(ValueParser::parse_calculation_sum(parser)?.node);
+                parser.whitespace()?;
+            }
         }
 
-        parser.expect_char_with_message(
-            ')',
-            if Some(arguments.len()) == max_args {
-                r#""+", "-", "*", "/", or ")""#
-            } else {
-                r#""+", "-", "*", "/", ",", or ")""#
-            },
-        )?;
+        parser.expect_char_with_message(')', r#""+", "-", "*", "/", ",", or ")""#)?;
 
         Ok(arguments)
     }
 
+    /// Parses `name(...)` as a CSS math function if `name` is one.
+    ///
+    /// `min`, `max`, `round` and `abs` are also global Sass functions, so a
+    /// failed calculation parse rewinds and returns `None` to let the ordinary
+    /// function-call parser have them. Every other math function is a
+    /// calculation or a syntax error.
     fn try_parse_calculation(
         parser: &mut P,
         name: &str,
@@ -1740,49 +1838,28 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
     ) -> SassResult<Option<Spanned<AstExpr>>> {
         debug_assert!(parser.toks().next_char_is('('));
 
-        Ok(Some(match name {
-            "calc" => {
-                let args = ValueParser::parse_calculation_arguments(parser, Some(1), start)?;
+        let name = match CalculationName::from_lowercase_str(name) {
+            Some(name) => name,
+            None => return Ok(None),
+        };
 
-                AstExpr::Calculation {
-                    name: CalculationName::Calc,
-                    args,
-                }
-                .span(parser.toks_mut().span_from(start))
-            }
-            "min" | "max" => {
-                // min() and max() are parsed as calculations if possible, and otherwise
-                // are parsed as normal Sass functions.
-                let before_args = parser.toks().cursor();
+        let before_args = parser.toks().cursor();
 
-                let args = match ValueParser::parse_calculation_arguments(parser, None, start) {
-                    Ok(args) => args,
-                    Err(..) => {
-                        parser.toks_mut().set_cursor(before_args);
-                        return Ok(None);
-                    }
-                };
+        let args = match ValueParser::parse_calculation_arguments(parser, start) {
+            Ok(args) => args,
+            Err(err) => {
+                if !name.falls_back_to_function() {
+                    return Err(err);
+                }
 
-                AstExpr::Calculation {
-                    name: if name == "min" {
-                        CalculationName::Min
-                    } else {
-                        CalculationName::Max
-                    },
-                    args,
-                }
-                .span(parser.toks_mut().span_from(start))
+                parser.toks_mut().set_cursor(before_args);
+                return Ok(None);
             }
-            "clamp" => {
-                let args = ValueParser::parse_calculation_arguments(parser, Some(3), start)?;
-                AstExpr::Calculation {
-                    name: CalculationName::Clamp,
-                    args,
-                }
-                .span(parser.toks_mut().span_from(start))
-            }
-            _ => return Ok(None),
-        }))
+        };
+
+        Ok(Some(
+            AstExpr::Calculation { name, args }.span(parser.toks_mut().span_from(start)),
+        ))
     }
 
     fn reset_state(&mut self, parser: &mut P) -> SassResult<()> {

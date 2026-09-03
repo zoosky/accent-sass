@@ -23,7 +23,7 @@ use crate::{
         },
         GLOBAL_FUNCTIONS,
     },
-    common::{unvendor, BinaryOp, Identifier, ListSeparator, QuoteKind, UnaryOp},
+    common::{unvendor, BinaryOp, Brackets, Identifier, ListSeparator, QuoteKind, UnaryOp},
     error::{SassError, SassResult},
     interner::InternedString,
     lexer::Lexer,
@@ -37,8 +37,8 @@ use crate::{
     },
     utils::{to_sentence, trim_ascii},
     value::{
-        ArgList, CalculationArg, CalculationName, Number, SassCalculation, SassFunction, SassMap,
-        SassNumber, UserDefinedFunction, Value,
+        contains_opaque_value, ArgList, CalculationArg, CalculationName, Number, SassCalculation,
+        SassFunction, SassMap, SassNumber, UserDefinedFunction, Value,
     },
     ContextFlags, InputSyntax, Options,
 };
@@ -2589,21 +2589,44 @@ impl<'a> Visitor<'a> {
         span: Span,
     ) -> SassResult<CalculationArg> {
         Ok(match expr {
-            AstExpr::Paren(inner) => match &*inner {
-                AstExpr::FunctionCall(FunctionCallExpr { ref name, .. })
-                    if name.as_str().to_ascii_lowercase() == "var" =>
-                {
-                    let result =
-                        self.visit_calculation_value((*inner).clone(), in_min_or_max, span)?;
-
-                    if let CalculationArg::String(text) = result {
-                        CalculationArg::String(format!("({})", text))
-                    } else {
-                        result
+            // Parentheses around opaque text are kept, because only the
+            // browser can tell whether they matter: `calc((var(--c)))` stays
+            // `calc((var(--c)))`. Around anything Sass can resolve they are
+            // redundant and dropped.
+            AstExpr::Paren(inner) => {
+                match self.visit_calculation_value((*inner).clone(), in_min_or_max, span)? {
+                    CalculationArg::String(text) => CalculationArg::String(format!("({})", text)),
+                    CalculationArg::Interpolation(text) => {
+                        CalculationArg::Interpolation(format!("({})", text))
                     }
+                    result => result,
                 }
-                _ => self.visit_calculation_value((*inner).clone(), in_min_or_max, span)?,
-            },
+            }
+            // A space-separated list only reaches here from calculation
+            // adjacency (`calc(var(--c) 1)`); it is emitted verbatim.
+            AstExpr::List(list)
+                if list.brackets == Brackets::None && list.separator == ListSeparator::Space =>
+            {
+                let args = list
+                    .elems
+                    .iter()
+                    .map(|elem| {
+                        self.visit_calculation_value(elem.node.clone(), in_min_or_max, span)
+                    })
+                    .collect::<SassResult<Vec<_>>>()?;
+
+                // Adjacency is only meaningful where an opaque value sits on
+                // one side of it, so every neighbouring pair is checked:
+                // `calc(c 1 2)` is an error even though it has opaque text.
+                if args
+                    .windows(2)
+                    .any(|pair| !pair.iter().any(contains_opaque_value))
+                {
+                    return Err(("Missing math operator.", span).into());
+                }
+
+                CalculationArg::Space(args)
+            }
             AstExpr::String(string_expr, _span) => {
                 debug_assert!(string_expr.1 == QuoteKind::None);
                 CalculationArg::Interpolation(self.perform_interpolation(string_expr.0, false)?)
@@ -2657,10 +2680,51 @@ impl<'a> Visitor<'a> {
         args: Vec<AstExpr>,
         span: Span,
     ) -> SassResult<Value> {
-        let mut args = args
+        // A user-defined function shadows the CSS math function of the same
+        // name, so `@function sin($x)` wins over `sin()` the calculation.
+        let shadowing = self.env.get_fn(Identifier::from(name.as_str()), None)?;
+
+        if let Some(func) = shadowing {
+            let arguments = ArgumentInvocation {
+                positional: args,
+                named: BTreeMap::new(),
+                rest: None,
+                keyword_rest: None,
+                span,
+            };
+
+            let old_in_function = self.flags.in_function();
+            self.flags.set(ContextFlags::IN_FUNCTION, true);
+            let value = self.run_function_callable(func, arguments, span)?;
+            self.flags.set(ContextFlags::IN_FUNCTION, old_in_function);
+
+            return Ok(value);
+        }
+
+        // `min`, `max`, `round` and `abs` are also Sass functions. An argument a
+        // calculation cannot express -- a unitless number added to a length,
+        // say -- is still valid for the Sass function, so those four keep a
+        // copy of their arguments and retry as a plain call. Only a failure to
+        // build the arguments falls back; once they are built, the calculation
+        // owns the result and its errors.
+        let fallback = if name.falls_back_to_function() && name.function_accepts_arity(args.len()) {
+            Some(args.clone())
+        } else {
+            None
+        };
+
+        let evaluated = args
             .into_iter()
             .map(|arg| self.visit_calculation_value(arg, name.in_min_or_max(), span))
-            .collect::<SassResult<Vec<_>>>()?;
+            .collect::<SassResult<Vec<_>>>();
+
+        let mut args = match (evaluated, &fallback) {
+            (Ok(args), _) => args,
+            (Err(err), None) => return Err(err),
+            (Err(err), Some(fallback)) => {
+                return self.call_sass_function_fallback(name, fallback.clone(), span, err)
+            }
+        };
 
         if self.flags.in_supports_declaration() {
             return Ok(Value::Calculation(SassCalculation::unsimplified(
@@ -2668,14 +2732,37 @@ impl<'a> Visitor<'a> {
             )));
         }
 
+        if args.is_empty() && name != CalculationName::Calc {
+            return Err(("Missing argument.", span).into());
+        }
+
         match name {
             CalculationName::Calc => {
-                debug_assert_eq!(args.len(), 1);
+                if args.is_empty() {
+                    return Err(("Missing argument.", span).into());
+                }
+
+                if args.len() > 1 {
+                    return Err((
+                        format!("Only 1 argument allowed, but {} were passed.", args.len()),
+                        span,
+                    )
+                        .into());
+                }
+
                 Ok(SassCalculation::calc(args.remove(0)))
             }
             CalculationName::Min => SassCalculation::min(args, self.options, span),
             CalculationName::Max => SassCalculation::max(args, self.options, span),
             CalculationName::Clamp => {
+                if args.len() > 3 {
+                    return Err((
+                        format!("Only 3 arguments allowed, but {} were passed.", args.len()),
+                        span,
+                    )
+                        .into());
+                }
+
                 let min = args.remove(0);
                 let value = if args.is_empty() {
                     None
@@ -2689,7 +2776,59 @@ impl<'a> Visitor<'a> {
                 };
                 SassCalculation::clamp(min, value, max, self.options, span)
             }
+            CalculationName::Round => SassCalculation::round(args, self.options, span),
+            CalculationName::Abs => SassCalculation::abs(args, self.options, span),
+            CalculationName::Sign => SassCalculation::sign(args, self.options, span),
+            CalculationName::Sqrt | CalculationName::Exp => {
+                SassCalculation::unitless_unary(name, args, self.options, span)
+            }
+            CalculationName::Sin | CalculationName::Cos | CalculationName::Tan => {
+                SassCalculation::trig(name, args, self.options, span)
+            }
+            CalculationName::Asin | CalculationName::Acos | CalculationName::Atan => {
+                SassCalculation::inverse_trig(name, args, self.options, span)
+            }
+            CalculationName::Atan2 => SassCalculation::atan2(args, self.options, span),
+            CalculationName::Pow | CalculationName::Log => {
+                SassCalculation::unitless_binary(name, args, self.options, span)
+            }
+            CalculationName::Mod | CalculationName::Rem => {
+                SassCalculation::modulo(name, args, self.options, span)
+            }
+            CalculationName::Hypot => SassCalculation::hypot(args, self.options, span),
+            CalculationName::CalcSize => SassCalculation::calc_size(args, self.options, span),
         }
+    }
+
+    /// Re-runs a failed calculation as the Sass function of the same name.
+    ///
+    /// Returns the original calculation error if no such function exists, so a
+    /// genuine mistake still reports the calculation's own message.
+    fn call_sass_function_fallback(
+        &mut self,
+        name: CalculationName,
+        args: Vec<AstExpr>,
+        span: Span,
+        original: Box<SassError>,
+    ) -> SassResult<Value> {
+        if GLOBAL_FUNCTIONS.get(name.as_str()).is_none() {
+            return Err(original);
+        }
+
+        let func_call = FunctionCallExpr {
+            namespace: None,
+            name: Identifier::from(name.as_str()),
+            arguments: Arc::new(ArgumentInvocation {
+                positional: args,
+                named: BTreeMap::new(),
+                rest: None,
+                keyword_rest: None,
+                span,
+            }),
+            span,
+        };
+
+        self.visit_function_call_expr(func_call)
     }
 
     fn visit_unary_op(&mut self, op: UnaryOp, expr: AstExpr, span: Span) -> SassResult<Value> {

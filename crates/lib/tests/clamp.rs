@@ -1,9 +1,12 @@
 #[macro_use]
 mod macros;
 
+// Argument counts are checked when the calculation is evaluated, not while it
+// is parsed, so an empty list reports the missing argument. Verified against
+// dart-sass 1.103.1.
 error!(
     clamp_empty_args,
-    "a {\n  color: clamp();\n}\n", "Error: Expected number, variable, function, or calculation."
+    "a {\n  color: clamp();\n}\n", "Error: Missing argument."
 );
 error!(
     clamp_parens_in_args,

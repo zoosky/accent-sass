@@ -303,12 +303,7 @@ impl<'a> Serializer<'a> {
     }
 
     fn write_calculation_name(&mut self, name: CalculationName) {
-        match name {
-            CalculationName::Calc => self.buffer.extend_from_slice(b"calc"),
-            CalculationName::Min => self.buffer.extend_from_slice(b"min"),
-            CalculationName::Max => self.buffer.extend_from_slice(b"max"),
-            CalculationName::Clamp => self.buffer.extend_from_slice(b"clamp"),
-        }
+        self.buffer.extend_from_slice(name.as_str().as_bytes());
     }
 
     fn visit_calculation(&mut self, calculation: &SassCalculation) -> SassResult<()> {
@@ -331,7 +326,27 @@ impl<'a> Serializer<'a> {
 
     fn write_calculation_arg(&mut self, arg: &CalculationArg) -> SassResult<()> {
         match arg {
-            CalculationArg::Number(num) => self.visit_number(num)?,
+            // A number inside a calculation is written inline rather than as a
+            // nested `calc()`: `calc(infinity * 1px)`, not
+            // `calc(calc(infinity * 1px))`.
+            CalculationArg::Number(num) => {
+                let has_plain_css_form = num.num.0.is_finite() && !num.unit.is_complex();
+
+                if num.as_slash.is_none() && !has_plain_css_form {
+                    self.write_calculation_number_body(num)?;
+                } else {
+                    self.visit_number(num)?;
+                }
+            }
+            CalculationArg::Space(args) => {
+                for (idx, arg) in args.iter().enumerate() {
+                    if idx > 0 {
+                        self.buffer.push(b' ');
+                    }
+
+                    self.write_calculation_arg(arg)?;
+                }
+            }
             CalculationArg::Calculation(calc) => {
                 self.visit_calculation(calc)?;
             }
@@ -340,7 +355,6 @@ impl<'a> Serializer<'a> {
             }
             CalculationArg::Operation { lhs, op, rhs } => {
                 let paren_left = match &**lhs {
-                    CalculationArg::Interpolation(..) => true,
                     CalculationArg::Operation { op: op2, .. } => op2.precedence() < op.precedence(),
                     _ => false,
                 };
@@ -370,9 +384,15 @@ impl<'a> Serializer<'a> {
                 }
 
                 let paren_right = match &**rhs {
-                    CalculationArg::Interpolation(..) => true,
                     CalculationArg::Operation { op: op2, .. } => {
                         CalculationArg::parenthesize_calculation_rhs(*op, *op2)
+                    }
+                    // A number written with unit factors behaves like a
+                    // multiplication for precedence: `calc(a / (infinity * 1px))`.
+                    CalculationArg::Number(num)
+                        if num.as_slash.is_none() && Self::number_has_calculation_factors(num) =>
+                    {
+                        CalculationArg::parenthesize_calculation_rhs(*op, BinaryOp::Mul)
                     }
                     _ => false,
                 };
@@ -895,7 +915,27 @@ impl<'a> Serializer<'a> {
     /// numerator unit attached (`calc(1px / 1em)`).
     fn write_number_as_calculation(&mut self, number: &SassNumber) -> SassResult<()> {
         self.buffer.extend_from_slice(b"calc(");
+        self.write_calculation_number_body(number)?;
+        self.buffer.push(b')');
 
+        Ok(())
+    }
+
+    /// Whether [`Serializer::write_calculation_number_body`] writes more than a
+    /// single term for this number, which decides whether it needs parentheses
+    /// in an enclosing calculation operation.
+    fn number_has_calculation_factors(number: &SassNumber) -> bool {
+        if !number.num.0.is_finite() {
+            return number.unit != Unit::None;
+        }
+
+        number.unit.is_complex()
+    }
+
+    /// Writes the body of a number's `calc()` form -- everything between the
+    /// parentheses -- so that a number appearing inside a larger calculation is
+    /// inlined (`calc(1% + infinity * 1px)`) instead of nested.
+    fn write_calculation_number_body(&mut self, number: &SassNumber) -> SassResult<()> {
         let (numer, denom) = number.unit.clone().numer_and_denom();
         let value = number.num.0;
         let mut factors: &[Unit] = &numer;
@@ -927,8 +967,6 @@ impl<'a> Serializer<'a> {
             self.write_optional_space();
             write!(&mut self.buffer, "1{}", unit)?;
         }
-
-        self.buffer.push(b')');
 
         Ok(())
     }

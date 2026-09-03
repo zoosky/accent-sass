@@ -147,9 +147,13 @@ error!(
     percentage_non_number_arg,
     "a {\n  color: percentage(a);\n}\n", "Error: $number: a is not a number."
 );
-error!(
+// `round()` is a CSS math function as well as a Sass one, so a bare identifier
+// is an opaque calculation value rather than a type error. Verified against
+// dart-sass 1.103.1.
+test!(
     round_non_number_arg,
-    "a {\n  color: round(a);\n}\n", "Error: $number: a is not a number."
+    "a {\n  color: round(a);\n}\n",
+    "a {\n  color: round(a);\n}\n"
 );
 error!(
     ceil_non_number_arg,
@@ -159,9 +163,12 @@ error!(
     floor_non_number_arg,
     "a {\n  color: floor(a);\n}\n", "Error: $number: a is not a number."
 );
-error!(
+// As with `round()`, a bare identifier is a calculation value. Verified against
+// dart-sass 1.103.1.
+test!(
     abs_non_number_arg,
-    "a {\n  color: abs(a);\n}\n", "Error: $number: a is not a number."
+    "a {\n  color: abs(a);\n}\n",
+    "a {\n  color: abs(a);\n}\n"
 );
 error!(
     comparable_non_number_arg_both,
@@ -179,9 +186,11 @@ error!(
     percentage_no_args,
     "a {\n  color: percentage();\n}\n", "Error: Missing argument $number."
 );
+// The calculation reports the missing argument before the Sass function's
+// parameter list is consulted. Verified against dart-sass 1.103.1.
 error!(
     round_no_args,
-    "a {\n  color: round();\n}\n", "Error: Missing argument $number."
+    "a {\n  color: round();\n}\n", "Error: Missing argument."
 );
 error!(
     ceil_no_args,
@@ -191,9 +200,10 @@ error!(
     floor_no_args,
     "a {\n  color: floor();\n}\n", "Error: Missing argument $number."
 );
+// See `round_no_args`. Verified against dart-sass 1.103.1.
 error!(
     abs_no_args,
-    "a {\n  color: abs();\n}\n", "Error: Missing argument $number."
+    "a {\n  color: abs();\n}\n", "Error: Missing argument."
 );
 error!(
     comparable_no_args,

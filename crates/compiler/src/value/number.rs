@@ -62,17 +62,46 @@ pub(crate) fn fuzzy_as_int(num: f64) -> Option<i64> {
 
 pub(crate) fn fuzzy_round(number: f64) -> f64 {
     // If the number is within epsilon of X.5, round up (or down for negative
-    // numbers).
+    // numbers). Dart Sass compares against Dart's `%`, whose result is always
+    // non-negative, so the fraction is taken with `rem_euclid` rather than
+    // Rust's truncating `%` -- otherwise every negative input rounds the wrong
+    // way (`fuzzy_round(-1.3)` would be -2).
+    let fraction = number.rem_euclid(1.0);
+
     if number > 0.0 {
-        if fuzzy_less_than(number % 1.0, 0.5) {
+        if fuzzy_less_than(fraction, 0.5) {
             number.floor()
         } else {
             number.ceil()
         }
-    } else if fuzzy_less_than_or_equals(number % 1.0, 0.5) {
+    } else if fuzzy_less_than_or_equals(fraction, 0.5) {
         number.floor()
     } else {
         number.ceil()
+    }
+}
+
+/// Rounds down, treating a value within epsilon of the next integer as that
+/// integer. `fuzzy_floor(2.9999999999999)` is 3, not 2.
+pub(crate) fn fuzzy_floor(number: f64) -> f64 {
+    let floor = number.floor();
+
+    if fuzzy_equals(number, floor + 1.0) {
+        floor + 1.0
+    } else {
+        floor
+    }
+}
+
+/// Rounds up, treating a value within epsilon of the previous integer as that
+/// integer. `fuzzy_ceil(2.0000000000001)` is 2, not 3.
+pub(crate) fn fuzzy_ceil(number: f64) -> f64 {
+    let ceil = number.ceil();
+
+    if fuzzy_equals(number, ceil - 1.0) {
+        ceil - 1.0
+    } else {
+        ceil
     }
 }
 
@@ -379,7 +408,16 @@ impl DivAssign for Number {
 }
 
 fn real_mod(n1: f64, n2: f64) -> f64 {
-    n1.rem_euclid(n2)
+    let result = n1.rem_euclid(n2);
+
+    // `rem_euclid` can produce -0.0 (as in `-7 % 7`), where Dart's `%` -- which
+    // Sass follows -- always yields positive zero. The difference is visible
+    // through division: `math.div(1, -7 % 7)` is infinity, not -infinity.
+    if result == 0.0 {
+        0.0
+    } else {
+        result
+    }
 }
 
 fn modulo(n1: f64, n2: f64) -> f64 {
