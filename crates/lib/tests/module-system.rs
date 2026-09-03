@@ -39,7 +39,8 @@ a {@include ms_show2_midstream.c}"#;
     );
     assert_eq!(
         "a {\n  b: c;\n}\n",
-        &grass::from_string(input.to_string(), &grass::Options::default()).expect(input)
+        &accent_sass::from_string(input.to_string(), &accent_sass::Options::default())
+            .expect(input)
     );
 }
 
@@ -67,7 +68,8 @@ a {b: $ms-same}"#;
     tempfile!("ms_same.scss", "$ms-same: d;");
     assert_eq!(
         "a {\n  b: d;\n}\n",
-        &grass::from_string(input.to_string(), &grass::Options::default()).expect(input)
+        &accent_sass::from_string(input.to_string(), &accent_sass::Options::default())
+            .expect(input)
     );
 }
 
@@ -100,7 +102,8 @@ a {b: ms_twice_mid.$ms-twice}"#;
     tempfile!("ms_twice_up.scss", "$ms-twice: d;");
     assert_eq!(
         "a {\n  b: d;\n}\n",
-        &grass::from_string(input.to_string(), &grass::Options::default()).expect(input)
+        &accent_sass::from_string(input.to_string(), &accent_sass::Options::default())
+            .expect(input)
     );
 }
 

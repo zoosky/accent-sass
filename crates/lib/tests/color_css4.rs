@@ -493,37 +493,37 @@ test!(
     compressed_lab,
     "@use \"sass:color\";\na {\n  color: lab(50% 10 20 / 0.5);\n}\n",
     "a{color:lab(50 10 20/.5)}",
-    grass::Options::default().style(grass::OutputStyle::Compressed)
+    accent_sass::Options::default().style(accent_sass::OutputStyle::Compressed)
 );
 test!(
     compressed_oklch,
     "@use \"sass:color\";\na {\n  color: oklch(50% 0.1 20);\n}\n",
     "a{color:oklch(.5 .1 20)}",
-    grass::Options::default().style(grass::OutputStyle::Compressed)
+    accent_sass::Options::default().style(accent_sass::OutputStyle::Compressed)
 );
 test!(
     compressed_oklab_negative_a,
     "@use \"sass:color\";\na {\n  color: oklab(0.7 -0.1 0.1);\n}\n",
     "a{color:oklab(.7 -0.1 .1)}",
-    grass::Options::default().style(grass::OutputStyle::Compressed)
+    accent_sass::Options::default().style(accent_sass::OutputStyle::Compressed)
 );
 test!(
     compressed_color_function,
     "@use \"sass:color\";\na {\n  color: color(display-p3 0.5 0.25 1 / 0.5);\n}\n",
     "a{color:color(display-p3 .5 .25 1/.5)}",
-    grass::Options::default().style(grass::OutputStyle::Compressed)
+    accent_sass::Options::default().style(accent_sass::OutputStyle::Compressed)
 );
 test!(
     compressed_missing_hue,
     "@use \"sass:color\";\na {\n  color: hsl(none 50% 50% / 0.5);\n}\n",
     "a{color:hsl(none 50% 50%/.5)}",
-    grass::Options::default().style(grass::OutputStyle::Compressed)
+    accent_sass::Options::default().style(accent_sass::OutputStyle::Compressed)
 );
 test!(
     compressed_missing_red,
     "@use \"sass:color\";\na {\n  color: rgb(none 1 2 / 0.5);\n}\n",
     "a{color:rgb(none 1 2/.5)}",
-    grass::Options::default().style(grass::OutputStyle::Compressed)
+    accent_sass::Options::default().style(accent_sass::OutputStyle::Compressed)
 );
 test!(
     color_mix_fallback_lab,
@@ -544,7 +544,7 @@ test!(
     color_mix_fallback_compressed,
     "@use \"sass:color\";\na {\n  color: color.change(lab(50% 10 20), $lightness: 150%);\n}\n",
     "a{color:color-mix(in lab,color(xyz 2.87028635 2.9172111384 2.5646783747)100%,red)}",
-    grass::Options::default().style(grass::OutputStyle::Compressed)
+    accent_sass::Options::default().style(accent_sass::OutputStyle::Compressed)
 );
 test!(
     color_mix_fallback_with_alpha,
@@ -564,7 +564,7 @@ test!(
 test!(
     relative_from_red_compressed,
     "@use \"sass:color\";\na {\n  color: color.change(lch(50% 10 20), $lightness: 150%, $hue: none);\n}\n",
-    "a{color:lch(from red 150 10 none)}", grass::Options::default().style(grass::OutputStyle::Compressed)
+    "a{color:lch(from red 150 10 none)}", accent_sass::Options::default().style(accent_sass::OutputStyle::Compressed)
 );
 test!(
     out_of_gamut_srgb_serializes_unclamped,

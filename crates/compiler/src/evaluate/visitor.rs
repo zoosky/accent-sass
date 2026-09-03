@@ -651,7 +651,7 @@ impl<'a> Visitor<'a> {
 
         let env = Environment::new();
         // The loaded module's style rules and `@extend`s share the visitor's
-        // extension store instead of getting their own: grass emits all CSS
+        // extension store instead of getting their own: accent-sass emits all CSS
         // into one tree, so a per-module store silently dropped any extension
         // that crosses a `@use`/`@forward` boundary (extending a placeholder
         // defined in another file emitted nothing). Sharing the store matches

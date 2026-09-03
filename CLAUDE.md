@@ -1,4 +1,4 @@
-# grass (zoosky fork) - Claude Code guidelines
+# accent-sass (zoosky fork) - Claude Code guidelines
 
 These are the working rules shared across Zoosky's repositories, copied here
 so a session in this repo follows them without needing the Accent checkout

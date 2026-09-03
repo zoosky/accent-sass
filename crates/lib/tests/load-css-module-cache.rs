@@ -22,7 +22,8 @@ fn load_css_shares_the_use_instance() {
     tempfile!("lcmc_shared.scss", "$v: first !default;\na {b: $v}");
     assert_eq!(
         "a {\n  b: first;\n}\n\na {\n  b: first;\n}\n",
-        &grass::from_string(input.to_string(), &grass::Options::default()).expect(input)
+        &accent_sass::from_string(input.to_string(), &accent_sass::Options::default())
+            .expect(input)
     );
 }
 
@@ -67,7 +68,8 @@ a {b: lcmc_mid.$lcmc-dist}"#;
     tempfile!("lcmc_shared_up.scss", "$lcmc-dist: original !default;");
     assert_eq!(
         "a {\n  b: configured;\n}\n",
-        &grass::from_string(input.to_string(), &grass::Options::default()).expect(input)
+        &accent_sass::from_string(input.to_string(), &accent_sass::Options::default())
+            .expect(input)
     );
 }
 
@@ -86,7 +88,8 @@ fn clause_that_could_not_apply_is_legal() {
     tempfile!("_lcmc_cfgless.scss", "// defines no variables\n");
     assert_eq!(
         "b {\n  mid: overridden;\n}\n",
-        &grass::from_string(input.to_string(), &grass::Options::default()).expect(input)
+        &accent_sass::from_string(input.to_string(), &accent_sass::Options::default())
+            .expect(input)
     );
 }
 
@@ -100,6 +103,7 @@ b {@include meta.load-css("lcmc_nest")}"#;
     tempfile!("_lcmc_nest.scss", "c {d: e}");
     assert_eq!(
         "a c {\n  d: e;\n}\n\nb c {\n  d: e;\n}\n",
-        &grass::from_string(input.to_string(), &grass::Options::default()).expect(input)
+        &accent_sass::from_string(input.to_string(), &accent_sass::Options::default())
+            .expect(input)
     );
 }

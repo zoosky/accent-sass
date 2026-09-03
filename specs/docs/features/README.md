@@ -19,7 +19,7 @@ To reproduce:
 git submodule update --init sass-spec
 cargo build --release
 cd sass-spec && npm install --no-audit --no-fund
-npm run sass-spec -- --impl=dart-sass --command '../target/release/grass' \
+npm run sass-spec -- --impl=dart-sass --command '../target/release/accent-sass' \
   --trim-errors --ignore-warning-diffs --ignore-error-diffs
 ```
 
@@ -54,11 +54,11 @@ remainder is mostly the `non_conformant/` and `libsass*` legacy suites
 
 Across the whole suite the 1,718 failures split into:
 
-- 881 "test case should succeed but it did not" — grass rejects valid input.
-- 573 "expected did not match output" — grass produces different CSS.
-- 264 "expected test to fail but it did not" — grass accepts invalid input.
+- 881 "test case should succeed but it did not" — accent-sass rejects valid input.
+- 573 "expected did not match output" — accent-sass produces different CSS.
+- 264 "expected test to fail but it did not" — accent-sass accepts invalid input.
 
-The third kind means grass is systematically more lenient than dart-sass.
+The third kind means accent-sass is systematically more lenient than dart-sass.
 Closing those requires adding error checks, not features; several documents
 below carry a strictness section for their area.
 

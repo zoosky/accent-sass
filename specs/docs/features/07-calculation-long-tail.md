@@ -1,7 +1,7 @@
 # The calculation long tail
 
 Unlocks the 3 sass-spec tests left under `spec/values/calculation` by
-[01-calculation-functions.md](01-calculation-functions.md) (`zoosky/grass`
+[01-calculation-functions.md](01-calculation-functions.md) (`zoosky/accent-sass`
 #12), under the roadmap's standard flags. Three separate defects, one of
 them a real bug in the `%` operator that reaches every stylesheet, not
 only the spec. Measured on 2026-09-03 against the #12 head (`4946548`),
@@ -41,7 +41,7 @@ the spec's answer. Both `%` and `mod()` are affected, since `mod()`
 simplifies through the same function; two of the eight sign combinations
 are wrong:
 
-| input | dart-sass 1.103.1 | grass (#12) |
+| input | dart-sass 1.103.1 | accent-sass (#12) |
 |---|---|---|
 | `0 % calc(-infinity)` | `calc(NaN)` | `0` |
 | `0 % calc(infinity)` | `0` | `calc(NaN)` |
@@ -92,7 +92,7 @@ a {e: round(#{"up"}, 3px, 9px)}
 ```
 
 dart-sass 1.103.1 recognizes the interpolated `up` as the strategy and
-simplifies to `9px`. grass emits `round(up, 3px, 9px)` unsimplified.
+simplifies to `9px`. accent-sass emits `round(up, 3px, 9px)` unsimplified.
 
 The defect is narrow. Interpolation elsewhere in a calculation already
 matches the reference: `calc(#{"1px"} + 2px)`, `abs(#{"-1px"})`,
@@ -127,7 +127,7 @@ a {b: calc(!{@}#$%^&*#{c}_-[+]=)}
 ```
 
 dart-sass 1.103.1 rejects this with `Error: expected ")".` at column 12.
-grass accepts it and prints `calc(!{@}#$%^&*c_-[+]=)`. The spec's own
+accent-sass accepts it and prints `calc(!{@}#$%^&*c_-[+]=)`. The spec's own
 comment says why: "Interpolation no longer shifts the parser into a
 special mode where it allows any interpolated declaration value."
 

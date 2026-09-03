@@ -1995,6 +1995,7 @@ fn extend_placeholder_across_module_boundary() {
 
     assert_eq!(
         ".x {\n  color: red;\n}\n",
-        &grass::from_string(input.to_string(), &grass::Options::default().fs(&fs)).expect(input)
+        &accent_sass::from_string(input.to_string(), &accent_sass::Options::default().fs(&fs))
+            .expect(input)
     );
 }

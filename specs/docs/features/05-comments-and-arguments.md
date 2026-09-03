@@ -10,7 +10,7 @@ lists. Both are lexer/argument-parser work, so they share one document.
 
 ### Current behavior
 
-grass rejects or mis-emits comments in positions dart-sass accepts.
+accent-sass rejects or mis-emits comments in positions dart-sass accepts.
 Three representative failures:
 
 ```
