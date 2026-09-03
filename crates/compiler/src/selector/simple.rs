@@ -167,6 +167,17 @@ impl SimpleSelector {
         matches!(self, Self::Id(..))
     }
 
+    /// Whether this is a pseudo-element rather than a pseudo-class.
+    pub fn is_pseudo_element(&self) -> bool {
+        matches!(
+            self,
+            Self::Pseudo(Pseudo {
+                is_class: false,
+                ..
+            })
+        )
+    }
+
     pub fn is_type(&self) -> bool {
         matches!(self, Self::Type(..))
     }
@@ -203,6 +214,12 @@ impl SimpleSelector {
         if compound.len() == 1 && compound[0].is_universal() {
             return compound.swap_remove(0).unify(vec![self]);
         }
+
+        // A class, id or attribute selector matches a light-DOM element, which
+        // `:host` never does.
+        if compound.len() == 1 && compound[0].is_host() {
+            return compound.swap_remove(0).unify(vec![self]);
+        }
         if compound.contains(&self) {
             return Some(compound);
         }
@@ -224,6 +241,10 @@ impl SimpleSelector {
     }
 
     fn unify_universal(self, mut compound: Vec<Self>) -> Option<Vec<Self>> {
+        if compound.iter().any(Self::is_host) {
+            return None;
+        }
+
         if let Self::Universal(..) | Self::Type(..) = compound[0] {
             let mut unified = vec![self.unify_universal_and_element(&compound[0])?];
             unified.extend(compound.into_iter().skip(1));
@@ -304,6 +325,10 @@ impl SimpleSelector {
     }
 
     fn unify_type(self, mut compound: Vec<Self>) -> Option<Vec<Self>> {
+        if compound.iter().any(Self::is_host) {
+            return None;
+        }
+
         if let Self::Universal(..) | Self::Type(..) = compound[0] {
             let mut unified = vec![self.unify_universal_and_element(&compound[0])?];
             unified.extend(compound.into_iter().skip(1));
@@ -315,10 +340,45 @@ impl SimpleSelector {
         }
     }
 
+    /// Whether this is `:host` or `:host-context`, which only match a shadow
+    /// root and so may not be combined with selectors that match ordinary
+    /// elements.
+    fn is_host(&self) -> bool {
+        matches!(self, Self::Pseudo(Pseudo { name, is_class: true, .. })
+            if name == "host" || name == "host-context")
+    }
+
+    /// Whether this selector may share a compound with `:host`.
+    ///
+    /// Only another `:host`/`:host-context` or a pseudo-class that takes a
+    /// selector argument, such as `:is()`, qualifies: everything else matches
+    /// an element in the light DOM, which `:host` never does.
+    fn can_unify_with_host(&self) -> bool {
+        self.is_host()
+            || matches!(
+                self,
+                Self::Pseudo(Pseudo {
+                    selector: Some(..),
+                    ..
+                })
+            )
+    }
+
     fn unify_pseudo(self, mut compound: Vec<Self>) -> Option<Vec<Self>> {
         if compound.len() == 1 && compound[0].is_universal() {
             return compound.remove(0).unify(vec![self]);
         }
+
+        if self.is_host() {
+            if !compound.iter().all(Self::can_unify_with_host) {
+                return None;
+            }
+        } else if compound.len() == 1 && compound[0].is_host() {
+            // Let the `:host` decide, which both applies its own rule and puts
+            // it last: `:is(.c)` unified with `:host` is `:is(.c):host`.
+            return compound.remove(0).unify(vec![self]);
+        }
+
         if compound.contains(&self) {
             return Some(compound);
         }
@@ -356,9 +416,45 @@ impl SimpleSelector {
         Some(result)
     }
 
+    /// Whether every element `other` matches is also matched by this selector.
+    ///
+    /// Equality covers most cases; the exceptions are the universal and type
+    /// selectors, which subsume narrower namespaces. `*` with no namespace
+    /// matches anything, `*|c` matches `c` in any namespace, and an explicit
+    /// namespace only ever matches itself.
+    fn is_super_selector_of_simple(&self, other: &Self) -> bool {
+        match self {
+            Self::Universal(namespace) => match namespace {
+                Namespace::Asterisk => true,
+                Namespace::None => !matches!(
+                    other,
+                    Self::Universal(Namespace::Empty | Namespace::Other(..))
+                        | Self::Type(QualifiedName {
+                            namespace: Namespace::Empty | Namespace::Other(..),
+                            ..
+                        })
+                ),
+                _ => match other {
+                    Self::Type(name) => *namespace == name.namespace,
+                    Self::Universal(other_namespace) => namespace == other_namespace,
+                    _ => false,
+                },
+            },
+            Self::Type(name) => match other {
+                Self::Type(other_name) => {
+                    name.ident == other_name.ident
+                        && (name.namespace == Namespace::Asterisk
+                            || name.namespace == other_name.namespace)
+                }
+                _ => self == other,
+            },
+            _ => self == other,
+        }
+    }
+
     pub fn is_super_selector_of_compound(&self, compound: &CompoundSelector) -> bool {
         compound.components.iter().any(|their_simple| {
-            if self == their_simple {
+            if self.is_super_selector_of_simple(their_simple) {
                 return true;
             }
             if let SimpleSelector::Pseudo(Pseudo {

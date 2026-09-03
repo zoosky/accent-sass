@@ -25,14 +25,19 @@ pub(crate) fn unify_complex(
         let base = complex.last()?;
 
         if let ComplexSelectorComponent::Compound(base) = base {
-            if let Some(mut some_unified_base) = unified_base.clone() {
-                for simple in base.components.clone() {
-                    some_unified_base = simple.unify(some_unified_base.clone())?;
+            unified_base = Some(match unified_base {
+                // Going through `CompoundSelector::unify` rather than folding
+                // the simple selectors by hand keeps the pseudo-element tail
+                // rule, which only that function knows about.
+                Some(accumulated) => {
+                    CompoundSelector {
+                        components: accumulated,
+                    }
+                    .unify(base.clone())?
+                    .components
                 }
-                unified_base = Some(some_unified_base);
-            } else {
-                unified_base = Some(base.components.clone());
-            }
+                None => base.components.clone(),
+            });
         } else {
             return None;
         }
@@ -468,6 +473,13 @@ fn merge_final_combinators(
                             ComplexSelectorComponent::Combinator(Combinator::NextSibling),
                         ]]);
                     } else {
+                        // The `~` selector leads, so it also leads in the
+                        // unified compound: `.a + x` extended by `.b ~ y` gives
+                        // `.b.a + y`, not `.a.b + y`.
+                        let unified = following_sibling_selector
+                            .clone()
+                            .unify(next_sibling_selector.clone());
+
                         let mut v = vec![vec![
                             ComplexSelectorComponent::Compound(following_sibling_selector),
                             ComplexSelectorComponent::Combinator(Combinator::FollowingSibling),
@@ -475,7 +487,7 @@ fn merge_final_combinators(
                             ComplexSelectorComponent::Combinator(Combinator::NextSibling),
                         ]];
 
-                        if let Some(unified) = compound_one.unify(compound_two) {
+                        if let Some(unified) = unified {
                             v.push(vec![
                                 ComplexSelectorComponent::Compound(unified),
                                 ComplexSelectorComponent::Combinator(Combinator::NextSibling),
@@ -577,11 +589,18 @@ fn first_if_root(queue: &mut VecDeque<ComplexSelectorComponent>) -> Option<Compo
     }
 }
 
-/// Returns whether or not `compound` contains a `::root` selector.
+/// Returns whether `compound` must appear at the start of a complex selector.
+///
+/// `:root`, `:scope`, `:host` and `:host-context` all match the outermost
+/// element of their tree, so nothing can be woven in front of them.
 fn has_root(compound: &CompoundSelector) -> bool {
     compound.components.iter().any(|simple| {
         if let SimpleSelector::Pseudo(pseudo) = simple {
-            pseudo.is_class && pseudo.normalized_name() == "root"
+            pseudo.is_class
+                && matches!(
+                    pseudo.normalized_name(),
+                    "root" | "scope" | "host" | "host-context"
+                )
         } else {
             false
         }

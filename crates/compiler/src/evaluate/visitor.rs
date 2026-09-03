@@ -2604,6 +2604,13 @@ impl<'a> Visitor<'a> {
         let func = match self.env.get_fn(name, func_call.namespace)? {
             Some(func) => func,
             None => {
+                // A namespaced call names a member of that module and nothing
+                // else, so `selector.selector-append()` is undefined even
+                // though `selector-append()` is a global function.
+                if func_call.namespace.is_some() {
+                    return Err(("Undefined function.", func_call.span).into());
+                }
+
                 if let Some(f) = self.options.custom_fns.get(name.as_str()) {
                     SassFunction::Builtin(f.clone(), name)
                 } else if let Some(f) = GLOBAL_FUNCTIONS.get(name.as_str()) {
