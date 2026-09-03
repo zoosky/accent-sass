@@ -462,9 +462,9 @@ fn merge_final_combinators(
                         };
 
                     let next_sibling_selector = if combinator_one == &Combinator::FollowingSibling {
-                        compound_two.clone()
+                        compound_two
                     } else {
-                        compound_one.clone()
+                        compound_one
                     };
 
                     if following_sibling_selector.is_super_selector(&next_sibling_selector, &None) {
