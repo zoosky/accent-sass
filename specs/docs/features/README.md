@@ -26,6 +26,13 @@ npm run sass-spec -- --impl=dart-sass --command '../target/release/grass' \
 Scope a run to one area by appending its spec path, for example
 `spec/values/calculation`.
 
+The two `--ignore-*` flags hide real differences: a test that only fails
+on a missing deprecation warning or on the wording of an error counts as
+passing. In `spec/values/calculation` on the #12 head that is 3 failures
+with the flags, 25 without `--ignore-warning-diffs`, 60 with neither
+(measured 2026-09-03; [08](08-calculation-warnings-and-error-wording.md)
+records them). Drop the flags when an item's acceptance criteria say so.
+
 ## Work items
 
 | Doc | Area | Failing tests | Main spec directories |
@@ -36,6 +43,8 @@ Scope a run to one area by appending its spec path, for example
 | [04-selector-unification.md](04-selector-unification.md) | Selector unification ordering | 93 | `spec/core_functions/selector` |
 | [05-comments-and-arguments.md](05-comments-and-arguments.md) | Comment positions and argument-list syntax | ~100 | `spec/callable`, `spec/css`, `spec/directives` |
 | [06-module-system.md](06-module-system.md) | `@use`, `@forward` and `@import` edge cases | 114 | `spec/directives/use`, `spec/directives/forward`, `spec/directives/import` |
+| [07-calculation-long-tail.md](07-calculation-long-tail.md) | What #12 leaves in the calculation suite: `%` and `mod()` with a signed zero against an infinite divisor, a rounding strategy that arrives through interpolation, line noise inside an interpolated `calc()` | 3 | `spec/values/calculation` |
+| [08-calculation-warnings-and-error-wording.md](08-calculation-warnings-and-error-wording.md) | Deprecation warnings (none exist) and error wording in calculations; invisible under the standard flags | 57 hidden | `spec/values/calculation` |
 
 Together these cover roughly 1,250 to 1,300 of the 1,718 failures. The
 remainder is mostly the `non_conformant/` and `libsass*` legacy suites
