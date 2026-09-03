@@ -2483,6 +2483,20 @@ impl<'a> Visitor<'a> {
                         return Err(("Undefined function.", func_call.span).into());
                     }
 
+                    // A CSS math function only reaches this point when its
+                    // arguments were not calculation syntax and no function of
+                    // that name is defined, so there is nothing left to do
+                    // with it.
+                    if CalculationName::from_lowercase_str(&name.as_str().to_ascii_lowercase())
+                        .is_some()
+                    {
+                        return Err((
+                            "This expression can't be used in a calculation.",
+                            func_call.span,
+                        )
+                            .into());
+                    }
+
                     SassFunction::Plain { name }
                 }
             }

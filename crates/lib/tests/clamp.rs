@@ -8,10 +8,12 @@ error!(
     clamp_empty_args,
     "a {\n  color: clamp();\n}\n", "Error: Missing argument."
 );
+// Arguments that are not calculation syntax rewind to a plain function call,
+// and a math name with no function behind it is rejected there. Verified
+// against dart-sass 1.103.1.
 error!(
     clamp_parens_in_args,
-    "a {\n  color: clamp((()));\n}\n",
-    "Error: Expected number, variable, function, or calculation."
+    "a {\n  color: clamp((()));\n}\n", "Error: This expression can't be used in a calculation."
 );
 error!(
     clamp_single_arg,

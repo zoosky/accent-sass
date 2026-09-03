@@ -43,6 +43,22 @@ pub(crate) struct ValueParser<'a, 'c, P: StylesheetParser<'a>> {
     _a: PhantomData<&'a ()>,
 }
 
+/// The calculation-only constants, matched case-insensitively.
+///
+/// They are ordinary identifiers outside a calculation, so this lookup only
+/// ever runs from [`ValueParser::parse_calculation_identifier`]. Note that only
+/// `infinity` has a negated spelling; `-pi` and `-e` stay identifiers.
+fn calculation_constant_value(lowercase: &str) -> Option<f64> {
+    Some(match lowercase {
+        "pi" => std::f64::consts::PI,
+        "e" => std::f64::consts::E,
+        "infinity" => f64::INFINITY,
+        "-infinity" => f64::NEG_INFINITY,
+        "nan" => f64::NAN,
+        _ => return None,
+    })
+}
+
 impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
     pub fn parse_expression(
         parser: &mut P,
@@ -1541,22 +1557,6 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
         )
     }
 
-    /// The calculation-only constants, matched case-insensitively.
-    ///
-    /// They are ordinary identifiers outside a calculation, so this lookup only
-    /// ever runs from [`ValueParser::parse_calculation_value`]. Note that only
-    /// `infinity` has a negated spelling; `-pi` and `-e` stay identifiers.
-    fn calculation_constant_value(lowercase: &str) -> Option<f64> {
-        Some(match lowercase {
-            "pi" => std::f64::consts::PI,
-            "e" => std::f64::consts::E,
-            "infinity" => f64::INFINITY,
-            "-infinity" => f64::NEG_INFINITY,
-            "nan" => f64::NAN,
-            _ => return None,
-        })
-    }
-
     fn parse_calculation_value(parser: &mut P) -> SassResult<Spanned<AstExpr>> {
         match parser.toks().peek() {
             // A leading `-` starts an identifier in `-infinity` and `-webkit-x`
@@ -1620,7 +1620,7 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
         let lowercase = ident.to_ascii_lowercase();
 
         if !parser.toks().next_char_is('(') {
-            if let Some(constant) = Self::calculation_constant_value(&lowercase) {
+            if let Some(constant) = calculation_constant_value(&lowercase) {
                 return Ok(AstExpr::Number {
                     n: Number(constant),
                     unit: Unit::None,
@@ -1827,10 +1827,12 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
 
     /// Parses `name(...)` as a CSS math function if `name` is one.
     ///
-    /// `min`, `max`, `round` and `abs` are also global Sass functions, so a
-    /// failed calculation parse rewinds and returns `None` to let the ordinary
-    /// function-call parser have them. Every other math function is a
-    /// calculation or a syntax error.
+    /// Arguments that are not calculation syntax rewind the scanner and return
+    /// `None`, so the ordinary function-call parser gets them instead. That is
+    /// what keeps a user-defined `log("...")` or `mod($a, $b)` working, and it
+    /// is also how the Sass `min`, `max`, `round` and `abs` functions receive
+    /// arguments a calculation could not express. A math name that resolves to
+    /// no function at all is rejected when it is evaluated.
     fn try_parse_calculation(
         parser: &mut P,
         name: &str,
@@ -1848,7 +1850,10 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
         let args = match ValueParser::parse_calculation_arguments(parser, start) {
             Ok(args) => args,
             Err(err) => {
-                if !name.falls_back_to_function() {
+                // `calc` is a reserved identifier, so nothing can be hiding
+                // behind it; rewinding would only hand the arguments to the
+                // raw-text special-function parser, which accepts anything.
+                if name == CalculationName::Calc {
                     return Err(err);
                 }
 
