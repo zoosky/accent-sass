@@ -110,6 +110,20 @@ pub(crate) struct CallableContentBlock {
     env: Environment,
 }
 
+/// A CSS statement a module emitted, recorded with its children so a later
+/// `@import` or `meta.load-css` of the module can emit a copy of it.
+///
+/// Style-rule selectors are recorded in their hermetic form -- resolved
+/// without any enclosing style rule -- and re-resolved against the rule
+/// enclosing each load site when the copy is emitted. The recorded selector
+/// handles stay shared with the extension store, so extensions apply to
+/// root-level copies the same way they apply to the originals.
+#[derive(Debug, Clone)]
+struct RecordedCssStmt {
+    stmt: CssStmt,
+    children: Vec<RecordedCssStmt>,
+}
+
 /// Evaluation context of the current execution
 #[derive(Debug)]
 pub struct Visitor<'a> {
@@ -128,15 +142,21 @@ pub struct Visitor<'a> {
     pub current_import_path: PathBuf,
     pub(crate) is_plain_css: bool,
     pub(crate) modules: BTreeMap<PathBuf, Arc<RefCell<Module>>>,
-    /// The top-level CSS statements each cached module emitted when it first
-    /// executed, so an `@import` of an already-loaded module can emit that CSS
-    /// again. `@use` never replays -- a used module's CSS appears once.
-    module_css: BTreeMap<PathBuf, Vec<CssTreeIdx>>,
+    /// The root configuration each cached module was first loaded under, so a
+    /// later load can tell "the same `with` clause reaching the module along
+    /// another path" (legal) from "a second `with` clause" (an error).
+    module_configurations: BTreeMap<PathBuf, Rc<RefCell<Configuration>>>,
+    /// The CSS each cached module emitted when it first executed, recorded
+    /// with hermetic selectors (resolved without any enclosing style rule),
+    /// so an `@import` or `meta.load-css` of an already-loaded module can
+    /// emit that CSS again, re-nested under whatever rule encloses the new
+    /// load site. `@use` never replays -- a used module's CSS appears once.
+    module_css: BTreeMap<PathBuf, Vec<RecordedCssStmt>>,
     /// True while evaluating a stylesheet loaded by `@import` that loads
-    /// modules. Modules executed in this context keep the caller's CSS
-    /// position, so their CSS lands where the `@import` is written, and a
-    /// cache hit replays the module's recorded CSS instead of emitting
-    /// nothing.
+    /// modules, and while `meta.load-css` loads one. Modules executed in this
+    /// context keep the caller's CSS position, so their CSS lands where the
+    /// `@import` or `@include` is written, and a cache hit replays the
+    /// module's recorded CSS instead of emitting nothing.
     in_import_context: bool,
     pub(crate) active_modules: BTreeSet<PathBuf>,
     css_tree: CssTree,
@@ -184,6 +204,7 @@ impl<'a> Visitor<'a> {
             is_plain_css: false,
             import_nodes: Vec::new(),
             modules: BTreeMap::new(),
+            module_configurations: BTreeMap::new(),
             module_css: BTreeMap::new(),
             in_import_context: false,
             active_modules: BTreeSet::new(),
@@ -557,46 +578,72 @@ impl<'a> Visitor<'a> {
         &mut self,
         stylesheet: StyleSheet,
         configuration: Option<Rc<RefCell<Configuration>>>,
-        // todo: different errors based on this
-        _names_in_errors: bool,
+        names_in_errors: bool,
     ) -> SassResult<Arc<RefCell<Module>>> {
         let url = stylesheet.url.clone();
+
+        let current_configuration = configuration
+            .as_ref()
+            .map(Rc::clone)
+            .unwrap_or_else(|| Rc::clone(&self.configuration));
 
         // todo: use canonical url for modules
         if let Some(already_loaded) = self.modules.get(&stylesheet.url) {
             let already_loaded = Arc::clone(already_loaded);
-            let current_configuration =
-                configuration.unwrap_or_else(|| Rc::clone(&self.configuration));
 
-            if !current_configuration.borrow().is_implicit() {
-                //   if (!_moduleConfigurations[url]!.sameOriginal(currentConfiguration) &&
-                //       currentConfiguration is ExplicitConfiguration) {
-                //     var message = namesInErrors
-                //         ? "${p.prettyUri(url)} was already loaded, so it can't be "
-                //             "configured using \"with\"."
-                //         : "This module was already loaded, so it can't be configured using "
-                //             "\"with\".";
+            // A module is configured once, on its first load. A configuration
+            // reaching it again is fine when it is implicit, traces back to
+            // the same `with (...)` clause through however many `@forward`s
+            // (one clause seen along two paths, not two clauses), or names
+            // only variables the module could never have been configured with
+            // -- a clause meant for the forwarding file's own variables.
+            if !(*current_configuration).borrow().is_implicit() {
+                let current_original =
+                    Configuration::original_config(Rc::clone(&current_configuration));
 
-                //     var existingSpan = _moduleNodes[url]?.span;
-                //     var configurationSpan = configuration == null
-                //         ? currentConfiguration.nodeWithSpan.span
-                //         : null;
-                //     var secondarySpans = {
-                //       if (existingSpan != null) existingSpan: "original load",
-                //       if (configurationSpan != null) configurationSpan: "configuration"
-                //     };
+                let same_original = self
+                    .module_configurations
+                    .get(&url)
+                    .map_or(false, |original| Rc::ptr_eq(original, &current_original));
 
-                //     throw secondarySpans.isEmpty
-                //         ? _exception(message)
-                //         : _multiSpanException(message, "new load", secondarySpans);
-                //   }
+                let could_have_applied = || {
+                    let names: HashSet<Identifier> = (*current_configuration)
+                        .borrow()
+                        .values
+                        .keys()
+                        .into_iter()
+                        .collect();
+
+                    (*already_loaded)
+                        .borrow()
+                        .could_have_been_configured(&names)
+                };
+
+                if !same_original && could_have_applied() {
+                    let message = if names_in_errors {
+                        format!(
+                            "{} was already loaded, so it can't be configured using \"with\".",
+                            Self::pretty_url(&url)
+                        )
+                    } else {
+                        "This module was already loaded, so it can't be configured using \"with\"."
+                            .to_owned()
+                    };
+
+                    let span = (*current_configuration)
+                        .borrow()
+                        .span
+                        .unwrap_or(self.empty_span);
+
+                    return Err((message, span).into());
+                }
             }
 
             // A module keeps its state from the first load, but `@import`ing
             // it again is meant to emit its CSS again, so replay what it
             // emitted the first time.
             if self.in_import_context {
-                self.replay_module_css(&url);
+                self.replay_module_css(&url)?;
             }
 
             return Ok(already_loaded);
@@ -620,16 +667,15 @@ impl<'a> Visitor<'a> {
         self.with_environment::<SassResult<()>, _>(env.new_closure(), |visitor| {
             let old_parent = visitor.parent;
             // In an import context the module's CSS belongs where the
-            // `@import` is written -- nested under its style rule and inside
-            // its media queries -- so the caller's CSS position is kept, the
-            // way `meta.load-css` keeps it. Outside an import the module is
-            // hermetic and its CSS goes to the root.
+            // `@import` or `@include meta.load-css(..)` is written, so the
+            // caller's tree position and media queries are kept. The
+            // enclosing style rule is taken in every mode: module selectors
+            // resolve hermetically, and `renest_module_css` nests them under
+            // the load site's rule afterwards -- which is what lets a second
+            // load of the same module re-nest the recorded CSS under a
+            // different rule.
             let in_import_context = visitor.in_import_context;
-            let old_style_rule = if in_import_context {
-                None
-            } else {
-                visitor.style_rule_ignoring_at_root.take()
-            };
+            let old_style_rule = visitor.style_rule_ignoring_at_root.take();
             let old_media_queries = if in_import_context {
                 None
             } else {
@@ -661,8 +707,8 @@ impl<'a> Visitor<'a> {
             visitor.parent = old_parent;
             // visitor.end_of_imports = old_end_of_imports;
             // visitor.out_of_order_imports = old_out_of_order_imports;
+            visitor.style_rule_ignoring_at_root = old_style_rule;
             if !in_import_context {
-                visitor.style_rule_ignoring_at_root = old_style_rule;
                 visitor.media_queries = old_media_queries;
             }
             visitor.declaration_name = old_declaration_name;
@@ -687,57 +733,148 @@ impl<'a> Visitor<'a> {
 
         // Record what the module emitted -- including CSS from modules it
         // loaded in turn, matching how Dart Sass combines a module's CSS with
-        // its upstream modules' -- so a later `@import` of it can replay the
-        // CSS. The statements are frozen as emitted on this first load:
-        // selectors were resolved against this load's context, which is also
-        // when the module's variables were configured.
-        self.module_css
-            .insert(url.clone(), self.css_tree.top_level_stmts_since(css_start));
+        // its upstream modules' -- so a later `@import` or `meta.load-css` of
+        // it can emit the CSS again. Selectors are recorded hermetically and
+        // the values are frozen: this first load is when the module's
+        // variables were configured. Recording happens before re-nesting so
+        // the record keeps the hermetic selectors.
+        let top_level = self.css_tree.top_level_stmts_since(css_start);
+
+        let recorded = top_level
+            .iter()
+            .filter_map(|&idx| self.record_css_subtree(idx))
+            .collect();
+
+        self.module_css.insert(url.clone(), recorded);
+
+        if self.in_import_context {
+            self.renest_module_css(&top_level)?;
+        }
+
+        self.module_configurations.insert(
+            url.clone(),
+            Configuration::original_config(current_configuration),
+        );
 
         self.modules.insert(url, Arc::clone(&module));
 
         Ok(module)
     }
 
+    /// Copies the statement at `idx` and its tree children into an owned
+    /// record, so it survives however the tree changes afterwards.
+    fn record_css_subtree(&self, idx: CssTreeIdx) -> Option<RecordedCssStmt> {
+        let stmt = (*self.css_tree.get(idx)).clone()?;
+
+        let children = self
+            .css_tree
+            .parent_to_child
+            .get(&idx)
+            .cloned()
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|child| self.record_css_subtree(child))
+            .collect();
+
+        Some(RecordedCssStmt { stmt, children })
+    }
+
+    /// Nests the module CSS that was just emitted under the rule enclosing
+    /// the load site.
+    ///
+    /// Module selectors resolve hermetically during execution; when the
+    /// `@import` or `@include meta.load-css(..)` sits inside a style rule,
+    /// each emitted top-level rule's selector is re-resolved against it, so
+    /// `a {@include meta.load-css("other")}` turns the module's `c` into
+    /// `a c`.
+    fn renest_module_css(&mut self, top_level: &[CssTreeIdx]) -> SassResult<()> {
+        if !self.style_rule_exists() {
+            return Ok(());
+        }
+
+        for &idx in top_level {
+            let selector_list = match self.css_tree.get(idx).as_ref() {
+                Some(CssStmt::RuleSet { selector, .. }) => selector.as_selector_list().clone(),
+                _ => continue,
+            };
+
+            let resolved = self.nest_selector_under_current_rule(selector_list)?;
+
+            if let Some(CssStmt::RuleSet { selector, .. }) = self.css_tree.get_mut(idx).as_mut() {
+                *selector = resolved;
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Resolves a hermetic module selector against the current enclosing
+    /// style rule and registers the result with the extension store.
+    fn nest_selector_under_current_rule(
+        &mut self,
+        selector_list: SelectorList,
+    ) -> SassResult<ExtendedSelector> {
+        let parent = self
+            .style_rule_ignoring_at_root
+            .as_ref()
+            .map(|rule| rule.as_selector_list().clone());
+
+        let resolved = selector_list
+            .resolve_parent_selectors(parent, !self.flags.at_root_excluding_style_rule())?;
+
+        Ok(self.extender.add_selector(resolved, &self.media_queries))
+    }
+
+    /// The way a path reads in an error message: relative to the working
+    /// directory when it is inside it, as written otherwise.
+    fn pretty_url(url: &Path) -> String {
+        std::env::current_dir()
+            .ok()
+            .and_then(|cwd| url.strip_prefix(cwd).ok())
+            .unwrap_or(url)
+            .to_string_lossy()
+            .into_owned()
+    }
+
     /// Emits a copy of the CSS a cached module produced when it was first
     /// executed, at the current position in the tree.
     ///
-    /// The copied statements share their selectors with the originals, so an
-    /// `@extend` -- whether it ran before or after the copy -- applies to both:
-    /// the shared extension store resolves selectors when the document is
-    /// serialized, not when statements are added.
-    fn replay_module_css(&mut self, url: &Path) {
-        let top_level = match self.module_css.get(url) {
-            Some(top_level) => top_level.clone(),
-            None => return,
+    /// At the root the copies share their selectors with the originals, so
+    /// an `@extend` -- whether it ran before or after the copy -- applies to
+    /// both: the shared extension store resolves selectors when the document
+    /// is serialized, not when statements are added. Under a style rule, each
+    /// top-level rule's hermetic selector is re-resolved against it, so a
+    /// second load of the same module nests correctly at its own site.
+    fn replay_module_css(&mut self, url: &Path) -> SassResult<()> {
+        let recorded = match self.module_css.get(url) {
+            Some(recorded) => recorded.clone(),
+            None => return Ok(()),
         };
 
-        for idx in top_level {
-            let stmt = match (*self.css_tree.get(idx)).clone() {
-                Some(stmt) => stmt,
-                None => continue,
-            };
+        let in_style_rule = self.style_rule_exists();
+
+        for node in recorded {
+            let mut stmt = node.stmt;
+
+            if in_style_rule {
+                if let CssStmt::RuleSet { selector, .. } = &mut stmt {
+                    let selector_list = selector.as_selector_list().clone();
+                    *selector = self.nest_selector_under_current_rule(selector_list)?;
+                }
+            }
 
             let new_idx = self.add_child(stmt, Some(CssStmt::is_style_rule));
-            self.replay_css_children(idx, new_idx);
+            self.replay_css_children(node.children, new_idx);
         }
+
+        Ok(())
     }
 
-    /// Copies the recorded children of `old_idx` beneath `new_idx`.
-    fn replay_css_children(&mut self, old_idx: CssTreeIdx, new_idx: CssTreeIdx) {
-        let children = match self.css_tree.parent_to_child.get(&old_idx) {
-            Some(children) => children.clone(),
-            None => return,
-        };
-
+    /// Adds copies of recorded children beneath `parent_idx`.
+    fn replay_css_children(&mut self, children: Vec<RecordedCssStmt>, parent_idx: CssTreeIdx) {
         for child in children {
-            let stmt = match (*self.css_tree.get(child)).clone() {
-                Some(stmt) => stmt,
-                None => continue,
-            };
-
-            let new_child = self.css_tree.add_child(stmt, new_idx);
-            self.replay_css_children(child, new_child);
+            let child_idx = self.css_tree.add_child(child.stmt, parent_idx);
+            self.replay_css_children(child.children, child_idx);
         }
     }
 
@@ -813,14 +950,17 @@ impl<'a> Visitor<'a> {
         Ok(())
     }
 
-    /// Runs a stylesheet for `meta.load-css`.
+    /// Loads a stylesheet for `meta.load-css`.
     ///
-    /// This is [`Visitor::execute`] with two differences that are exactly what
-    /// `load-css` is for: the CSS lands where the `@include` was written rather
-    /// than at the root, and the module is not cached, because loading the same
-    /// file twice is meant to emit its CSS twice. Otherwise the loaded file
-    /// gets its own environment, so its variables and mixins do not leak into
-    /// the caller, and its `!default` variables are configured from `$with`.
+    /// This is [`Visitor::load_module`] in the keep-position mode `@import`
+    /// uses: the loaded file gets its own environment and its `!default`
+    /// variables are configured from `$with`, but its CSS lands where the
+    /// `@include` was written rather than at the root, so
+    /// `a {@include meta.load-css("other")}` emits `a b`. The module cache
+    /// takes part the way it does everywhere else -- the file executes once
+    /// and shares its state with `@use` of the same file, loading it again
+    /// replays the CSS it emitted the first time, and configuring an
+    /// already-loaded file is an error.
     pub(crate) fn load_css_module(
         &mut self,
         url: &str,
@@ -840,38 +980,13 @@ impl<'a> Visitor<'a> {
             return Ok(());
         }
 
-        let stylesheet = self.load_style_sheet(url, false, span)?;
+        let old_in_import_context = mem::replace(&mut self.in_import_context, true);
 
-        let canonical_url = self
-            .options
-            .fs
-            .canonicalize(&stylesheet.url)
-            .unwrap_or_else(|_| stylesheet.url.clone());
-
-        if self.active_modules.contains(&canonical_url) {
-            return Err(("Module loop: this module is already being loaded.", span).into());
-        }
-
-        self.active_modules.insert(canonical_url.clone());
-
-        let env = Environment::new();
-
-        let result = self.with_environment::<SassResult<()>, _>(env.new_closure(), |visitor| {
-            let old_configuration = mem::replace(&mut visitor.configuration, configuration);
-            let old_declaration_name = visitor.declaration_name.take();
-
-            // The enclosing style rule is deliberately left in place: the CSS
-            // the file produces is nested under whatever rule the `@include`
-            // sits in, so `a {@include meta.load-css("other")}` emits `a b`.
-            let result = visitor.visit_stylesheet(stylesheet);
-
-            visitor.declaration_name = old_declaration_name;
-            visitor.configuration = old_configuration;
-
-            result
+        let result = self.load_module(url.as_ref(), Some(configuration), true, span, |_, _, _| {
+            Ok(())
         });
 
-        self.active_modules.remove(&canonical_url);
+        self.in_import_context = old_in_import_context;
 
         result
     }
@@ -2245,6 +2360,7 @@ impl<'a> Visitor<'a> {
 
         if decl.is_guarded {
             if decl.namespace.is_none() && self.env.at_root() {
+                self.env.mark_variable_configurable(decl.name);
                 let var_override = (*self.configuration).borrow_mut().remove(decl.name);
                 if !matches!(
                     var_override,

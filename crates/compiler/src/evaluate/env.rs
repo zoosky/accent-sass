@@ -29,6 +29,11 @@ pub(crate) struct Environment {
     pub imported_modules: Mutable<Vec<Mutable<Module>>>,
     #[allow(clippy::type_complexity)]
     pub nested_forwarded_modules: Option<Mutable<Vec<Mutable<Vec<Mutable<Module>>>>>>,
+    /// The names declared `!default` at this environment's root -- the
+    /// variables a `with (...)` clause could have configured. Consulted when
+    /// a configuration reaches an already-loaded module, to tell a clause
+    /// that could never have applied from a genuine double configuration.
+    pub configurable_variables: Mutable<HashSet<Identifier>>,
 }
 
 impl Environment {
@@ -41,6 +46,7 @@ impl Environment {
             forwarded_modules: Arc::new(RefCell::new(Vec::new())),
             imported_modules: Arc::new(RefCell::new(Vec::new())),
             nested_forwarded_modules: None,
+            configurable_variables: Arc::new(RefCell::new(HashSet::new())),
         }
     }
 
@@ -53,6 +59,7 @@ impl Environment {
             forwarded_modules: Arc::clone(&self.forwarded_modules),
             imported_modules: Arc::clone(&self.imported_modules),
             nested_forwarded_modules: self.nested_forwarded_modules.as_ref().map(Arc::clone),
+            configurable_variables: Arc::clone(&self.configurable_variables),
         }
     }
 
@@ -73,6 +80,7 @@ impl Environment {
             forwarded_modules: Arc::new(RefCell::new(Vec::new())),
             imported_modules: Arc::clone(&self.imported_modules),
             nested_forwarded_modules: self.nested_forwarded_modules.as_ref().map(Arc::clone),
+            configurable_variables: Arc::clone(&self.configurable_variables),
         }
     }
 
@@ -359,6 +367,12 @@ impl Environment {
         }
 
         Ok(())
+    }
+
+    /// Records that a `!default` declaration at this environment's root made
+    /// `name` configurable.
+    pub fn mark_variable_configurable(&mut self, name: Identifier) {
+        (*self.configurable_variables).borrow_mut().insert(name);
     }
 
     pub fn insert_mixin(&mut self, name: Identifier, mixin: Mixin) {
