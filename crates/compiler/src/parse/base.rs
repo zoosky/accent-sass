@@ -9,6 +9,18 @@ pub(crate) trait BaseParser {
     fn toks(&self) -> &Lexer;
     fn toks_mut(&mut self) -> &mut Lexer;
 
+    /// Records that parsing has moved inside a pair of parentheses.
+    ///
+    /// Only the indented syntax cares: a newline ends a statement there, except
+    /// inside parentheses, where the syntax behaves like SCSS. Returns the
+    /// previous depth so a caller that may abandon the parse can restore it.
+    fn enter_parens(&mut self) -> usize {
+        0
+    }
+
+    /// Restores the depth returned by [`BaseParser::enter_parens`].
+    fn restore_parens(&mut self, _depth: usize) {}
+
     fn whitespace_without_comments(&mut self) {
         while matches!(
             self.toks().peek(),

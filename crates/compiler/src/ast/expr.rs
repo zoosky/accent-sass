@@ -9,7 +9,9 @@ use crate::{
     value::{CalculationName, Number},
 };
 
-use super::{ArgumentInvocation, AstSupportsCondition, Interpolation, InterpolationPart};
+use super::{
+    ArgumentInvocation, AstSupportsCondition, CssIfExpr, Interpolation, InterpolationPart,
+};
 
 /// Represented by the `if` function
 #[derive(Debug, Clone)]
@@ -58,6 +60,9 @@ pub enum AstExpr {
         name: CalculationName,
         args: Vec<Self>,
     },
+    /// The CSS `if()` function, as opposed to the Sass ternary in
+    /// [`AstExpr::If`]
+    CssIf(Arc<CssIfExpr>),
     Color(Arc<Color>),
     FunctionCall(FunctionCallExpr),
     If(Arc<Ternary>),

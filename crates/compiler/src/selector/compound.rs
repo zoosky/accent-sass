@@ -212,12 +212,78 @@ impl CompoundSelector {
     ///
     /// If no such selector can be produced, returns `None`.
     pub fn unify(self, other: Self) -> Option<Self> {
-        let mut components = other.components;
-        for simple in self.components {
-            components = simple.unify(std::mem::take(&mut components))?;
+        // A pseudo-element and the pseudo-classes written after it belong
+        // together at the end of the compound, so they are set aside and
+        // merged separately: unifying `.x` with `.y::scrollbar:horizontal`
+        // gives `.x.y::scrollbar:horizontal`, not `.x.y:horizontal::scrollbar`.
+        let (head_one, tail_one) = Self::split_at_pseudo_element(self.components);
+        let (head_two, tail_two) = Self::split_at_pseudo_element(other.components);
+
+        // The receiver's simple selectors keep their positions and the other
+        // compound's are merged into them, so `.c` unified with `.e` is `.c.e`
+        // rather than `.e.c`.
+        let mut components = head_one;
+        for simple in head_two {
+            components = if components.is_empty() {
+                vec![simple]
+            } else {
+                simple.unify(std::mem::take(&mut components))?
+            };
         }
 
+        components.extend(Self::unify_pseudo_element_tails(tail_one, tail_two)?);
+
         Some(Self { components })
+    }
+
+    /// Splits a compound into the part before its first pseudo-element and that
+    /// pseudo-element together with everything after it.
+    fn split_at_pseudo_element(
+        components: Vec<SimpleSelector>,
+    ) -> (Vec<SimpleSelector>, Vec<SimpleSelector>) {
+        match components
+            .iter()
+            .position(SimpleSelector::is_pseudo_element)
+        {
+            Some(idx) => {
+                let mut components = components;
+                let tail = components.split_off(idx);
+                (components, tail)
+            }
+            None => (components, Vec::new()),
+        }
+    }
+
+    /// Merges two pseudo-element tails.
+    ///
+    /// A compound may carry only one pseudo-element, so two tails unify only
+    /// when they name the same one; the pseudo-classes that follow are then
+    /// concatenated.
+    fn unify_pseudo_element_tails(
+        one: Vec<SimpleSelector>,
+        two: Vec<SimpleSelector>,
+    ) -> Option<Vec<SimpleSelector>> {
+        if one.is_empty() {
+            return Some(two);
+        }
+
+        if two.is_empty() {
+            return Some(one);
+        }
+
+        if one[0] != two[0] {
+            return None;
+        }
+
+        let mut result = one;
+
+        for simple in two.into_iter().skip(1) {
+            if !result.contains(&simple) {
+                result.push(simple);
+            }
+        }
+
+        Some(result)
     }
 
     /// Adds a `SimpleSelector::Parent` to the beginning of `compound`, or returns `None` if

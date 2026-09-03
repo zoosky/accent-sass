@@ -43,6 +43,26 @@ pub(crate) struct ValueParser<'a, 'c, P: StylesheetParser<'a>> {
     _a: PhantomData<&'a ()>,
 }
 
+/// Whether a condition contains a `sass()` expression at any depth.
+fn condition_contains_sass(condition: &CssIfCondition) -> bool {
+    match condition {
+        CssIfCondition::Sass(..) => true,
+        CssIfCondition::Else | CssIfCondition::Raw(..) => false,
+        CssIfCondition::Paren(inner) | CssIfCondition::Not(inner) => condition_contains_sass(inner),
+        CssIfCondition::And(operands) | CssIfCondition::Or(operands) => {
+            operands.iter().any(condition_contains_sass)
+        }
+    }
+}
+
+/// One term of a CSS `if()` condition, before it is known whether the term
+/// stands alone or is part of an opaque run.
+enum CssIfAtom {
+    Sass(AstExpr),
+    Paren(CssIfCondition),
+    Raw(Interpolation),
+}
+
 /// The calculation-only constants, matched case-insensitively.
 ///
 /// They are ordinary identifiers outside a calculation, so this lookup only
@@ -1173,6 +1193,10 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
 
         if let Some(plain) = plain {
             if plain == "if" && parser.toks().next_char_is('(') {
+                if ValueParser::looking_at_css_if(parser)? {
+                    return ValueParser::parse_css_if(parser, start);
+                }
+
                 let call_args = parser.parse_argument_invocation(false, false)?;
                 let span = call_args.span;
                 return Ok(AstExpr::If(Arc::new(Ternary(call_args))).span(span));
@@ -1640,6 +1664,10 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
         if let Some(calc) = calculation {
             Ok(calc)
         } else if lowercase == "if" {
+            if ValueParser::looking_at_css_if(parser)? {
+                return ValueParser::parse_css_if(parser, start);
+            }
+
             Ok(AstExpr::If(Arc::new(Ternary(
                 parser.parse_argument_invocation(false, false)?,
             )))
@@ -1784,6 +1812,530 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
             brackets: Brackets::None,
         })
         .span(span))
+    }
+
+    /// Decides between the CSS `if()` and the Sass ternary of the same name.
+    ///
+    /// The scanner is left where it started. The two forms are told apart the
+    /// way a reader tells them apart: the CSS form separates branches with `;`
+    /// and a condition from its value with `:`, while the ternary separates its
+    /// three arguments with `,`. Whichever of those appears first at the top
+    /// level of the argument list decides.
+    fn looking_at_css_if(parser: &mut P) -> SassResult<bool> {
+        debug_assert!(parser.toks().next_char_is('('));
+
+        let start = parser.toks().cursor();
+        let mut depth = 0_usize;
+        let mut result = false;
+
+        while let Some(tok) = parser.toks().peek() {
+            match tok.kind {
+                '(' | '[' | '{' => {
+                    depth += 1;
+                    parser.toks_mut().next();
+                }
+                ')' | ']' | '}' => {
+                    depth -= 1;
+                    parser.toks_mut().next();
+
+                    if depth == 0 {
+                        break;
+                    }
+                }
+                '"' | '\'' => {
+                    let quote = tok.kind;
+                    parser.toks_mut().next();
+
+                    while let Some(tok) = parser.toks().peek() {
+                        parser.toks_mut().next();
+
+                        if tok.kind == '\\' {
+                            parser.toks_mut().next();
+                        } else if tok.kind == quote {
+                            break;
+                        }
+                    }
+                }
+                // A `$name:` at the top level is a named argument of the Sass
+                // ternary, not a CSS branch condition.
+                '$' if depth == 1 => {
+                    parser.toks_mut().next();
+
+                    while let Some(tok) = parser.toks().peek() {
+                        if !tok.kind.is_alphanumeric() && !matches!(tok.kind, '-' | '_') {
+                            break;
+                        }
+
+                        parser.toks_mut().next();
+                    }
+
+                    let before_colon = parser.toks().cursor();
+                    parser.whitespace_without_comments();
+
+                    if parser.toks().next_char_is(':') {
+                        parser.toks_mut().next();
+                    } else {
+                        parser.toks_mut().set_cursor(before_colon);
+                    }
+                }
+                ':' | ';' if depth == 1 => {
+                    result = true;
+                    break;
+                }
+                ',' if depth == 1 => break,
+                _ => {
+                    parser.toks_mut().next();
+                }
+            }
+        }
+
+        parser.toks_mut().set_cursor(start);
+
+        Ok(result)
+    }
+
+    /// Parses `if(<condition>: <value>; ...)`.
+    fn parse_css_if(parser: &mut P, start: usize) -> SassResult<Spanned<AstExpr>> {
+        parser.expect_char('(')?;
+        let parens = parser.enter_parens();
+
+        let mut branches = Vec::new();
+
+        loop {
+            parser.whitespace()?;
+
+            if !branches.is_empty() && parser.toks().next_char_is(')') {
+                break;
+            }
+
+            let condition = ValueParser::parse_css_if_condition(parser, true)?;
+            parser.whitespace()?;
+            parser.expect_char(':')?;
+            parser.whitespace()?;
+
+            let value = ValueParser::parse_css_if_value(parser)?;
+
+            branches.push(CssIfBranch { condition, value });
+
+            parser.whitespace()?;
+
+            if !parser.scan_char(';') {
+                break;
+            }
+        }
+
+        parser.whitespace()?;
+        parser.expect_char(')')?;
+        parser.restore_parens(parens);
+
+        let span = parser.toks_mut().span_from(start);
+
+        Ok(AstExpr::CssIf(Arc::new(CssIfExpr { branches })).span(span))
+    }
+
+    /// Parses the value half of a branch: everything up to the `;` that starts
+    /// the next branch or the `)` that ends the function.
+    fn parse_css_if_value(parser: &mut P) -> SassResult<AstExpr> {
+        Ok(ValueParser::parse_expression(
+            parser,
+            Some(&|parser| {
+                Ok(matches!(
+                    parser.toks().peek(),
+                    Some(Token {
+                        kind: ';' | ')',
+                        ..
+                    })
+                ))
+            }),
+            false,
+            false,
+        )?
+        .node)
+    }
+
+    /// Parses a whole branch condition, including the `and`/`or` chain.
+    ///
+    /// CSS does not allow `and` and `or` to mix without parentheses, so once a
+    /// chain commits to one operator the other is a syntax error. `else` is a
+    /// whole condition on its own and is not allowed inside one, which is why
+    /// it is gated on `allow_else`.
+    fn parse_css_if_condition(parser: &mut P, allow_else: bool) -> SassResult<CssIfCondition> {
+        if allow_else && ValueParser::scan_css_if_keyword(parser, "else")? {
+            return Ok(CssIfCondition::Else);
+        }
+
+        if ValueParser::scan_css_if_keyword(parser, "not")? {
+            parser.whitespace()?;
+
+            // `not` takes a single term, not a chain: `not a and b` is a syntax
+            // error rather than `(not a) and b` or `not (a and b)`.
+            let (condition, ..) = ValueParser::css_if_atom_as_test(parser)?;
+
+            return Ok(CssIfCondition::Not(Box::new(condition)));
+        }
+
+        let mut tests = vec![ValueParser::parse_css_if_test(parser)?];
+        let mut operator = None;
+
+        loop {
+            let before = parser.toks().cursor();
+            parser.whitespace()?;
+
+            let next = if ValueParser::scan_css_if_keyword(parser, "and")? {
+                "and"
+            } else if ValueParser::scan_css_if_keyword(parser, "or")? {
+                "or"
+            } else {
+                parser.toks_mut().set_cursor(before);
+                break;
+            };
+
+            match operator {
+                None => operator = Some(next),
+                Some(seen) if seen == next => {}
+                Some(..) => return Err((r#"expected ":"."#, parser.toks().current_span()).into()),
+            }
+
+            parser.whitespace()?;
+            tests.push(ValueParser::parse_css_if_test(parser)?);
+        }
+
+        // A substitution sitting next to other terms could expand to anything,
+        // operators included, so Sass cannot tell which part of the surrounding
+        // chain its neighbours belong to. Mixing one with a `sass()` the
+        // compiler must resolve is therefore rejected rather than guessed at.
+        // Parentheses bound the ambiguity and make the combination legal again.
+        if tests.iter().any(|(_, is_raw_run, _)| *is_raw_run)
+            && tests.iter().any(|(_, _, has_sass)| *has_sass)
+        {
+            return Err((
+                "if() conditions with arbitrary substitutions may not contain sass() expressions.",
+                parser.toks().current_span(),
+            )
+                .into());
+        }
+
+        let mut conditions = tests.into_iter().map(|(condition, ..)| condition);
+
+        Ok(match operator {
+            None => conditions.next().unwrap(),
+            Some("and") => CssIfCondition::And(conditions.collect()),
+            Some(..) => CssIfCondition::Or(conditions.collect()),
+        })
+    }
+
+    /// Scans one of the condition keywords, but only where it really is a
+    /// keyword.
+    ///
+    /// `not(...)` is a function call, not the operator, and CSS rejects it
+    /// outright rather than silently reinterpreting it, so a keyword followed
+    /// immediately by `(` is an error.
+    fn scan_css_if_keyword(parser: &mut P, keyword: &str) -> SassResult<bool> {
+        let start = parser.toks().cursor();
+
+        if !parser.looking_at_identifier() {
+            return Ok(false);
+        }
+
+        let ident = parser.parse_identifier(false, false)?;
+
+        if !ident.eq_ignore_ascii_case(keyword) {
+            parser.toks_mut().set_cursor(start);
+            return Ok(false);
+        }
+
+        ValueParser::reject_keyword_call(parser, &ident)?;
+
+        Ok(true)
+    }
+
+    /// Rejects `not(`, `and(` and `or(`, which CSS treats as a mistake rather
+    /// than as a function call.
+    fn reject_keyword_call(parser: &mut P, ident: &str) -> SassResult<()> {
+        if parser.toks().next_char_is('(') {
+            return Err((
+                format!(r#"Whitespace is required between "{}" and "(""#, ident),
+                parser.toks().current_span(),
+            )
+                .into());
+        }
+
+        Ok(())
+    }
+
+    /// Parses one operand of a chain: either a single term or a run of terms
+    /// separated only by whitespace.
+    ///
+    /// Returns the condition along with whether it is such a run and whether it
+    /// contains a `sass()` expression anywhere, which is what the caller needs
+    /// to police the two of them appearing together.
+    fn parse_css_if_test(parser: &mut P) -> SassResult<(CssIfCondition, bool, bool)> {
+        let start = parser.toks().cursor();
+        let first = ValueParser::parse_css_if_atom(parser)?;
+
+        // A parenthesized condition is always complete in itself; nothing may
+        // run on from it.
+        if let CssIfAtom::Paren(condition) = first {
+            let has_sass = condition_contains_sass(&condition);
+            return Ok((CssIfCondition::Paren(Box::new(condition)), false, has_sass));
+        }
+
+        let mut has_sass = matches!(first, CssIfAtom::Sass(..));
+        let mut terms = 1;
+
+        loop {
+            let before = parser.toks().cursor();
+            parser.whitespace()?;
+
+            match parser.toks().peek() {
+                None
+                | Some(Token {
+                    kind: ':' | ';' | ')' | ',',
+                    ..
+                }) => {
+                    parser.toks_mut().set_cursor(before);
+                    break;
+                }
+                _ => {}
+            }
+
+            // An `and` or `or` here belongs to the enclosing chain.
+            let after_whitespace = parser.toks().cursor();
+            if ValueParser::peek_css_if_operator(parser)? {
+                parser.toks_mut().set_cursor(before);
+                break;
+            }
+            parser.toks_mut().set_cursor(after_whitespace);
+
+            match ValueParser::parse_css_if_atom(parser)? {
+                // A run of substitutions has no place for a parenthesized
+                // condition: `a (b) c` is not a condition Sass can read.
+                CssIfAtom::Paren(..) => {
+                    return Err((r#"expected ":"."#, parser.toks().current_span()).into())
+                }
+                CssIfAtom::Sass(..) => has_sass = true,
+                CssIfAtom::Raw(..) => {}
+            }
+
+            terms += 1;
+        }
+
+        if terms == 1 {
+            return Ok((
+                match first {
+                    CssIfAtom::Sass(expr) => CssIfCondition::Sass(Arc::new(expr)),
+                    CssIfAtom::Raw(interpolation) => CssIfCondition::Raw(Arc::new(interpolation)),
+                    CssIfAtom::Paren(..) => unreachable!("handled above"),
+                },
+                false,
+                has_sass,
+            ));
+        }
+
+        // Re-read the whole run as text so that it is emitted exactly as it was
+        // written, with only its interpolations resolved.
+        let end = parser.toks().cursor();
+        parser.toks_mut().set_cursor(start);
+        let raw = ValueParser::parse_css_if_raw_text(parser, end)?;
+
+        Ok((CssIfCondition::Raw(Arc::new(raw)), true, has_sass))
+    }
+
+    /// Parses exactly one term where a chain is not allowed, as after `not`.
+    fn css_if_atom_as_test(parser: &mut P) -> SassResult<(CssIfCondition, bool, bool)> {
+        Ok(match ValueParser::parse_css_if_atom(parser)? {
+            CssIfAtom::Sass(expr) => (CssIfCondition::Sass(Arc::new(expr)), false, true),
+            CssIfAtom::Raw(interpolation) => {
+                (CssIfCondition::Raw(Arc::new(interpolation)), false, false)
+            }
+            CssIfAtom::Paren(condition) => {
+                let has_sass = condition_contains_sass(&condition);
+                (CssIfCondition::Paren(Box::new(condition)), false, has_sass)
+            }
+        })
+    }
+
+    /// Whether the scanner is at an `and` or `or` that separates operands.
+    fn peek_css_if_operator(parser: &mut P) -> SassResult<bool> {
+        let start = parser.toks().cursor();
+
+        if !parser.looking_at_identifier() {
+            return Ok(false);
+        }
+
+        let ident = parser.parse_identifier(false, false)?;
+        let is_operator = ident.eq_ignore_ascii_case("and") || ident.eq_ignore_ascii_case("or");
+        parser.toks_mut().set_cursor(start);
+
+        Ok(is_operator)
+    }
+
+    /// Re-reads the source between the current position and `end` as an
+    /// interpolation, collapsing runs of whitespace to a single space so the
+    /// output is normalized the way Dart Sass normalizes it.
+    fn parse_css_if_raw_text(parser: &mut P, end: usize) -> SassResult<Interpolation> {
+        let mut buffer = Interpolation::new();
+        let mut pending_space = false;
+
+        while parser.toks().cursor() < end {
+            match parser.toks().peek() {
+                Some(Token { kind: '#', .. })
+                    if matches!(parser.toks().peek_n(1), Some(Token { kind: '{', .. })) =>
+                {
+                    if pending_space {
+                        buffer.add_char(' ');
+                        pending_space = false;
+                    }
+
+                    buffer.add_interpolation(parser.parse_single_interpolation()?);
+                }
+                Some(Token { kind, .. }) if kind.is_ascii_whitespace() => {
+                    pending_space = !buffer.is_empty();
+                    parser.toks_mut().next();
+                }
+                Some(Token { kind, .. }) => {
+                    if pending_space {
+                        buffer.add_char(' ');
+                        pending_space = false;
+                    }
+
+                    buffer.add_char(kind);
+                    parser.toks_mut().next();
+                }
+                None => break,
+            }
+        }
+
+        Ok(buffer)
+    }
+
+    /// Parses a single term of a condition.
+    fn parse_css_if_atom(parser: &mut P) -> SassResult<CssIfAtom> {
+        if parser.toks().next_char_is('(') {
+            parser.toks_mut().next();
+            parser.whitespace()?;
+            let condition = ValueParser::parse_css_if_condition(parser, false)?;
+            parser.whitespace()?;
+            parser.expect_char(')')?;
+            return Ok(CssIfAtom::Paren(condition));
+        }
+
+        let is_interpolation = matches!(parser.toks().peek(), Some(Token { kind: '#', .. }))
+            && matches!(parser.toks().peek_n(1), Some(Token { kind: '{', .. }));
+
+        if !is_interpolation && !parser.looking_at_identifier() {
+            return Err(("Expected identifier.", parser.toks().current_span()).into());
+        }
+
+        let name = parser.parse_interpolated_identifier()?;
+
+        if let Some(plain) = name.as_plain() {
+            if plain.eq_ignore_ascii_case("sass") {
+                parser.expect_char('(')?;
+                parser.whitespace()?;
+                let expr = ValueParser::parse_expression(
+                    parser,
+                    Some(&|parser| Ok(parser.toks().next_char_is(')'))),
+                    false,
+                    false,
+                )?;
+                parser.whitespace()?;
+                parser.expect_char(')')?;
+                return Ok(CssIfAtom::Sass(expr.node));
+            }
+
+            if matches!(
+                plain.to_ascii_lowercase().as_str(),
+                "not" | "and" | "or" | "else"
+            ) {
+                ValueParser::reject_keyword_call(parser, plain)?;
+            }
+
+            // A plain identifier that is not a function call is not a term.
+            if !parser.toks().next_char_is('(') {
+                return Err((r#"expected "("."#, parser.toks().current_span()).into());
+            }
+        }
+
+        // A bare interpolation stands on its own; anything else is a
+        // function-shaped term whose text the browser resolves.
+        if !parser.toks().next_char_is('(') {
+            return Ok(CssIfAtom::Raw(name));
+        }
+
+        parser.toks_mut().next();
+
+        let mut buffer = name;
+        buffer.add_char('(');
+        buffer.add_interpolation(ValueParser::parse_css_if_function_argument(parser)?);
+        parser.expect_char(')')?;
+        buffer.add_char(')');
+
+        Ok(CssIfAtom::Raw(buffer))
+    }
+
+    /// Reads the argument text of an opaque condition term, up to but not
+    /// including the `)` that closes it.
+    ///
+    /// The text is copied character for character rather than re-parsed, so
+    /// that whatever the author wrote reaches the browser unchanged -- an empty
+    /// `''` stays single-quoted instead of being re-quoted. Only interpolation
+    /// is resolved, including inside quoted strings, where Sass resolves it too.
+    fn parse_css_if_function_argument(parser: &mut P) -> SassResult<Interpolation> {
+        let mut buffer = Interpolation::new();
+        let mut brackets = Vec::new();
+        let mut quote = None;
+
+        while let Some(tok) = parser.toks().peek() {
+            match tok.kind {
+                '\\' => {
+                    buffer.add_char('\\');
+                    parser.toks_mut().next();
+
+                    if let Some(escaped) = parser.toks().peek() {
+                        buffer.add_char(escaped.kind);
+                        parser.toks_mut().next();
+                    }
+                }
+                '#' if matches!(parser.toks().peek_n(1), Some(Token { kind: '{', .. })) => {
+                    buffer.add_interpolation(parser.parse_single_interpolation()?);
+                }
+                '"' | '\'' => {
+                    match quote {
+                        Some(open) if open == tok.kind => quote = None,
+                        Some(..) => {}
+                        None => quote = Some(tok.kind),
+                    }
+
+                    buffer.add_char(tok.kind);
+                    parser.toks_mut().next();
+                }
+                _ if quote.is_some() => {
+                    buffer.add_char(tok.kind);
+                    parser.toks_mut().next();
+                }
+                '(' | '[' | '{' => {
+                    brackets.push(opposite_bracket(tok.kind));
+                    buffer.add_char(tok.kind);
+                    parser.toks_mut().next();
+                }
+                ')' | ']' | '}' => {
+                    if brackets.last() != Some(&tok.kind) {
+                        break;
+                    }
+
+                    brackets.pop();
+                    buffer.add_char(tok.kind);
+                    parser.toks_mut().next();
+                }
+                _ => {
+                    buffer.add_char(tok.kind);
+                    parser.toks_mut().next();
+                }
+            }
+        }
+
+        Ok(buffer)
     }
 
     /// Parses the parenthesized argument list of a CSS math function.
