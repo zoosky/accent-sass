@@ -1,3 +1,4 @@
+use crate::ast::SassMixin;
 use std::{
     cell::RefCell,
     collections::{BTreeMap, HashSet},
@@ -417,10 +418,37 @@ impl Module {
         }
     }
 
-    pub fn insert_builtin_mixin(&mut self, name: &'static str, mixin: BuiltinMixin) {
+    pub fn insert_builtin_mixin(
+        &mut self,
+        name: &'static str,
+        mixin: BuiltinMixin,
+        accepts_content: bool,
+    ) {
         let scope = self.scope();
+        let ident: Identifier = name.into();
 
-        scope.mixins.insert(name.into(), Mixin::Builtin(mixin));
+        scope
+            .mixins
+            .insert(ident, Mixin::Builtin(mixin, ident, accepts_content));
+    }
+
+    /// The module's mixins as a map from name to first-class mixin, for
+    /// `meta.module-mixins`.
+    pub fn mixins(&self, span: Span) -> SassMap {
+        SassMap::new_with(
+            self.scope()
+                .mixins
+                .iter()
+                .into_iter()
+                .filter(|(key, _)| !key.as_str().starts_with('-'))
+                .map(|(key, value)| {
+                    (
+                        Value::String(key.to_string(), QuoteKind::Quoted).span(span),
+                        Value::MixinRef(SassMixin::new(value)),
+                    )
+                })
+                .collect::<Vec<_>>(),
+        )
     }
 
     pub fn insert_builtin_var(&mut self, name: &'static str, value: Value) {

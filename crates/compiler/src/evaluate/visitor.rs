@@ -84,6 +84,16 @@ impl UserDefinedCallable for AstMixin {
     }
 }
 
+impl UserDefinedCallable for Arc<AstMixin> {
+    fn name(&self) -> Identifier {
+        self.name
+    }
+
+    fn arguments(&self) -> &ArgumentDeclaration {
+        &self.args
+    }
+}
+
 impl UserDefinedCallable for Arc<CallableContentBlock> {
     fn name(&self) -> Identifier {
         Identifier::from("@content")
@@ -718,6 +728,69 @@ impl<'a> Visitor<'a> {
         callback(self, module, stylesheet)?;
 
         Ok(())
+    }
+
+    /// Runs a stylesheet for `meta.load-css`.
+    ///
+    /// This is [`Visitor::execute`] with two differences that are exactly what
+    /// `load-css` is for: the CSS lands where the `@include` was written rather
+    /// than at the root, and the module is not cached, because loading the same
+    /// file twice is meant to emit its CSS twice. Otherwise the loaded file
+    /// gets its own environment, so its variables and mixins do not leak into
+    /// the caller, and its `!default` variables are configured from `$with`.
+    pub(crate) fn load_css_module(
+        &mut self,
+        url: &str,
+        configuration: Rc<RefCell<Configuration>>,
+        span: Span,
+    ) -> SassResult<()> {
+        if url.starts_with("sass:") {
+            if !(*configuration).borrow().is_empty() {
+                return Err((
+                    format!("Built-in module {} can't be configured.", url),
+                    span,
+                )
+                    .into());
+            }
+
+            // A built-in module has no CSS of its own to emit.
+            return Ok(());
+        }
+
+        let stylesheet = self.load_style_sheet(url, false, span)?;
+
+        let canonical_url = self
+            .options
+            .fs
+            .canonicalize(&stylesheet.url)
+            .unwrap_or_else(|_| stylesheet.url.clone());
+
+        if self.active_modules.contains(&canonical_url) {
+            return Err(("Module loop: this module is already being loaded.", span).into());
+        }
+
+        self.active_modules.insert(canonical_url.clone());
+
+        let env = Environment::new();
+
+        let result = self.with_environment::<SassResult<()>, _>(env.new_closure(), |visitor| {
+            let old_configuration = mem::replace(&mut visitor.configuration, configuration);
+            let old_declaration_name = visitor.declaration_name.take();
+
+            // The enclosing style rule is deliberately left in place: the CSS
+            // the file produces is nested under whatever rule the `@include`
+            // sits in, so `a {@include meta.load-css("other")}` emits `a b`.
+            let result = visitor.visit_stylesheet(stylesheet);
+
+            visitor.declaration_name = old_declaration_name;
+            visitor.configuration = old_configuration;
+
+            result
+        });
+
+        self.active_modules.remove(&canonical_url);
+
+        result
     }
 
     fn visit_use_rule(&mut self, use_rule: AstUseRule) -> SassResult<()> {
@@ -1733,13 +1806,24 @@ impl<'a> Visitor<'a> {
             .get_mixin(include_stmt.name, include_stmt.namespace)?;
 
         match mixin {
-            Mixin::Builtin(mixin) => {
-                if include_stmt.content.is_some() {
+            Mixin::Builtin(mixin, _, accepts_content) => {
+                if include_stmt.content.is_some() && !accepts_content {
                     return Err(("Mixin doesn't accept a content block.", include_stmt.span).into());
                 }
 
                 let args = self.eval_args(include_stmt.args, include_stmt.name.span)?;
-                mixin(args, self)?;
+
+                // `meta.apply` forwards the caller's content block to the mixin
+                // it applies, so a builtin that accepts content needs it set
+                // the same way a user-defined one does.
+                let callable_content = include_stmt.content.map(|content| {
+                    Arc::new(CallableContentBlock {
+                        content,
+                        env: self.env.new_closure(),
+                    })
+                });
+
+                self.with_content(callable_content, |visitor| mixin(args, visitor))?;
 
                 Ok(None)
             }
@@ -1767,7 +1851,7 @@ impl<'a> Visitor<'a> {
                     include_stmt.name.span,
                     |mixin, visitor| {
                         visitor.with_content(callable_content, |visitor| {
-                            for stmt in mixin.body {
+                            for stmt in mixin.body.iter().cloned() {
                                 let result = visitor.visit_stmt(stmt)?;
                                 debug_assert!(result.is_none());
                             }
@@ -1783,10 +1867,56 @@ impl<'a> Visitor<'a> {
         }
     }
 
+    /// Includes a first-class mixin with already-evaluated arguments.
+    ///
+    /// This is the body of `meta.apply`. The `@content` block currently in
+    /// scope is the one `apply` itself was given, and it is forwarded to the
+    /// mixin being applied.
+    pub(crate) fn apply_mixin(
+        &mut self,
+        mixin: Mixin,
+        args: ArgumentResult,
+        span: Span,
+    ) -> SassResult<()> {
+        match mixin {
+            Mixin::Builtin(mixin, ..) => mixin(args, self),
+            Mixin::UserDefined(mixin, env) => {
+                let content = self.env.content.as_ref().map(Arc::clone);
+
+                if content.is_some() && !mixin.has_content {
+                    return Err(("Mixin doesn't accept a content block.", span).into());
+                }
+
+                let old_in_mixin = self.flags.in_mixin();
+                self.flags.set(ContextFlags::IN_MIXIN, true);
+
+                let result = self.run_user_defined_callable::<_, (), _>(
+                    MaybeEvaledArguments::Evaled(args),
+                    mixin,
+                    &env,
+                    span,
+                    |mixin, visitor| {
+                        visitor.with_content(content, |visitor| {
+                            for stmt in mixin.body.iter().cloned() {
+                                let result = visitor.visit_stmt(stmt)?;
+                                debug_assert!(result.is_none());
+                            }
+                            Ok(())
+                        })
+                    },
+                );
+
+                self.flags.set(ContextFlags::IN_MIXIN, old_in_mixin);
+
+                result
+            }
+        }
+    }
+
     fn visit_mixin_decl(&mut self, mixin: AstMixin) {
         self.env.insert_mixin(
             mixin.name,
-            Mixin::UserDefined(mixin, self.env.new_closure()),
+            Mixin::UserDefined(Arc::new(mixin), self.env.new_closure()),
         );
     }
 

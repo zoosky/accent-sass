@@ -3,6 +3,7 @@ use std::{cmp::Ordering, sync::Arc};
 use codemap::{Span, Spanned};
 
 use crate::{
+    ast::{Mixin, SassMixin},
     color::Color,
     common::{BinaryOp, Brackets, ListSeparator, QuoteKind},
     error::SassResult,
@@ -42,6 +43,8 @@ pub enum Value {
     ArgList(ArgList),
     /// Returned by `get-function()`
     FunctionRef(Box<SassFunction>),
+    /// A first-class mixin, from `meta.get-mixin` or `meta.module-mixins`
+    MixinRef(SassMixin),
     Calculation(SassCalculation),
 }
 
@@ -78,6 +81,13 @@ impl PartialEq for Value {
             Value::Null => matches!(other, Value::Null),
             Value::True => matches!(other, Value::True),
             Value::False => matches!(other, Value::False),
+            Value::MixinRef(mixin1) => {
+                if let Value::MixinRef(mixin2) = other {
+                    mixin1 == mixin2
+                } else {
+                    false
+                }
+            }
             Value::FunctionRef(fn1) => {
                 if let Value::FunctionRef(fn2) = other {
                     fn1 == fn2
@@ -138,6 +148,22 @@ impl Value {
         match self {
             Value::Dimension(n) => Ok(n),
             _ => Err((format!("{} is not a number.", self.inspect(span)?), span).into()),
+        }
+    }
+
+    /// Unwraps a first-class mixin, or reports what was passed instead.
+    pub(crate) fn assert_mixin(&self, name: &str, span: Span) -> SassResult<&Mixin> {
+        match self {
+            Value::MixinRef(mixin) => Ok(mixin.inner()),
+            _ => Err((
+                format!(
+                    "${name}: {} is not a mixin reference.",
+                    self.clone().inspect(span)?,
+                    name = name,
+                ),
+                span,
+            )
+                .into()),
         }
     }
 
@@ -269,6 +295,7 @@ impl Value {
             Value::Dimension(..) => "number",
             Value::List(..) => "list",
             Value::FunctionRef(..) => "function",
+            Value::MixinRef(..) => "mixin",
             Value::ArgList(..) => "arglist",
             Value::True | Value::False => "bool",
             Value::Null => "null",
