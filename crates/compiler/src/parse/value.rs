@@ -1897,6 +1897,7 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
     /// Parses `if(<condition>: <value>; ...)`.
     fn parse_css_if(parser: &mut P, start: usize) -> SassResult<Spanned<AstExpr>> {
         parser.expect_char('(')?;
+        let parens = parser.enter_parens();
 
         let mut branches = Vec::new();
 
@@ -1925,6 +1926,7 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
 
         parser.whitespace()?;
         parser.expect_char(')')?;
+        parser.restore_parens(parens);
 
         let span = parser.toks_mut().span_from(start);
 

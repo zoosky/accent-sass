@@ -1317,7 +1317,13 @@ impl<'a> Serializer<'a> {
     }
 
     fn write_map_element(&mut self, value: &Value, span: Span) -> SassResult<()> {
-        let needs_parens = matches!(value, Value::List(_, ListSeparator::Comma, Brackets::None));
+        // An argument list is a comma-separated list too, so it needs the same
+        // parentheses to keep the map unambiguous: `(positional: (1, 2))`, not
+        // `(positional: 1, 2)`.
+        let needs_parens = matches!(
+            value,
+            Value::List(_, ListSeparator::Comma, Brackets::None) | Value::ArgList(..)
+        );
 
         if needs_parens {
             self.buffer.push(b'(');
