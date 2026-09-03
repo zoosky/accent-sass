@@ -18,7 +18,8 @@ fn basic_forward() {
     tempfile!("basic_forward__a.scss", r#"$a: red;"#);
     assert_eq!(
         "a {\n  color: red;\n}\n",
-        &grass::from_string(input.to_string(), &grass::Options::default()).expect(input)
+        &accent_sass::from_string(input.to_string(), &accent_sass::Options::default())
+            .expect(input)
     );
 }
 
@@ -41,7 +42,8 @@ fn basic_forward_with_configuration() {
     );
     assert_eq!(
         "a {\n  color: green;\n}\n",
-        &grass::from_string(input.to_string(), &grass::Options::default()).expect(input)
+        &accent_sass::from_string(input.to_string(), &accent_sass::Options::default())
+            .expect(input)
     );
 }
 
@@ -94,7 +96,8 @@ fn can_redeclare_forwarded_upstream_vars() {
     );
     assert_eq!(
         "a {\n  color: upstream;\n  color: midstream;\n}\n",
-        &grass::from_string(input.to_string(), &grass::Options::default()).expect(input)
+        &accent_sass::from_string(input.to_string(), &accent_sass::Options::default())
+            .expect(input)
     );
 }
 
@@ -119,7 +122,8 @@ fn through_forward_with_as() {
 
     assert_eq!(
         "c {\n  d: configured;\n}\n",
-        &grass::from_string(input.to_string(), &grass::Options::default().fs(&fs)).expect(input)
+        &accent_sass::from_string(input.to_string(), &accent_sass::Options::default().fs(&fs))
+            .expect(input)
     );
 }
 #[test]
@@ -150,7 +154,8 @@ fn through_forward_with_unconfigured() {
 
     assert_eq!(
         "c {\n  a: from downstream;\n  b: from midstream;\n}\n",
-        &grass::from_string(input.to_string(), &grass::Options::default().fs(&fs)).expect(input)
+        &accent_sass::from_string(input.to_string(), &accent_sass::Options::default().fs(&fs))
+            .expect(input)
     );
 }
 
@@ -178,7 +183,8 @@ fn member_visibility_variable_declaration() {
 
     assert_eq!(
         "b {\n  c: new value;\n}\n",
-        &grass::from_string(input.to_string(), &grass::Options::default().fs(&fs)).expect(input)
+        &accent_sass::from_string(input.to_string(), &accent_sass::Options::default().fs(&fs))
+            .expect(input)
     );
 }
 
@@ -205,7 +211,8 @@ fn member_import_precedence_top_level() {
 
     assert_eq!(
         "b {\n  c: in-upstream;\n}\n",
-        &grass::from_string(input.to_string(), &grass::Options::default().fs(&fs)).expect(input)
+        &accent_sass::from_string(input.to_string(), &accent_sass::Options::default().fs(&fs))
+            .expect(input)
     );
 }
 
@@ -233,7 +240,8 @@ fn member_as_function() {
 
     assert_eq!(
         "a {\n  b: e;\n}\n",
-        &grass::from_string(input.to_string(), &grass::Options::default().fs(&fs)).expect(input)
+        &accent_sass::from_string(input.to_string(), &accent_sass::Options::default().fs(&fs))
+            .expect(input)
     );
 }
 
@@ -261,7 +269,8 @@ fn member_as_mixin() {
 
     assert_eq!(
         "c {\n  d: e;\n}\n",
-        &grass::from_string(input.to_string(), &grass::Options::default().fs(&fs)).expect(input)
+        &accent_sass::from_string(input.to_string(), &accent_sass::Options::default().fs(&fs))
+            .expect(input)
     );
 }
 
@@ -285,7 +294,8 @@ fn member_as_variable_use() {
 
     assert_eq!(
         "a {\n  b: e;\n}\n",
-        &grass::from_string(input.to_string(), &grass::Options::default().fs(&fs)).expect(input)
+        &accent_sass::from_string(input.to_string(), &accent_sass::Options::default().fs(&fs))
+            .expect(input)
     );
 }
 
@@ -313,7 +323,8 @@ fn member_as_variable_assignment_toplevel() {
 
     assert_eq!(
         "b {\n  c: new value;\n}\n",
-        &grass::from_string(input.to_string(), &grass::Options::default().fs(&fs)).expect(input)
+        &accent_sass::from_string(input.to_string(), &accent_sass::Options::default().fs(&fs))
+            .expect(input)
     );
 }
 
@@ -330,7 +341,7 @@ fn forward_module_with_error() {
     assert_err!(
         input,
         r#"Error: Undefined operation "1 + red"."#,
-        grass::Options::default().fs(&fs)
+        accent_sass::Options::default().fs(&fs)
     );
 }
 
@@ -359,7 +370,8 @@ fn use_with_multi_load_forward() {
 
     assert_eq!(
         "b {\n  c: configured;\n}\n",
-        &grass::from_string(input.to_string(), &grass::Options::default().fs(&fs)).expect(input)
+        &accent_sass::from_string(input.to_string(), &accent_sass::Options::default().fs(&fs))
+            .expect(input)
     );
 }
 
@@ -392,7 +404,8 @@ fn forward_member_import_precedence_nested() {
 
     assert_eq!(
         "b {\n  c: in-upstream;\n}\n",
-        &grass::from_string(input.to_string(), &grass::Options::default().fs(&fs)).expect(input)
+        &accent_sass::from_string(input.to_string(), &accent_sass::Options::default().fs(&fs))
+            .expect(input)
     );
 }
 
@@ -426,7 +439,8 @@ fn forward_with_through_forward_hide() {
 
     assert_eq!(
         "b {\n  c: configured;\n}\n",
-        &grass::from_string(input.to_string(), &grass::Options::default().fs(&fs)).expect(input)
+        &accent_sass::from_string(input.to_string(), &accent_sass::Options::default().fs(&fs))
+            .expect(input)
     );
 }
 
@@ -460,7 +474,8 @@ fn forward_with_through_forward_show() {
 
     assert_eq!(
         "b {\n  c: configured;\n}\n",
-        &grass::from_string(input.to_string(), &grass::Options::default().fs(&fs)).expect(input)
+        &accent_sass::from_string(input.to_string(), &accent_sass::Options::default().fs(&fs))
+            .expect(input)
     );
 }
 
@@ -497,7 +512,8 @@ fn import_forwarded_first_no_use() {
 
     assert_eq!(
         "a {\n  b: value;\n}\n",
-        &grass::from_string(input.to_string(), &grass::Options::default().fs(&fs)).expect(input)
+        &accent_sass::from_string(input.to_string(), &accent_sass::Options::default().fs(&fs))
+            .expect(input)
     );
 }
 
@@ -531,7 +547,8 @@ fn forward_same_module_with_and_without_prefix() {
 
     assert_eq!(
         "c {\n  d: e;\n}\n",
-        &grass::from_string(input.to_string(), &grass::Options::default().fs(&fs)).expect(input)
+        &accent_sass::from_string(input.to_string(), &accent_sass::Options::default().fs(&fs))
+            .expect(input)
     );
 }
 

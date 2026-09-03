@@ -328,7 +328,7 @@ test!(
     "a {\n  color: calc(\\));\n}\n"
 );
 // Deliberately differs from dart-sass 1.103.1, which reports `expected ")"`.
-// grass lists every token that could continue the list, a comma included, since
+// accent-sass lists every token that could continue the list, a comma included, since
 // its calculation parser puts no upper bound on the argument count.
 error!(
     nothing_after_last_arg,

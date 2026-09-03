@@ -24,7 +24,8 @@ fn importing_a_forwarding_file_twice_emits_css_twice() {
     tempfile!("_ic_twice.scss", "$a: original !default;\nb {c: $a}");
     assert_eq!(
         "b {\n  c: configured;\n}\n\nb {\n  c: configured;\n}\n",
-        &grass::from_string(input.to_string(), &grass::Options::default()).expect(input)
+        &accent_sass::from_string(input.to_string(), &accent_sass::Options::default())
+            .expect(input)
     );
 }
 
@@ -44,7 +45,8 @@ d {
     tempfile!("_ic_still.scss", "$a: original !default;\nb {c: $a}");
     assert_eq!(
         "b {\n  c: original;\n}\n\nb {\n  c: original;\n}\n\nd {\n  e: changed;\n}\n",
-        &grass::from_string(input.to_string(), &grass::Options::default()).expect(input)
+        &accent_sass::from_string(input.to_string(), &accent_sass::Options::default())
+            .expect(input)
     );
 }
 
@@ -62,7 +64,8 @@ fn forwarded_variable_configures_a_later_import() {
     tempfile!("_ic_upstream.scss", "$a: original !default;\nb {c: $a}");
     assert_eq!(
         "b {\n  c: configured;\n}\n",
-        &grass::from_string(input.to_string(), &grass::Options::default()).expect(input)
+        &accent_sass::from_string(input.to_string(), &accent_sass::Options::default())
+            .expect(input)
     );
 }
 
@@ -78,6 +81,7 @@ fn nested_import_keeps_the_enclosing_rule() {
     tempfile!("_ic_nested_up.scss", "$a: original !default;\nb {c: $a}");
     assert_eq!(
         "a b {\n  c: configured;\n}\n",
-        &grass::from_string(input.to_string(), &grass::Options::default()).expect(input)
+        &accent_sass::from_string(input.to_string(), &accent_sass::Options::default())
+            .expect(input)
     );
 }

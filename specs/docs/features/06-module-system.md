@@ -31,7 +31,7 @@ tests across `use/comment` and `forward/comment`.
 ### Missing error strictness
 
 `use/error` (17) and `forward/error` (20) are mostly "expected test to
-fail but it did not": grass accepts member collisions, invalid
+fail but it did not": accent-sass accepts member collisions, invalid
 configurations, bad `show`/`hide` lists and namespace clashes that
 dart-sass rejects.
 

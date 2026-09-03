@@ -14,7 +14,7 @@ requests.
 
 `crates/compiler/src/builtin/modules/meta.rs` registers the module's
 functions at lines 168-184. `get-mixin`, `module-mixins`, `apply` and
-`accepts-content` are absent, and grass has no mixin value type — the
+`accepts-content` are absent, and accent-sass has no mixin value type — the
 `Value` enum in `crates/compiler/src/value/mod.rs` has `SassFunction`
 support but nothing equivalent for mixins.
 
@@ -55,7 +55,7 @@ dart-sass provides:
 ### Current behavior
 
 Almost all 53 `load_css` failures are "expected test to fail but it did
-not": grass accepts configurations and load patterns dart-sass rejects.
+not": accent-sass accepts configurations and load patterns dart-sass rejects.
 
 ### Reference behavior
 

@@ -4,7 +4,7 @@ Unlocks 57 sass-spec tests under `spec/values/calculation` that the
 roadmap's standard flags never count: 22 fail only on a missing
 deprecation warning (`--ignore-warning-diffs`) and 35 only on the wording
 of an error (`--ignore-error-diffs`). Measured on 2026-09-03 against the
-`zoosky/grass` #12 head (`4946548`), the pinned sass-spec revision
+`zoosky/accent-sass` #12 head (`4946548`), the pinned sass-spec revision
 `4a9eea66`, and the dart-sass 1.103.1 binary:
 
 | flags | failures |
@@ -24,11 +24,11 @@ against current Dart Sass.
 
 ### Current behavior
 
-grass emits no deprecation warnings. The compiler crate contains no
+accent-sass emits no deprecation warnings. The compiler crate contains no
 `DEPRECATION WARNING` string, and none of the five deprecations the
 calculation tests expect is implemented anywhere. Every one of the 22
 warning failures has the same diff: dart-sass prints a warning on
-standard error, grass prints nothing.
+standard error, accent-sass prints nothing.
 
 ### Reference behavior
 
@@ -79,11 +79,11 @@ warning alone fires on every legacy `/` division in every stylesheet.
 
 ### Current behavior
 
-35 tests fail only because grass's error message differs from
+35 tests fail only because accent-sass's error message differs from
 dart-sass's on the first line, which is what `--trim-errors` compares.
 Six families:
 
-| count | dart-sass | grass | tests |
+| count | dart-sass | accent-sass | tests |
 |---:|---|---|---|
 | 17 | `This operation can't be used in a calculation.` | `This expression can't be used in a calculation.` (16) and `expected "+", "-", "*", "/", ",", or ")".` (1) | every `<function>/error/sass_script`, `calc-size/error/sass_script`, `calc/error/syntax/unknown_operator` |
 | 11 | `1Q and 1deg are incompatible.` | `1q and 1deg are incompatible.` | `calc/error/known_incompatible/length/q/*` |

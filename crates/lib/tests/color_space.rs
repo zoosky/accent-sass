@@ -529,13 +529,13 @@ test!(
     compressed_picks_shorter_of_rgb_and_hsl,
     "@use \"sass:color\";\na {\n  color: color.invert(rgba(0, 0, 0, 0.5), 30%, $space: rgb);\n}\n",
     "a{color:hsla(0,0%,30%,.5)}",
-    grass::Options::default().style(grass::OutputStyle::Compressed)
+    accent_sass::Options::default().style(accent_sass::OutputStyle::Compressed)
 );
 test!(
     compressed_out_of_gamut_is_hsl,
     "a {\n  color: hsl(120 50% 150%);\n}\n",
     "a{color:hsl(120,50%,150%)}",
-    grass::Options::default().style(grass::OutputStyle::Compressed)
+    accent_sass::Options::default().style(accent_sass::OutputStyle::Compressed)
 );
 
 // ---------------------------------------------------------------------------
@@ -561,7 +561,7 @@ test!(
     missing_hue_compressed,
     "@use \"sass:color\";\na {\n  color: color.invert(hsla(0 0% 50% / 0.4));\n}\n",
     "a{color:hsl(none 0% 50%/.4)}",
-    grass::Options::default().style(grass::OutputStyle::Compressed)
+    accent_sass::Options::default().style(accent_sass::OutputStyle::Compressed)
 );
 test!(
     missing_hue_survives_lightness_adjust,

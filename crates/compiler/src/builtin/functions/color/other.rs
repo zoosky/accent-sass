@@ -305,7 +305,7 @@ pub(crate) fn same(mut args: ArgumentResult, _: &mut Visitor) -> SassResult<Valu
 
 /// Picks the legacy space to operate in when `color.adjust()` and friends
 /// are called without `$space`, from the channel keywords that were
-/// passed. Dart Sass looks at the keywords in argument order; grass keeps
+/// passed. Dart Sass looks at the keywords in argument order; accent-sass keeps
 /// named arguments sorted by name, so for a (mixed, always erroring)
 /// keyword set the space named in the error can differ from Dart Sass's.
 fn sniff_legacy_color_space(keywords: &[String]) -> Option<ColorSpace> {

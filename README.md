@@ -1,4 +1,4 @@
-# grass
+# accent-sass
 
 This crate aims to provide a high level interface for compiling [Sass](https://sass-lang.com/documentation/) into
 plain CSS. It offers a very limited API, currently exposing only 2 functions.
@@ -10,24 +10,24 @@ This crate aims to achieve complete feature parity with the `dart-sass` referenc
 implementation. A deviation from the `dart-sass` implementation can be considered
 a bug except for in the case of error messages and error spans.
 
-[Documentation](https://docs.rs/grass/)  
-[crates.io](https://crates.io/crates/grass)
+This fork is not published to crates.io. Depend on it by git revision:
+[zoosky/accent-sass](https://github.com/zoosky/accent-sass).
 
 ## Status
 
-`grass` has reached a stage where one can be quite confident in its output. For the average user there should not be perceptible differences from `dart-sass`.
+`accent-sass` has reached a stage where one can be quite confident in its output. For the average user there should not be perceptible differences from `dart-sass`.
 
-Every commit of `grass` is tested against bootstrap v5.0.2, and every release is tested against the last 2,500 commits of bootstrap's `main` branch.
+Every commit of `accent-sass` is tested against bootstrap v5.0.2, and every release is tested against the last 2,500 commits of bootstrap's `main` branch.
 
-That said, there are a number of known missing features and bugs. The rough edges of `grass` largely include `@forward` and more complex uses of `@use`. We support basic usage of these rules, but more advanced features such as `@import`ing modules containing `@forward` with prefixes may not behave as expected.
+That said, there are a number of known missing features and bugs. The rough edges of `accent-sass` largely include `@forward` and more complex uses of `@use`. We support basic usage of these rules, but more advanced features such as `@import`ing modules containing `@forward` with prefixes may not behave as expected.
 
 All known missing features and bugs are tracked in [#19](https://github.com/connorskees/grass/issues/19).
 
-`grass` is not a drop-in replacement for `libsass` and does not intend to be. If you are upgrading to `grass` from `libsass`, you may have to make modifications to your stylesheets, though these changes should not differ from those you would have to make if upgrading to `dart-sass`.
+`accent-sass` is not a drop-in replacement for `libsass` and does not intend to be. If you are upgrading to `accent-sass` from `libsass`, you may have to make modifications to your stylesheets, though these changes should not differ from those you would have to make if upgrading to `dart-sass`.
 
 ## Performance
 
-`grass` is benchmarked against `dart-sass` and `sassc` (`libsass`) [here](https://github.com/connorskees/sass-perf). In general, `grass` appears to be ~2x faster than `dart-sass` and ~1.7x faster than `sassc`.
+`accent-sass` is benchmarked against `dart-sass` and `sassc` (`libsass`) [here](https://github.com/connorskees/sass-perf). In general, `accent-sass` appears to be ~2x faster than `dart-sass` and ~1.7x faster than `sassc`.
 
 ## Cargo Features
 
@@ -41,12 +41,12 @@ All known missing features and bugs are tracked in [#19](https://github.com/conn
 
 ### macro
 
-(disabled by default): enable the macro `grass::include!` for compiling Sass to
+(disabled by default): enable the macro `accent_sass::include!` for compiling Sass to
 CSS at compile time
 
 ### nightly
 
-(disabled by default): currently only used by `grass::include!` to enable 
+(disabled by default): currently only used by `accent_sass::include!` to enable 
 [proc_macro::tracked_path](https://github.com/rust-lang/rust/issues/99515)
 
 ## Testing
@@ -63,10 +63,10 @@ Having said that, to run the official test suite,
 
 ```bash
 # This script expects node >=v14.14.0. Check version with `node --version`
-git clone https://github.com/connorskees/grass --recursive
-cd grass && cargo b --release
+git clone https://github.com/zoosky/accent-sass --recursive
+cd accent-sass && cargo b --release
 cd sass-spec && npm install
-npm run sass-spec -- --impl=dart-sass --command '../target/release/grass'
+npm run sass-spec -- --impl=dart-sass --command '../target/release/accent-sass'
 ```
 
 The spec runner does not work on Windows.
@@ -76,7 +76,7 @@ output and error messages -- which is how the numbers below are measured --
 pass the runner's leniency flags:
 
 ```bash
-npm run sass-spec -- --impl=dart-sass --command '../target/release/grass' \
+npm run sass-spec -- --impl=dart-sass --command '../target/release/accent-sass' \
   --trim-errors --ignore-warning-diffs --ignore-error-diffs
 ```
 
@@ -107,7 +107,7 @@ or to error messages.
 
 ## Versioning
 
-The minimum supported rust version (MSRV) of `grass` is `1.70.0`. An increase to the MSRV will correspond with a minor version bump. The current MSRV is not a hard minimum, but future bugfix
-versions of `grass` are not guaranteed to work on versions prior to this.
+The minimum supported rust version (MSRV) of `accent-sass` is `1.70.0`. An increase to the MSRV will correspond with a minor version bump. The current MSRV is not a hard minimum, but future bugfix
+versions of `accent-sass` are not guaranteed to work on versions prior to this.
 
-`grass` currently targets `dart-sass` version `1.103.1`. An increase to this number will correspond to either a minor or bugfix version bump, depending on the changes.
+`accent-sass` currently targets `dart-sass` version `1.103.1`. An increase to this number will correspond to either a minor or bugfix version bump, depending on the changes.

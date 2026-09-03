@@ -52,7 +52,7 @@ jobs:
 
   # Compiles Bootstrap with both engines and reports how far apart they are.
   # Advisory: this fork does not reach exact byte equality across a whole
-  # framework -- what remains is grass's own rule-grouping behaviour, which
+  # framework -- what remains is accent-sass's own rule-grouping behaviour, which
   # predates this fork -- so the job prints the delta rather than gating.
   bootstrap:
     continue-on-error: true
@@ -81,11 +81,11 @@ jobs:
 
       - name: Compare output
         run: |
-          ./target/debug/grass bootstrap/scss/bootstrap.scss > grass-output.css
+          ./target/debug/accent-sass bootstrap/scss/bootstrap.scss > accent-sass-output.css
           ./dart-sass/sass --quiet bootstrap/scss/bootstrap.scss > dart-sass-output.css
 
-          differing=$(diff grass-output.css dart-sass-output.css | grep -c '^[<>]' || true)
-          colours=$(diff grass-output.css dart-sass-output.css \
+          differing=$(diff accent-sass-output.css dart-sass-output.css | grep -c '^[<>]' || true)
+          colours=$(diff accent-sass-output.css dart-sass-output.css \
             | grep '^[<>]' | grep -cE 'rgb\(|hsl\(|#[0-9a-fA-F]{3,8}\b' || true)
 
           {
@@ -96,7 +96,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
           echo "differing lines: $differing (colour-bearing: $colours)"
-          diff grass-output.css dart-sass-output.css || true
+          diff accent-sass-output.css dart-sass-output.css || true
 
           # A colour-value difference is a real regression; structural
           # grouping differences are known and tracked.
@@ -138,7 +138,7 @@ jobs:
 
       - name: Compare against dart-sass
         env:
-          GRASS: ./target/release/grass
+          ACCENT_SASS: ./target/release/accent-sass
           SASS: ./dart-sass/sass
           NORMALISE: lightningcss
         run: .github/scripts/frameworks.sh
@@ -186,7 +186,7 @@ jobs:
           # expected here; the tallies are the output we want.
           npm run sass-spec -- \
             --impl=dart-sass \
-            --command '../target/release/grass' \
+            --command '../target/release/accent-sass' \
             --trim-errors --ignore-warning-diffs --ignore-error-diffs \
             > spec-results.txt 2>&1 || true
           tail -n 40 spec-results.txt

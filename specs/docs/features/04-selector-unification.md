@@ -22,10 +22,10 @@ is compound-selector ordering during unification:
 
 `selector.unify(".c > .d", ".e > .f")` must produce `.c.e > .d.f` —
 simple selectors from the first operand come before those merged in
-from the second — but grass emits the merged selector's simples first.
+from the second — but accent-sass emits the merged selector's simples first.
 The `is_superselector` and `extend` groups fail on related judgment
 calls in the same machinery, including newer combinator forms such as
-`:has(+ ~ a)` that grass mishandles.
+`:has(+ ~ a)` that accent-sass mishandles.
 
 ## Where the code lives
 
@@ -66,7 +66,7 @@ calls in the same machinery, including newer combinator forms such as
 4. Treat this as porting dart-sass's algorithm, not patching symptoms:
    each divergence you find in `unify`/`is_superselector` semantics is
    worth a comparison against the dart-sass implementation before you
-   change grass, because `@extend` correctness depends on the same
+   change accent-sass, because `@extend` correctness depends on the same
    invariants.
 
 ## Testing

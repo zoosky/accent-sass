@@ -25,7 +25,7 @@ test!(
 );
 // Deliberately differs from dart-sass 1.103.1, which crashes here with an
 // internal "Unsupported operation: NaN.round()" -- Dart's `round()` rejects
-// NaN. CSS Values 4 says `round(NaN)` is NaN, which is what grass returns.
+// NaN. CSS Values 4 says `round(NaN)` is NaN, which is what accent-sass returns.
 test!(
     unitless_nan_round_number,
     "a {\n  color: round((0/0));\n}\n",

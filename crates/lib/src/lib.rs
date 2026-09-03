@@ -14,10 +14,10 @@ implementation.
 
 ## Use as library
 ```
-fn main() -> Result<(), Box<grass::Error>> {
-    let css = grass::from_string(
+fn main() -> Result<(), Box<accent_sass::Error>> {
+    let css = accent_sass::from_string(
         "a { b { color: &; } }".to_owned(),
-        &grass::Options::default()
+        &accent_sass::Options::default()
     )?;
     assert_eq!(css, "a b {\n  color: a b;\n}\n");
     Ok(())
@@ -26,8 +26,8 @@ fn main() -> Result<(), Box<grass::Error>> {
 
 ## Use as binary
 ```bash
-cargo install grass
-grass input.scss
+cargo install accent-sass
+accent-sass input.scss
 ```
 */
 
@@ -65,21 +65,21 @@ grass input.scss
     unknown_lints,
 )]
 
-pub use grass_compiler::{
+pub use accent_sass_compiler::{
     from_path, from_string, Error, ErrorKind, Fs, InputSyntax, Logger, NullFs, NullLogger, Options,
     OutputStyle, Result, StdFs, StdLogger,
 };
 
 /// Include CSS in your binary at compile time from a Sass source file
 ///
-/// `static CSS: &str = grass::include!("../static/_index.scss");`
+/// `static CSS: &str = accent_sass::include!("../static/_index.scss");`
 ///
 /// This requires the `"macro"` feature, which is not enabled by default.
 ///
-/// By default `grass` will track files using [`include_str!`]. This allows incremental
+/// By default `accent-sass` will track files using [`include_str!`]. This allows incremental
 /// compilation to be updated when any Sass files are modified.
 ///
-/// If compiling with a nightly version of rust, `grass` can make use of
+/// If compiling with a nightly version of rust, `accent-sass` can make use of
 /// [proc_macro::tracked_path](https://github.com/rust-lang/rust/issues/99515)
 /// in order to force incremental recompilation, which is more robust and potentially
 /// faster. This is enabled by the `"nightly"` feature.

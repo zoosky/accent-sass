@@ -50,17 +50,17 @@ test!(
     indented_newline_in_parameter_list,
     "@function a(\n  $b, $c)\n  @return $b\n\nd\n  e: a(1, 2)\n",
     "d {\n  e: 1;\n}\n",
-    grass::Options::default().input_syntax(grass::InputSyntax::Sass)
+    accent_sass::Options::default().input_syntax(accent_sass::InputSyntax::Sass)
 );
 test!(
     indented_newline_in_argument_list,
     "@function a($b, $c)\n  @return $b\n\nd\n  e: a(\n    1, 2)\n",
     "d {\n  e: 1;\n}\n",
-    grass::Options::default().input_syntax(grass::InputSyntax::Sass)
+    accent_sass::Options::default().input_syntax(accent_sass::InputSyntax::Sass)
 );
 test!(
     indented_newline_in_include_arguments,
     "@mixin f($g,\n  $h)\n  i: $g\n\nj\n  @include f(1,\n    2)\n",
     "j {\n  i: 1;\n}\n",
-    grass::Options::default().input_syntax(grass::InputSyntax::Sass)
+    accent_sass::Options::default().input_syntax(accent_sass::InputSyntax::Sass)
 );

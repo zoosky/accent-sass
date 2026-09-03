@@ -6,7 +6,7 @@ Unlocks 164 sass-spec tests, all under `spec/expressions/if`
 
 ## Current behavior
 
-grass knows only the Sass ternary `if($condition, $if-true, $if-false)`,
+accent-sass knows only the Sass ternary `if($condition, $if-true, $if-false)`,
 special-cased in `crates/compiler/src/parse/value.rs:1159` and
 `crates/compiler/src/parse/value.rs:1597` and implemented as the builtin
 `if_` registered in `crates/compiler/src/builtin/functions/meta.rs:344`.

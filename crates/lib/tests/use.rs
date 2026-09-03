@@ -98,7 +98,8 @@ fn use_user_defined_same_directory() {
     );
     assert_eq!(
         "a {\n  color: red;\n}\n\na {\n  color: red;\n}\n",
-        &grass::from_string(input.to_string(), &grass::Options::default()).expect(input)
+        &accent_sass::from_string(input.to_string(), &accent_sass::Options::default())
+            .expect(input)
     );
 }
 
@@ -124,7 +125,7 @@ fn private_variable_begins_with_underscore() {
     assert_err!(
         input,
         "Error: Private members can't be accessed from outside their modules.",
-        &grass::Options::default().fs(&fs)
+        &accent_sass::Options::default().fs(&fs)
     );
 }
 
@@ -150,7 +151,7 @@ fn private_variable_begins_with_hyphen() {
     assert_err!(
         input,
         "Error: Private members can't be accessed from outside their modules.",
-        &grass::Options::default().fs(&fs)
+        &accent_sass::Options::default().fs(&fs)
     );
 }
 
@@ -176,7 +177,7 @@ fn private_function() {
     assert_err!(
         input,
         "Error: Private members can't be accessed from outside their modules.",
-        &grass::Options::default().fs(&fs)
+        &accent_sass::Options::default().fs(&fs)
     );
 }
 
@@ -202,7 +203,8 @@ fn global_variable_exists_private() {
 
     assert_eq!(
         "a {\n  color: true;\n  color: false;\n}\n",
-        &grass::from_string(input.to_string(), &grass::Options::default().fs(&fs)).expect(input)
+        &accent_sass::from_string(input.to_string(), &accent_sass::Options::default().fs(&fs))
+            .expect(input)
     );
 }
 
@@ -226,7 +228,8 @@ fn use_user_defined_as() {
 
     assert_eq!(
         "a {\n  color: red;\n}\n\na {\n  color: red;\n}\n",
-        &grass::from_string(input.to_string(), &grass::Options::default().fs(&fs)).expect(input)
+        &accent_sass::from_string(input.to_string(), &accent_sass::Options::default().fs(&fs))
+            .expect(input)
     );
 }
 
@@ -250,7 +253,8 @@ fn use_user_defined_function() {
 
     assert_eq!(
         "a {\n  color: red;\n}\n",
-        &grass::from_string(input.to_string(), &grass::Options::default().fs(&fs)).expect(input)
+        &accent_sass::from_string(input.to_string(), &accent_sass::Options::default().fs(&fs))
+            .expect(input)
     );
 }
 
@@ -268,7 +272,7 @@ fn use_idempotent_no_alias() {
     assert_err!(
         input,
         "Error: There's already a module with namespace \"a\".",
-        grass::Options::default().fs(&fs)
+        accent_sass::Options::default().fs(&fs)
     );
 }
 
@@ -287,7 +291,7 @@ fn use_idempotent_with_alias() {
     assert_err!(
         input,
         "Error: There's already a module with namespace \"foo\".",
-        grass::Options::default().fs(&fs)
+        accent_sass::Options::default().fs(&fs)
     );
 }
 
@@ -307,7 +311,8 @@ fn use_with_simple() {
     tempfile!("use_with_simple.scss", "$a: green !default;");
     assert_eq!(
         "a {\n  color: red;\n}\n",
-        &grass::from_string(input.to_string(), &grass::Options::default()).expect(input)
+        &accent_sass::from_string(input.to_string(), &accent_sass::Options::default())
+            .expect(input)
     );
 }
 
@@ -317,7 +322,8 @@ fn use_as_with() {
     tempfile!("use_as_with.scss", "$a: green !default;");
     assert_eq!(
         "a {\n  color: red;\n}\n",
-        &grass::from_string(input.to_string(), &grass::Options::default()).expect(input)
+        &accent_sass::from_string(input.to_string(), &accent_sass::Options::default())
+            .expect(input)
     );
 }
 
@@ -330,7 +336,8 @@ fn use_whitespace_and_comments() {
     );
     assert_eq!(
         "a {\n  color: red;\n}\n",
-        &grass::from_string(input.to_string(), &grass::Options::default()).expect(input)
+        &accent_sass::from_string(input.to_string(), &accent_sass::Options::default())
+            .expect(input)
     );
 }
 
@@ -345,7 +352,8 @@ fn use_loud_comment_after_close_paren_with() {
     );
     assert_eq!(
         "a {\n  color: red;\n}\n",
-        &grass::from_string(input.to_string(), &grass::Options::default()).expect(input)
+        &accent_sass::from_string(input.to_string(), &accent_sass::Options::default())
+            .expect(input)
     );
 }
 
@@ -405,7 +413,8 @@ fn use_variable_redeclaration_simple() {
 
     assert_eq!(
         "a {\n  color: red;\n}\n",
-        &grass::from_string(input.to_string(), &grass::Options::default()).expect(input)
+        &accent_sass::from_string(input.to_string(), &accent_sass::Options::default())
+            .expect(input)
     );
 }
 
@@ -416,7 +425,8 @@ fn use_variable_redeclaration_default() {
 
     assert_eq!(
         "a {\n  color: green;\n}\n",
-        &grass::from_string(input.to_string(), &grass::Options::default()).expect(input)
+        &accent_sass::from_string(input.to_string(), &accent_sass::Options::default())
+            .expect(input)
     );
 }
 
@@ -483,7 +493,8 @@ fn use_modules_imported_by_other_modules_does_not_cause_conflict() {
 
     assert_eq!(
         "a {\n  color: red;\n}\n",
-        &grass::from_string(input.to_string(), &grass::Options::default()).expect(input)
+        &accent_sass::from_string(input.to_string(), &accent_sass::Options::default())
+            .expect(input)
     );
 }
 
@@ -507,7 +518,8 @@ fn use_mixin_can_use_scope_from_own_module() {
 
     assert_eq!(
         "a {\n  color: red;\n}\n",
-        &grass::from_string(input.to_string(), &grass::Options::default()).expect(input)
+        &accent_sass::from_string(input.to_string(), &accent_sass::Options::default())
+            .expect(input)
     );
 }
 
@@ -532,7 +544,8 @@ fn use_function_can_use_scope_from_own_module() {
 
     assert_eq!(
         "a {\n  color: red;\n}\n",
-        &grass::from_string(input.to_string(), &grass::Options::default()).expect(input)
+        &accent_sass::from_string(input.to_string(), &accent_sass::Options::default())
+            .expect(input)
     );
 }
 
@@ -557,7 +570,8 @@ fn use_variable_declaration_between_use() {
 
     assert_eq!(
         "a {\n  color: red red;\n}\n",
-        &grass::from_string(input.to_string(), &grass::Options::default()).expect(input)
+        &accent_sass::from_string(input.to_string(), &accent_sass::Options::default())
+            .expect(input)
     );
 }
 
@@ -582,7 +596,8 @@ fn include_mixin_with_star_namespace() {
 
     assert_eq!(
         "a {\n  color: red;\n}\n",
-        &grass::from_string(input.to_string(), &grass::Options::default().fs(&fs)).expect(input)
+        &accent_sass::from_string(input.to_string(), &accent_sass::Options::default().fs(&fs))
+            .expect(input)
     );
 }
 
@@ -602,7 +617,8 @@ fn include_variable_with_star_namespace() {
 
     assert_eq!(
         "a {\n  color: red;\n}\n",
-        &grass::from_string(input.to_string(), &grass::Options::default().fs(&fs)).expect(input)
+        &accent_sass::from_string(input.to_string(), &accent_sass::Options::default().fs(&fs))
+            .expect(input)
     );
 }
 
@@ -627,7 +643,8 @@ fn include_function_with_star_namespace() {
 
     assert_eq!(
         "a {\n  color: red;\n}\n",
-        &grass::from_string(input.to_string(), &grass::Options::default().fs(&fs)).expect(input)
+        &accent_sass::from_string(input.to_string(), &accent_sass::Options::default().fs(&fs))
+            .expect(input)
     );
 }
 
@@ -669,7 +686,8 @@ fn use_with_through_forward_multiple() {
 
     assert_eq!(
         "in-left {\n  c: from input;\n}\n\nin-right {\n  d: from input;\n}\n",
-        &grass::from_string(input.to_string(), &grass::Options::default().fs(&fs)).expect(input)
+        &accent_sass::from_string(input.to_string(), &accent_sass::Options::default().fs(&fs))
+            .expect(input)
     );
 }
 
@@ -690,7 +708,8 @@ fn module_functions_empty() {
 
     assert_eq!(
         "a {\n  b: ();\n}\n",
-        &grass::from_string(input.to_string(), &grass::Options::default().fs(&fs)).expect(input)
+        &accent_sass::from_string(input.to_string(), &accent_sass::Options::default().fs(&fs))
+            .expect(input)
     );
 }
 
@@ -722,7 +741,8 @@ fn module_functions_through_forward() {
 
     assert_eq!(
         "a {\n  b: (\"foo\": get-function(\"foo\"));\n}\n",
-        &grass::from_string(input.to_string(), &grass::Options::default().fs(&fs)).expect(input)
+        &accent_sass::from_string(input.to_string(), &accent_sass::Options::default().fs(&fs))
+            .expect(input)
     );
 }
 
@@ -749,7 +769,7 @@ fn use_variable_declared_in_this_and_other_module() {
     assert_err!(
         input,
         "Error: This module and the new module both define a variable named \"$a\".",
-        grass::Options::default().fs(&fs)
+        accent_sass::Options::default().fs(&fs)
     );
 }
 
@@ -784,7 +804,7 @@ fn use_variable_declared_in_two_modules() {
     assert_err!(
         input,
         "Error: This variable is available from multiple global modules.",
-        grass::Options::default().fs(&fs)
+        accent_sass::Options::default().fs(&fs)
     );
 }
 
@@ -813,7 +833,8 @@ fn import_module_using_same_builtin_module() {
 
     assert_eq!(
         "",
-        &grass::from_string(input.to_string(), &grass::Options::default().fs(&fs)).expect(input)
+        &accent_sass::from_string(input.to_string(), &accent_sass::Options::default().fs(&fs))
+            .expect(input)
     );
 }
 
@@ -846,7 +867,8 @@ fn import_module_using_same_builtin_module_has_styles() {
 
     assert_eq!(
         "a {\n  color: red;\n}\n",
-        &grass::from_string(input.to_string(), &grass::Options::default().fs(&fs)).expect(input)
+        &accent_sass::from_string(input.to_string(), &accent_sass::Options::default().fs(&fs))
+            .expect(input)
     );
 }
 
@@ -877,7 +899,8 @@ fn use_member_global_variable_assignment_toplevel() {
 
     assert_eq!(
         "a {\n  b: new value;\n}\n",
-        &grass::from_string(input.to_string(), &grass::Options::default().fs(&fs)).expect(input)
+        &accent_sass::from_string(input.to_string(), &accent_sass::Options::default().fs(&fs))
+            .expect(input)
     );
 }
 
@@ -905,7 +928,7 @@ fn use_module_with_extend() {
     assert_err!(
         input,
         "Error: The target selector was not found.",
-        grass::Options::default().fs(&fs)
+        accent_sass::Options::default().fs(&fs)
     );
 }
 
