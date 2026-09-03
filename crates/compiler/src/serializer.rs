@@ -3,6 +3,7 @@ use std::io::Write;
 use codemap::{CodeMap, Span};
 
 use crate::{
+    ast::Mixin,
     ast::{CssStmt, MediaQuery, Style, SupportsRule},
     color::{Color, ColorFormat, ColorSpace, NAMED_COLORS},
     common::{BinaryOp, Brackets, ListSeparator, QuoteKind},
@@ -92,6 +93,20 @@ pub(crate) fn inspect_function_ref(
     let mut serializer = Serializer::new(options, &code_map, true, span);
 
     serializer.visit_function_ref(func, span)?;
+
+    Ok(serializer.finish_for_expr())
+}
+
+/// Serializes a first-class mixin the way `meta.inspect` does.
+pub(crate) fn inspect_mixin_ref(
+    mixin: &Mixin,
+    options: &Options,
+    span: Span,
+) -> SassResult<String> {
+    let code_map = CodeMap::new();
+    let mut serializer = Serializer::new(options, &code_map, true, span);
+
+    serializer.visit_mixin_ref(mixin, span)?;
 
     Ok(serializer.finish_for_expr())
 }
@@ -1302,7 +1317,13 @@ impl<'a> Serializer<'a> {
     }
 
     fn write_map_element(&mut self, value: &Value, span: Span) -> SassResult<()> {
-        let needs_parens = matches!(value, Value::List(_, ListSeparator::Comma, Brackets::None));
+        // An argument list is a comma-separated list too, so it needs the same
+        // parentheses to keep the map unambiguous: `(positional: (1, 2))`, not
+        // `(positional: 1, 2)`.
+        let needs_parens = matches!(
+            value,
+            Value::List(_, ListSeparator::Comma, Brackets::None) | Value::ArgList(..)
+        );
 
         if needs_parens {
             self.buffer.push(b'(');
@@ -1459,6 +1480,27 @@ impl<'a> Serializer<'a> {
         Ok(())
     }
 
+    /// Writes a first-class mixin. Like a function reference, it has no plain
+    /// CSS form, so it is only ever written under `inspect`.
+    fn visit_mixin_ref(&mut self, mixin: &Mixin, span: Span) -> SassResult<()> {
+        if !self.inspect {
+            return Err((
+                format!(
+                    "{} isn't a valid CSS value.",
+                    inspect_mixin_ref(mixin, self.options, span)?
+                ),
+                span,
+            )
+                .into());
+        }
+
+        self.buffer.extend_from_slice(b"get-mixin(");
+        self.visit_quoted_string(false, mixin.name().as_str());
+        self.buffer.push(b')');
+
+        Ok(())
+    }
+
     fn visit_arglist(&mut self, arglist: &ArgList, span: Span) -> SassResult<()> {
         self.visit_list(&arglist.elems, ListSeparator::Comma, Brackets::None, span)
     }
@@ -1478,6 +1520,7 @@ impl<'a> Serializer<'a> {
             }
             Value::Map(map) => self.visit_map(map, span)?,
             Value::FunctionRef(func) => self.visit_function_ref(func, span)?,
+            Value::MixinRef(mixin) => self.visit_mixin_ref(mixin.inner(), span)?,
             Value::String(s, QuoteKind::Quoted) => self.visit_quoted_string(false, s),
             Value::String(s, QuoteKind::None) => self.visit_unquoted_string(s),
             Value::ArgList(arglist) => self.visit_arglist(arglist, span)?,

@@ -84,6 +84,16 @@ impl UserDefinedCallable for AstMixin {
     }
 }
 
+impl UserDefinedCallable for Arc<AstMixin> {
+    fn name(&self) -> Identifier {
+        self.name
+    }
+
+    fn arguments(&self) -> &ArgumentDeclaration {
+        &self.args
+    }
+}
+
 impl UserDefinedCallable for Arc<CallableContentBlock> {
     fn name(&self) -> Identifier {
         Identifier::from("@content")
@@ -270,11 +280,7 @@ impl<'a> Visitor<'a> {
                 Some(Rc::clone(&new_configuration)),
                 false,
                 forward_rule.span,
-                |visitor, module, _| {
-                    visitor.env.forward_module(module, forward_rule.clone());
-
-                    Ok(())
-                },
+                |visitor, module, _| visitor.env.forward_module(module, forward_rule.clone()),
             )?;
 
             Self::remove_used_configuration(
@@ -319,11 +325,7 @@ impl<'a> Visitor<'a> {
                 None,
                 false,
                 forward_rule.span,
-                move |visitor, module, _| {
-                    visitor.env.forward_module(module, forward_rule.clone());
-
-                    Ok(())
-                },
+                move |visitor, module, _| visitor.env.forward_module(module, forward_rule.clone()),
             )?;
             self.configuration = old_config;
         }
@@ -720,6 +722,69 @@ impl<'a> Visitor<'a> {
         Ok(())
     }
 
+    /// Runs a stylesheet for `meta.load-css`.
+    ///
+    /// This is [`Visitor::execute`] with two differences that are exactly what
+    /// `load-css` is for: the CSS lands where the `@include` was written rather
+    /// than at the root, and the module is not cached, because loading the same
+    /// file twice is meant to emit its CSS twice. Otherwise the loaded file
+    /// gets its own environment, so its variables and mixins do not leak into
+    /// the caller, and its `!default` variables are configured from `$with`.
+    pub(crate) fn load_css_module(
+        &mut self,
+        url: &str,
+        configuration: Rc<RefCell<Configuration>>,
+        span: Span,
+    ) -> SassResult<()> {
+        if url.starts_with("sass:") {
+            if !(*configuration).borrow().is_empty() {
+                return Err((
+                    format!("Built-in module {} can't be configured.", url),
+                    span,
+                )
+                    .into());
+            }
+
+            // A built-in module has no CSS of its own to emit.
+            return Ok(());
+        }
+
+        let stylesheet = self.load_style_sheet(url, false, span)?;
+
+        let canonical_url = self
+            .options
+            .fs
+            .canonicalize(&stylesheet.url)
+            .unwrap_or_else(|_| stylesheet.url.clone());
+
+        if self.active_modules.contains(&canonical_url) {
+            return Err(("Module loop: this module is already being loaded.", span).into());
+        }
+
+        self.active_modules.insert(canonical_url.clone());
+
+        let env = Environment::new();
+
+        let result = self.with_environment::<SassResult<()>, _>(env.new_closure(), |visitor| {
+            let old_configuration = mem::replace(&mut visitor.configuration, configuration);
+            let old_declaration_name = visitor.declaration_name.take();
+
+            // The enclosing style rule is deliberately left in place: the CSS
+            // the file produces is nested under whatever rule the `@include`
+            // sits in, so `a {@include meta.load-css("other")}` emits `a b`.
+            let result = visitor.visit_stylesheet(stylesheet);
+
+            visitor.declaration_name = old_declaration_name;
+            visitor.configuration = old_configuration;
+
+            result
+        });
+
+        self.active_modules.remove(&canonical_url);
+
+        result
+    }
+
     fn visit_use_rule(&mut self, use_rule: AstUseRule) -> SassResult<()> {
         let configuration = if use_rule.configuration.is_empty() {
             Rc::new(RefCell::new(Configuration::empty()))
@@ -806,7 +871,15 @@ impl<'a> Visitor<'a> {
     /// <https://sass-lang.com/documentation/at-rules/import#finding-the-file>
     /// <https://sass-lang.com/documentation/at-rules/import#load-paths>
     #[allow(clippy::cognitive_complexity, clippy::redundant_clone)]
-    pub fn find_import(&self, path: &Path) -> Option<PathBuf> {
+    /// Resolves an `@import`/`@use` URL to a file on disk.
+    ///
+    /// Candidates are gathered a group at a time -- the import-only files
+    /// before the ordinary ones, `.sass` and `.scss` together before `.css` --
+    /// and a group that turns up more than one file is ambiguous rather than
+    /// resolved by whichever was checked first. A partial and its non-partial
+    /// spelling are the same group, so `_other.scss` beside `other.scss` is an
+    /// error too.
+    pub fn find_import(&self, path: &Path, span: Span) -> SassResult<Option<PathBuf>> {
         let path_buf = if path.is_absolute() {
             path.into()
         } else {
@@ -816,20 +889,12 @@ impl<'a> Visitor<'a> {
                 .join(path)
         };
 
-        macro_rules! try_path {
-            ($path:expr) => {
-                let path = $path;
-                let dirname = path.parent().unwrap_or_else(|| Path::new(""));
-                let basename = path.file_name().unwrap_or_else(|| OsStr::new(".."));
+        macro_rules! resolve {
+            ($candidates:expr) => {
+                let candidates = $candidates;
 
-                let partial = dirname.join(format!("_{}", basename.to_str().unwrap()));
-
-                if self.options.fs.is_file(&path) {
-                    return Some(path.to_path_buf());
-                }
-
-                if self.options.fs.is_file(&partial) {
-                    return Some(partial);
+                if !candidates.is_empty() {
+                    return Ok(Some(Self::exactly_one_import(candidates, span)?));
                 }
             };
         }
@@ -838,42 +903,100 @@ impl<'a> Visitor<'a> {
             || path_buf.extension() == Some(OsStr::new("sass"))
             || path_buf.extension() == Some(OsStr::new("css"))
         {
-            let extension = path_buf.extension().unwrap();
-            try_path!(path_buf.with_extension(format!(".import{}", extension.to_str().unwrap())));
-            try_path!(path_buf);
+            let extension = path_buf.extension().unwrap().to_str().unwrap().to_owned();
+
+            resolve!(
+                self.import_candidates(&path_buf.with_extension(format!(".import{}", extension)))
+            );
+            resolve!(self.import_candidates(&path_buf));
+
             // todo: consider load paths
-            return None;
+            return Ok(None);
         }
 
-        macro_rules! try_path_with_extensions {
-            ($path:expr) => {
-                let path = $path;
-                try_path!(path.with_extension("import.sass"));
-                try_path!(path.with_extension("import.scss"));
-                try_path!(path.with_extension("import.css"));
-                try_path!(path.with_extension("sass"));
-                try_path!(path.with_extension("scss"));
-                try_path!(path.with_extension("css"));
+        macro_rules! resolve_with_extensions {
+            ($base:expr) => {
+                let base = $base;
+
+                for extensions in [["import.sass", "import.scss"], ["sass", "scss"]] {
+                    let mut candidates = Vec::new();
+
+                    for extension in extensions {
+                        candidates.extend(self.import_candidates(&base.with_extension(extension)));
+                    }
+
+                    resolve!(candidates);
+                }
+
+                resolve!(self.import_candidates(&base.with_extension("import.css")));
+                resolve!(self.import_candidates(&base.with_extension("css")));
             };
         }
 
-        try_path_with_extensions!(path_buf.clone());
+        resolve_with_extensions!(path_buf.clone());
 
         if self.options.fs.is_dir(&path_buf) {
-            try_path_with_extensions!(path_buf.join("index"));
+            resolve_with_extensions!(path_buf.join("index"));
         }
 
         for load_path in &self.options.load_paths {
-            let path_buf = load_path.join(path);
+            let from_load_path = load_path.join(path);
 
-            try_path_with_extensions!(&path_buf);
+            resolve_with_extensions!(from_load_path.clone());
 
-            if self.options.fs.is_dir(&path_buf) {
-                try_path_with_extensions!(path_buf.join("index"));
+            if self.options.fs.is_dir(&from_load_path) {
+                resolve_with_extensions!(from_load_path.join("index"));
             }
         }
 
-        None
+        Ok(None)
+    }
+
+    /// The files that exist for one exact name: the name itself and its partial
+    /// spelling.
+    fn import_candidates(&self, path: &Path) -> Vec<PathBuf> {
+        let dirname = path.parent().unwrap_or_else(|| Path::new(""));
+        let basename = path.file_name().unwrap_or_else(|| OsStr::new(".."));
+        let partial = dirname.join(format!("_{}", basename.to_string_lossy()));
+
+        let mut candidates = Vec::new();
+
+        if self.options.fs.is_file(path) {
+            candidates.push(path.to_path_buf());
+        }
+
+        if self.options.fs.is_file(&partial) {
+            candidates.push(partial);
+        }
+
+        candidates
+    }
+
+    /// Picks the single candidate, or reports the ambiguity.
+    fn exactly_one_import(mut candidates: Vec<PathBuf>, span: Span) -> SassResult<PathBuf> {
+        if candidates.len() == 1 {
+            return Ok(candidates.remove(0));
+        }
+
+        let mut names = candidates
+            .iter()
+            .map(|path| {
+                path.file_name()
+                    .unwrap_or_else(|| OsStr::new(".."))
+                    .to_string_lossy()
+                    .into_owned()
+            })
+            .collect::<Vec<_>>();
+        names.sort();
+
+        Err((
+            format!(
+                "It's not clear which file to import. Found:\n  {}",
+                names.join("\n  ")
+            ),
+            span,
+        )
+            .into())
     }
 
     fn parse_file(
@@ -895,7 +1018,7 @@ impl<'a> Visitor<'a> {
         _for_import: bool,
         span: Span,
     ) -> SassResult<StyleSheet> {
-        if let Some(name) = self.find_import(url.as_ref()) {
+        if let Some(name) = self.find_import(url.as_ref(), span)? {
             let name = self.options.fs.canonicalize(&name).unwrap_or(name);
             if let Some(style_sheet) = self.import_cache.get(&name) {
                 return Ok(style_sheet.clone());
@@ -1733,13 +1856,24 @@ impl<'a> Visitor<'a> {
             .get_mixin(include_stmt.name, include_stmt.namespace)?;
 
         match mixin {
-            Mixin::Builtin(mixin) => {
-                if include_stmt.content.is_some() {
+            Mixin::Builtin(mixin, _, accepts_content) => {
+                if include_stmt.content.is_some() && !accepts_content {
                     return Err(("Mixin doesn't accept a content block.", include_stmt.span).into());
                 }
 
                 let args = self.eval_args(include_stmt.args, include_stmt.name.span)?;
-                mixin(args, self)?;
+
+                // `meta.apply` forwards the caller's content block to the mixin
+                // it applies, so a builtin that accepts content needs it set
+                // the same way a user-defined one does.
+                let callable_content = include_stmt.content.map(|content| {
+                    Arc::new(CallableContentBlock {
+                        content,
+                        env: self.env.new_closure(),
+                    })
+                });
+
+                self.with_content(callable_content, |visitor| mixin(args, visitor))?;
 
                 Ok(None)
             }
@@ -1767,7 +1901,7 @@ impl<'a> Visitor<'a> {
                     include_stmt.name.span,
                     |mixin, visitor| {
                         visitor.with_content(callable_content, |visitor| {
-                            for stmt in mixin.body {
+                            for stmt in mixin.body.iter().cloned() {
                                 let result = visitor.visit_stmt(stmt)?;
                                 debug_assert!(result.is_none());
                             }
@@ -1783,10 +1917,56 @@ impl<'a> Visitor<'a> {
         }
     }
 
+    /// Includes a first-class mixin with already-evaluated arguments.
+    ///
+    /// This is the body of `meta.apply`. The `@content` block currently in
+    /// scope is the one `apply` itself was given, and it is forwarded to the
+    /// mixin being applied.
+    pub(crate) fn apply_mixin(
+        &mut self,
+        mixin: Mixin,
+        args: ArgumentResult,
+        span: Span,
+    ) -> SassResult<()> {
+        match mixin {
+            Mixin::Builtin(mixin, ..) => mixin(args, self),
+            Mixin::UserDefined(mixin, env) => {
+                let content = self.env.content.as_ref().map(Arc::clone);
+
+                if content.is_some() && !mixin.has_content {
+                    return Err(("Mixin doesn't accept a content block.", span).into());
+                }
+
+                let old_in_mixin = self.flags.in_mixin();
+                self.flags.set(ContextFlags::IN_MIXIN, true);
+
+                let result = self.run_user_defined_callable::<_, (), _>(
+                    MaybeEvaledArguments::Evaled(args),
+                    mixin,
+                    &env,
+                    span,
+                    |mixin, visitor| {
+                        visitor.with_content(content, |visitor| {
+                            for stmt in mixin.body.iter().cloned() {
+                                let result = visitor.visit_stmt(stmt)?;
+                                debug_assert!(result.is_none());
+                            }
+                            Ok(())
+                        })
+                    },
+                );
+
+                self.flags.set(ContextFlags::IN_MIXIN, old_in_mixin);
+
+                result
+            }
+        }
+    }
+
     fn visit_mixin_decl(&mut self, mixin: AstMixin) {
         self.env.insert_mixin(
             mixin.name,
-            Mixin::UserDefined(mixin, self.env.new_closure()),
+            Mixin::UserDefined(Arc::new(mixin), self.env.new_closure()),
         );
     }
 
@@ -2471,9 +2651,16 @@ impl<'a> Visitor<'a> {
     fn visit_function_call_expr(&mut self, func_call: FunctionCallExpr) -> SassResult<Value> {
         let name = func_call.name;
 
-        let func = match self.env.get_fn(name, func_call.namespace)? {
+        let func = match self.env.get_fn(name, func_call.namespace, func_call.span)? {
             Some(func) => func,
             None => {
+                // A namespaced call names a member of that module and nothing
+                // else, so `selector.selector-append()` is undefined even
+                // though `selector-append()` is a global function.
+                if func_call.namespace.is_some() {
+                    return Err(("Undefined function.", func_call.span).into());
+                }
+
                 if let Some(f) = self.options.custom_fns.get(name.as_str()) {
                     SassFunction::Builtin(f.clone(), name)
                 } else if let Some(f) = GLOBAL_FUNCTIONS.get(name.as_str()) {
@@ -2845,7 +3032,9 @@ impl<'a> Visitor<'a> {
     ) -> SassResult<Value> {
         // A user-defined function shadows the CSS math function of the same
         // name, so `@function sin($x)` wins over `sin()` the calculation.
-        let shadowing = self.env.get_fn(Identifier::from(name.as_str()), None)?;
+        let shadowing = self
+            .env
+            .get_fn(Identifier::from(name.as_str()), None, span)?;
 
         if let Some(func) = shadowing {
             let arguments = ArgumentInvocation {

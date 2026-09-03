@@ -244,6 +244,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
 
     fn parse_argument_declaration(&mut self) -> SassResult<ArgumentDeclaration> {
         self.expect_char('(')?;
+        let parens = self.enter_parens();
         self.whitespace()?;
 
         let mut arguments = Vec::new();
@@ -267,6 +268,13 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
                 self.expect_char('.')?;
                 self.whitespace()?;
                 rest_argument = Some(name);
+
+                // A rest parameter ends the list, but the list may still carry
+                // a trailing comma: `@mixin a($b..., )`.
+                if self.scan_char(',') {
+                    self.whitespace()?;
+                }
+
                 break;
             }
 
@@ -285,6 +293,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
             self.whitespace()?;
         }
         self.expect_char(')')?;
+        self.restore_parens(parens);
 
         Ok(ArgumentDeclaration {
             args: arguments,
@@ -386,6 +395,8 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
             ArgumentInvocation::empty(self.toks().current_span())
         };
 
+        // A comment may follow the argument list before the `;`.
+        self.whitespace()?;
         self.expect_statement_separator(Some("@content rule"))?;
 
         self.flags_mut().set(ContextFlags::FOUND_CONTENT_RULE, true);
@@ -473,6 +484,8 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
             self.expect_identifier("optional", false)?;
         }
 
+        // As in `@use`, a comment may follow the flag before the `;`.
+        self.whitespace()?;
         self.expect_statement_separator(Some("@extend rule"))?;
 
         Ok(AstStmt::Extend(AstExtendRule {
@@ -1446,6 +1459,8 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
 
         let config = self.parse_configuration(true)?;
 
+        // As in `@use`, a comment may sit between the configuration and the `;`.
+        self.whitespace()?;
         self.expect_statement_separator(Some("@forward rule"))?;
         let span = self.toks_mut().span_from(start);
 
@@ -1584,6 +1599,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
         let mut configuration = Vec::new();
         self.whitespace()?;
         self.expect_char('(')?;
+        let parens = self.enter_parens();
 
         loop {
             self.whitespace()?;
@@ -1634,6 +1650,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
         }
 
         self.expect_char(')')?;
+        self.restore_parens(parens);
 
         Ok(Some(configuration))
     }
@@ -1650,6 +1667,9 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
         self.whitespace()?;
         let configuration = self.parse_configuration(false)?;
 
+        // A comment may sit between the configuration and the `;`, and only the
+        // comment-aware `whitespace` skips it.
+        self.whitespace()?;
         self.expect_statement_separator(Some("@use rule"))?;
 
         let span = self.toks_mut().span_from(start);
@@ -2252,6 +2272,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
         let start = self.toks().cursor();
 
         self.expect_char('(')?;
+        let parens = self.enter_parens();
         self.whitespace()?;
 
         let mut positional = Vec::new();
@@ -2288,6 +2309,13 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
                 } else {
                     keyword_rest = Some(expression.node);
                     self.whitespace()?;
+
+                    // As with parameters, a keyword rest argument ends the list
+                    // but may still be followed by a trailing comma.
+                    if self.scan_char(',') {
+                        self.whitespace()?;
+                    }
+
                     break;
                 }
             } else if !named.is_empty() {
@@ -2321,6 +2349,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
         }
 
         self.expect_char(')')?;
+        self.restore_parens(parens);
 
         Ok(ArgumentInvocation {
             positional,

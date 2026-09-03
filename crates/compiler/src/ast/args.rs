@@ -221,6 +221,34 @@ impl ArgumentResult {
         }
     }
 
+    /// Drops the first positional argument and returns what is left.
+    ///
+    /// `meta.apply($mixin, $args...)` takes the mixin itself as its first
+    /// argument and passes everything after it to that mixin, so the remainder
+    /// has to become an argument list in its own right -- with the positions
+    /// renumbered from zero.
+    pub(crate) fn into_remaining_arguments(self) -> Self {
+        let Self {
+            mut positional,
+            named,
+            separator,
+            span,
+            ..
+        } = self;
+
+        if !positional.is_empty() {
+            positional.remove(0);
+        }
+
+        Self {
+            positional,
+            named,
+            separator,
+            span,
+            touched: BTreeSet::new(),
+        }
+    }
+
     pub const fn span(&self) -> Span {
         self.span
     }
