@@ -1,3 +1,8 @@
 [submodule "sass-spec"]
 	path = sass-spec
 	url = https://github.com/sass/sass-spec
+	# Some .hrx fixtures are committed with CRLF endings that the spec's own
+	# .gitattributes normalizes to LF on checkout, so a fresh checkout is
+	# permanently "modified". The pointer still tracks the pinned revision;
+	# only working-tree noise is ignored.
+	ignore = dirty
