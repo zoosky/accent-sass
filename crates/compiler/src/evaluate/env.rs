@@ -29,6 +29,11 @@ pub(crate) struct Environment {
     pub imported_modules: Mutable<Vec<Mutable<Module>>>,
     #[allow(clippy::type_complexity)]
     pub nested_forwarded_modules: Option<Mutable<Vec<Mutable<Vec<Mutable<Module>>>>>>,
+    /// The names declared `!default` at this environment's root -- the
+    /// variables a `with (...)` clause could have configured. Consulted when
+    /// a configuration reaches an already-loaded module, to tell a clause
+    /// that could never have applied from a genuine double configuration.
+    pub configurable_variables: Mutable<HashSet<Identifier>>,
 }
 
 impl Environment {
@@ -41,6 +46,7 @@ impl Environment {
             forwarded_modules: Arc::new(RefCell::new(Vec::new())),
             imported_modules: Arc::new(RefCell::new(Vec::new())),
             nested_forwarded_modules: None,
+            configurable_variables: Arc::new(RefCell::new(HashSet::new())),
         }
     }
 
@@ -53,18 +59,28 @@ impl Environment {
             forwarded_modules: Arc::clone(&self.forwarded_modules),
             imported_modules: Arc::clone(&self.imported_modules),
             nested_forwarded_modules: self.nested_forwarded_modules.as_ref().map(Arc::clone),
+            configurable_variables: Arc::clone(&self.configurable_variables),
         }
     }
 
+    /// The environment an `@import`ed stylesheet runs in.
+    ///
+    /// The imported file shares the importer's scopes and previously imported
+    /// members, but gets its own forward list: the conflict check for two
+    /// `@forward`s naming the same member applies within one file, and sharing
+    /// the list made forwards from sibling `@import`s conflict with each other.
+    /// `import_forwards` merges the fresh list back into the importer once the
+    /// file has run.
     pub fn for_import(&self) -> Self {
         Self {
             scopes: self.scopes.new_closure(),
             modules: Arc::new(RefCell::new(Modules::new())),
             global_modules: Vec::new(),
             content: self.content.as_ref().map(Arc::clone),
-            forwarded_modules: Arc::clone(&self.forwarded_modules),
+            forwarded_modules: Arc::new(RefCell::new(Vec::new())),
             imported_modules: Arc::clone(&self.imported_modules),
             nested_forwarded_modules: self.nested_forwarded_modules.as_ref().map(Arc::clone),
+            configurable_variables: Arc::clone(&self.configurable_variables),
         }
     }
 
@@ -222,6 +238,17 @@ impl Environment {
         }
     }
 
+    /// Collects every variable visible at an `@import` into a configuration
+    /// for the modules the imported file `@forward`s.
+    ///
+    /// Scope variables come first, then variables reaching this environment
+    /// through earlier `@import`s of forwarding files -- at the root and in
+    /// nested import contexts respectively. Later sources overwrite earlier
+    /// ones, matching the lookup order for the same names: a variable
+    /// forwarded by a previous `@import` configures a later one even though it
+    /// lives in a module rather than a scope (the sass/dart-sass#2641 shape),
+    /// and `import_forwards` has already removed any scope definition it
+    /// shadows.
     pub fn to_implicit_configuration(&self) -> Configuration {
         let mut configuration = BTreeMap::new();
 
@@ -233,6 +260,28 @@ impl Environment {
                 // Implicit configurations are never invalid, making [configurationSpan]
                 // unnecessary, so we pass null here to avoid having to compute it.
                 configuration.insert(*key, ConfiguredValue::implicit(value.clone()));
+            }
+        }
+
+        for module in (*self.imported_modules).borrow().iter() {
+            let scope = (**module).borrow().scope();
+            for key in scope.variables.keys() {
+                if let Some(value) = scope.variables.get(key) {
+                    configuration.insert(key, ConfiguredValue::implicit(value));
+                }
+            }
+        }
+
+        if let Some(nested_forwarded_modules) = &self.nested_forwarded_modules {
+            for modules in nested_forwarded_modules.borrow().iter() {
+                for module in modules.borrow().iter() {
+                    let scope = (**module).borrow().scope();
+                    for key in scope.variables.keys() {
+                        if let Some(value) = scope.variables.get(key) {
+                            configuration.insert(key, ConfiguredValue::implicit(value));
+                        }
+                    }
+                }
             }
         }
 
@@ -318,6 +367,12 @@ impl Environment {
         }
 
         Ok(())
+    }
+
+    /// Records that a `!default` declaration at this environment's root made
+    /// `name` configurable.
+    pub fn mark_variable_configurable(&mut self, name: Identifier) {
+        (*self.configurable_variables).borrow_mut().insert(name);
     }
 
     pub fn insert_mixin(&mut self, name: Identifier, mixin: Mixin) {

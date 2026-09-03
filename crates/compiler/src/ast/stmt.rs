@@ -301,7 +301,11 @@ pub struct ConfiguredVariable {
 #[derive(Debug, Clone)]
 pub struct Configuration {
     pub(crate) values: Arc<dyn MapView<Value = ConfiguredValue>>,
-    #[allow(unused)]
+    /// The configuration this one was derived from by `@forward` filtering,
+    /// or `None` for a configuration created directly from a `with (...)`
+    /// clause (or none at all). Two configurations that trace back to the
+    /// same root came from one `with` clause, so applying both to a module
+    /// is one configuration seen twice rather than a double configuration.
     pub(crate) original_config: Option<Rc<RefCell<Self>>>,
     pub(crate) span: Option<Span>,
 }
@@ -341,10 +345,17 @@ impl Configuration {
         config: Rc<RefCell<Self>>,
         values: Arc<dyn MapView<Value = ConfiguredValue>>,
     ) -> Self {
+        // The derived configuration keeps the parent's span: a configuration
+        // that came from a `with (...)` clause stays explicit through however
+        // many `@forward`s filter it, which is what lets the already-loaded
+        // check reject it when it reaches a module loaded under a different
+        // clause.
+        let span = (*config).borrow().span;
+
         Self {
             values,
             original_config: Some(config),
-            span: None,
+            span,
         }
     }
 
@@ -394,11 +405,18 @@ impl Configuration {
         self.values.is_empty()
     }
 
-    #[allow(unused)]
+    /// Resolves the root configuration this one was derived from.
+    ///
+    /// Forward chains derive step by step, so the parent may itself be
+    /// derived; the root is the configuration a `with (...)` clause created.
+    /// Compared by identity (`Rc::ptr_eq`) to tell one clause reaching a
+    /// module along two paths from two different clauses.
     pub fn original_config(config: Rc<RefCell<Configuration>>) -> Rc<RefCell<Configuration>> {
-        match (*config).borrow().original_config.as_ref() {
-            Some(v) => Rc::clone(v),
-            None => Rc::clone(&config),
+        let parent = (*config).borrow().original_config.as_ref().map(Rc::clone);
+
+        match parent {
+            Some(parent) => Self::original_config(parent),
+            None => config,
         }
     }
 }

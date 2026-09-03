@@ -65,6 +65,20 @@ impl ShadowedModule {
         }
     }
 
+    /// Whether a configuration naming `variables` could have configured the
+    /// shadowed module: only names this view still exposes count.
+    fn could_have_been_configured(&self, variables: &HashSet<Identifier>) -> bool {
+        let visible: HashSet<Identifier> = self
+            .scope
+            .variables
+            .keys()
+            .into_iter()
+            .filter(|name| variables.contains(name))
+            .collect();
+
+        (*self.inner).borrow().could_have_been_configured(&visible)
+    }
+
     fn needs_blocklist<V: fmt::Debug + Clone>(
         map: Arc<dyn MapView<Value = V>>,
         blocklist: Option<&HashSet<Identifier>>,
@@ -179,6 +193,45 @@ impl ForwardedModule {
         }
 
         map
+    }
+
+    /// Whether a configuration naming `variables` could have configured the
+    /// forwarded module, seen through this forward's prefix and `show`/`hide`
+    /// lists.
+    fn could_have_been_configured(&self, variables: &HashSet<Identifier>) -> bool {
+        let rule = &self.forward_rule;
+
+        if rule.prefix.is_none()
+            && rule.shown_variables.is_none()
+            && rule
+                .hidden_variables
+                .as_ref()
+                .map_or(true, HashSet::is_empty)
+        {
+            return (*self.inner).borrow().could_have_been_configured(variables);
+        }
+
+        let mut names: HashSet<Identifier> = match &rule.prefix {
+            Some(prefix) => variables
+                .iter()
+                .filter_map(|name| {
+                    name.as_str()
+                        .strip_prefix(prefix.as_str())
+                        .map(Identifier::from)
+                })
+                .collect(),
+            None => variables.clone(),
+        };
+
+        if let Some(shown) = &rule.shown_variables {
+            names.retain(|name| shown.contains(name));
+        } else if let Some(hidden) = &rule.hidden_variables {
+            if !hidden.is_empty() {
+                names.retain(|name| !hidden.contains(name));
+            }
+        }
+
+        (*self.inner).borrow().could_have_been_configured(&names)
     }
 
     pub fn if_necessary(
@@ -322,6 +375,37 @@ fn member_map<V: fmt::Debug + Clone + 'static>(
 }
 
 impl Module {
+    /// Whether a `with (...)` clause naming `variables` could have configured
+    /// this module when it was loaded: one of the names is declared
+    /// `!default` at the module's root, or reaches such a declaration through
+    /// the module's `@forward`s.
+    ///
+    /// This gates the "already loaded, so it can't be configured" error: a
+    /// clause whose names could never have applied to the module is not a
+    /// double configuration, so loading a forwarding file with a
+    /// configuration meant for its own variables stays legal even when the
+    /// file it forwards was loaded earlier.
+    pub(crate) fn could_have_been_configured(&self, variables: &HashSet<Identifier>) -> bool {
+        match self {
+            Self::Builtin { .. } => false,
+            Self::Environment { env, .. } => {
+                if variables
+                    .iter()
+                    .any(|name| (*env.configurable_variables).borrow().contains(name))
+                {
+                    return true;
+                }
+
+                (*env.forwarded_modules)
+                    .borrow()
+                    .iter()
+                    .any(|module| (**module).borrow().could_have_been_configured(variables))
+            }
+            Self::Forwarded(forwarded) => forwarded.could_have_been_configured(variables),
+            Self::Shadowed(shadowed) => shadowed.could_have_been_configured(variables),
+        }
+    }
+
     pub fn new_env(env: Environment, extension_store: ExtensionStore) -> Self {
         let variables = {
             let variables = (*env.forwarded_modules).borrow();
