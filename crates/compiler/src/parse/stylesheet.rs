@@ -1599,6 +1599,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
         let mut configuration = Vec::new();
         self.whitespace()?;
         self.expect_char('(')?;
+        let parens = self.enter_parens();
 
         loop {
             self.whitespace()?;
@@ -1649,6 +1650,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
         }
 
         self.expect_char(')')?;
+        self.restore_parens(parens);
 
         Ok(Some(configuration))
     }

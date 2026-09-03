@@ -170,6 +170,14 @@ impl ForwardedModule {
             map = Arc::new(PrefixedMapView(map, prefix.to_owned()));
         }
 
+        // `show` and `hide` were parsed and then ignored, so a hidden member
+        // stayed reachable through the forwarding module.
+        if let Some(safelist) = safelist {
+            map = Arc::new(LimitedMapView::safelist(map, safelist));
+        } else if let Some(blocklist) = blocklist {
+            map = Arc::new(LimitedMapView::blocklist(map, blocklist));
+        }
+
         map
     }
 
