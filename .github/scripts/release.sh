@@ -140,16 +140,25 @@ echo "  tests: pass"
 
 step "Package contents"
 
-# A dry run is expected to happen on a working branch, so allow a dirty tree
-# there. A real publish requires a clean one, enforced in the preconditions.
-pkgflags=()
-[ "$DRY_RUN" -eq 1 ] && pkgflags+=(--allow-dirty)
-
 for entry in "${CRATES[@]}"; do
   pkg="${entry%%:*}"
-  # Keep stderr: swallowing it turns "tree is dirty" into the useless and
-  # misleading "produced nothing".
-  listing=$(cargo package -p "$pkg" --list "${pkgflags[@]}" 2>&1) || {
+  # A dry run happens on a working branch, so it tolerates a dirty tree; a real
+  # publish requires a clean one, enforced in the preconditions.
+  #
+  # Written as two explicit calls rather than an array of flags. bash 3.2 --
+  # which is what macOS ships, and where this is most likely to be run -- treats
+  # "${arr[@]}" on an EMPTY array as an unbound variable under `set -u`. The
+  # array is empty exactly when this is a real publish, so that spelling failed
+  # only on the path a dry run never exercises.
+  #
+  # Keep stderr: swallowing it turns "tree is dirty" into a misleading
+  # "produced nothing".
+  if [ "$DRY_RUN" -eq 1 ]; then
+    listing=$(cargo package -p "$pkg" --list --allow-dirty 2>&1)
+  else
+    listing=$(cargo package -p "$pkg" --list 2>&1)
+  fi
+  [ $? -eq 0 ] || {
     echo "$listing" >&2
     die "cargo package --list failed for $pkg"
   }
@@ -158,6 +167,24 @@ for entry in "${CRATES[@]}"; do
     || die "$pkg would publish without a README (check its readme field and include list)"
   printf '  %-24s %3s files, README present\n' "$pkg" "$files"
 done
+
+# `--list` only reads a file list; it never builds the packaged crate. A real
+# `cargo publish` does, so a dry run that skips it can still be followed by a
+# publish that fails during verification. The first crate can be verified now
+# because it has no workspace dependencies; the other two cannot until the one
+# below them is on the index, which is the same ordering constraint as above.
+if [ "$DRY_RUN" -eq 1 ]; then
+  step "Verifying the first crate builds from its package"
+  first="${CRATES[0]%%:*}"
+  if cargo publish -p "$first" --dry-run --allow-dirty >/dev/null 2>&1; then
+    echo "  $first: packages and builds"
+  else
+    echo "  $first: FAILED to build from its package" >&2
+    cargo publish -p "$first" --dry-run --allow-dirty 2>&1 | tail -20 >&2
+    die "the first crate does not build from its packaged form"
+  fi
+  echo "  (the other two cannot be verified until the crate below them is live)"
+fi
 
 if [ "$DRY_RUN" -eq 1 ]; then
   step "Dry run complete"
@@ -184,7 +211,7 @@ for entry in "${CRATES[@]}"; do
     echo "  waiting for the index to carry $pkg $version"
     for _ in $(seq 1 30); do
       sleep 10
-      if cargo search "$pkg" 2>/dev/null | grep -q "^$pkg = \"$version\""; then
+      if cargo search "$pkg" --limit 50 2>/dev/null | grep -q "^$pkg = \"$version\""; then
         echo "  index has it"
         break
       fi
