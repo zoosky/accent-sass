@@ -90,7 +90,7 @@ rule, which is also what most of item 09's remainder is; those 31 and item
 |---|---|---|---|
 | [07-calculation-long-tail.md](07-calculation-long-tail.md) | What #12 left in the calculation suite: `%` and `mod()` with a signed zero against an infinite divisor, a rounding strategy arriving through interpolation, line noise inside an interpolated `calc()` | 3 | `spec/values/calculation` |
 | [08-calculation-warnings-and-error-wording.md](08-calculation-warnings-and-error-wording.md) | Deprecation warnings (none exist) and error wording in calculations | 57, invisible under the standard flags | `spec/values/calculation` |
-| [09-plain-css.md](09-plain-css.md) | Plain CSS. Nesting passthrough landed and closed 27 of the original 51; what is left is the CSS `@function` rule, whitespace in `@import ... supports(..)`, `if()` in plain CSS, and `//` in a plain CSS value | 24 | `spec/css/plain` |
+| [09-plain-css.md](09-plain-css.md) | Plain CSS. Nesting passthrough landed in #27 and closed 27 of the original 51; what is left is the CSS `@function` rule, whitespace in `@import ... supports(..)`, `if()` in plain CSS, and `//` in a plain CSS value | 24 | `spec/css/plain` |
 
 Item 07's 3 failures are the same three counted in item 01's residue below,
 not additional ones -- 07 exists to describe what 01 deliberately left. Item

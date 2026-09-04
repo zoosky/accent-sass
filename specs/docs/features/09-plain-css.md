@@ -5,7 +5,8 @@ failures, 45 of them "rejects valid input". Measured 2026-09-04 against
 the pinned sass-spec revision `4a9eea66` and the dart-sass 1.103.1
 binary, under the roadmap's standard flags.
 
-**CSS nesting passthrough has landed**, which closed 27 of the 51:
+**CSS nesting passthrough has landed** (`zoosky/accent-sass` #27), which
+closed 27 of the 51:
 
 ```
 236 runs, 212 passing, 24 failures, 0 todo, 0 ignored, 0 errors
