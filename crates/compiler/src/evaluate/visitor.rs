@@ -1987,6 +1987,17 @@ impl<'a> Visitor<'a> {
                     .map(CssStmt::copy_without_children)
                     .unwrap();
                 parent = self.css_tree.add_child(parent_node, grandparent);
+
+                // Everything that follows belongs in this copy, not in a copy
+                // of its own. Without this the copy is computed into a local
+                // and thrown away, so each subsequent declaration sees the
+                // original parent -- still followed by the interstitial -- and
+                // makes another copy, emitting one rule per declaration.
+                //
+                // `with_parent` reads `self.parent` *after* calling this, so
+                // updating it here also gives the copy back to the enclosing
+                // scope once a nested rule finishes.
+                self.parent = Some(parent);
             }
         }
 

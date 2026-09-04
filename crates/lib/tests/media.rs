@@ -485,6 +485,9 @@ test!(
 );
 test!(
     splits_child_nodes_when_preceding_media,
+    // Corrected against dart-sass 1.103.1. The @media splits once, around the
+    // nested media rule; the two `a` rules that follow share the one copy
+    // rather than each getting an @media of its own.
     "@media (foo) {
         @media (prefers-reduced-motion: reduce) {
             a {
@@ -500,7 +503,7 @@ test!(
             color: red;
         }
     }",
-    "@media (foo) and (prefers-reduced-motion: reduce) {\n  a {\n    transition: none;\n  }\n}\n@media (foo) {\n  a {\n    color: red;\n  }\n}\n@media (foo) {\n  a {\n    color: red;\n  }\n}\n"
+    "@media (foo) and (prefers-reduced-motion: reduce) {\n  a {\n    transition: none;\n  }\n}\n@media (foo) {\n  a {\n    color: red;\n  }\n  a {\n    color: red;\n  }\n}\n"
 );
 test!(
     doesnt_split_child_nodes_when_trailing_media,
