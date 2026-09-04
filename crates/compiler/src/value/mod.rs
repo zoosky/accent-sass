@@ -494,6 +494,7 @@ impl Value {
             &string,
             allows_parent,
             true,
+            false,
             span,
         )?))
     }

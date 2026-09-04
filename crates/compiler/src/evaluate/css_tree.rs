@@ -130,6 +130,22 @@ impl CssTree {
         child_idx
     }
 
+    /// Moves `child_idx` out of the parent it currently has and appends it to
+    /// `parent_idx`.
+    ///
+    /// This is how a plain CSS rule that a module emitted at the top level gets
+    /// nested back under the rule the module was loaded from, when its selector
+    /// says it belongs there rather than merged into it.
+    pub fn reparent(&mut self, child_idx: CssTreeIdx, parent_idx: CssTreeIdx) {
+        if let Some(old_parent) = self.child_to_parent.get(&child_idx).copied()
+            && let Some(siblings) = self.parent_to_child.get_mut(&old_parent)
+        {
+            siblings.retain(|&sibling| sibling != child_idx);
+        }
+
+        self.link_child_to_parent(child_idx, parent_idx);
+    }
+
     pub fn link_child_to_parent(&mut self, child_idx: CssTreeIdx, parent_idx: CssTreeIdx) {
         self.parent_to_child
             .entry(parent_idx)

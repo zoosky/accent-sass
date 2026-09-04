@@ -151,18 +151,26 @@ impl SelectorList {
     /// If `implicit_parent` is true, this treats `ComplexSelector`s that don't
     /// contain an explicit `SimpleSelector::Parent` as though they began with one.
     ///
+    /// If `preserve_parent_selectors` is true, `SimpleSelector::Parent`s are
+    /// left alone instead of being resolved, and every `ComplexSelector` is
+    /// treated as though it had none. This is how plain CSS is handled: there
+    /// `&` is the CSS nesting selector, which the browser resolves, so Sass
+    /// passes it through untouched.
+    ///
     /// The given `parent` may be `None`, indicating that this has no parents. If
     /// so, this list is returned as-is if it doesn't contain any explicit
-    /// `SimpleSelector::Parent`s. If it does, this returns a `SassError`.
+    /// `SimpleSelector::Parent`s or if they are being preserved. Otherwise, this
+    /// returns a `SassError`.
     pub fn resolve_parent_selectors(
         self,
         parent: Option<Self>,
         implicit_parent: bool,
+        preserve_parent_selectors: bool,
     ) -> SassResult<Self> {
         let parent = match parent {
             Some(p) => p,
             None => {
-                if !self.contains_parent_selector() {
+                if preserve_parent_selectors || !self.contains_parent_selector() {
                     return Ok(self);
                 }
                 return Err((
@@ -178,7 +186,7 @@ impl SelectorList {
                 self.components
                     .into_iter()
                     .map(|complex| {
-                        if !complex.contains_parent_selector() {
+                        if preserve_parent_selectors || !complex.contains_parent_selector() {
                             if !implicit_parent {
                                 return Ok(vec![complex]);
                             }

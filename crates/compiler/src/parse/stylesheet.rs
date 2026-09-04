@@ -1801,11 +1801,6 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
     fn parse_declaration_or_style_rule(&mut self) -> SassResult<AstStmt> {
         let start = self.toks().cursor();
 
-        if self.is_plain_css() && self.flags().in_style_rule() && !self.flags().in_unknown_at_rule()
-        {
-            return self.parse_property_or_variable_declaration(true);
-        }
-
         // The indented syntax allows a single backslash to distinguish a style rule
         // from old-style property syntax. We don't support old property syntax, but
         // we do support the backslash because it's easy to do.
@@ -2462,6 +2457,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
 
         let post_colon_whitespace = self.raw_text(Self::whitespace);
         if self.looking_at_children()? {
+            self.assert_declaration_children_allowed()?;
             let body = self.with_children(Self::parse_declaration_child)?.node;
             return Ok(DeclarationOrBuffer::Stmt(AstStmt::Style(AstStyle {
                 name: name_buffer,
@@ -2511,6 +2507,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
         };
 
         if self.looking_at_children()? {
+            self.assert_declaration_children_allowed()?;
             let body = self.with_children(Self::parse_declaration_child)?.node;
             Ok(DeclarationOrBuffer::Stmt(AstStmt::Style(AstStyle {
                 name: name_buffer,
@@ -2527,6 +2524,22 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
                 body: Vec::new(),
             })))
         }
+    }
+
+    /// Rejects nested declarations such as `a {b: {c: d}}` in a plain CSS file,
+    /// where the shorthand does not exist.
+    ///
+    /// Called once the `{` that opens the nested block has been seen.
+    fn assert_declaration_children_allowed(&mut self) -> SassResult<()> {
+        if self.is_plain_css() {
+            return Err((
+                "Nested declarations aren't allowed in plain CSS.",
+                self.toks().current_span(),
+            )
+                .into());
+        }
+
+        Ok(())
     }
 
     fn parse_declaration_child(&mut self) -> SassResult<AstStmt> {

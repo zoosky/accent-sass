@@ -82,7 +82,16 @@ impl fmt::Display for SimpleSelector {
             Self::Pseudo(pseudo) => write!(f, "{}", pseudo),
             Self::Type(name) => write!(f, "{}", name),
             Self::Attribute(attr) => write!(f, "{}", attr),
-            Self::Parent(..) => unreachable!("It should not be possible to format `&`."),
+            // A parent selector normally resolves before serialization. It
+            // survives only in plain CSS, where `&` is the CSS nesting selector
+            // and is written out as it was read.
+            Self::Parent(suffix) => {
+                f.write_char('&')?;
+                match suffix {
+                    Some(suffix) => f.write_str(suffix),
+                    None => Ok(()),
+                }
+            }
         }
     }
 }
@@ -129,7 +138,9 @@ impl SimpleSelector {
                 name != "not" && selector.as_ref().is_some_and(|sel| sel.is_invisible())
             }
             Self::Placeholder(..) => true,
-            Self::Parent(..) => unreachable!("parent selectors should be resolved at this point"),
+            // Unresolved in plain CSS, where it selects the enclosing rule and
+            // is therefore always visible.
+            Self::Parent(..) => false,
         }
     }
 

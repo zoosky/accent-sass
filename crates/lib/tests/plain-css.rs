@@ -200,7 +200,7 @@ error!(
     "%a {
         color: red;
     }",
-    "Error: Placeholder selectors aren't allowed here.",
+    "Error: Placeholder selectors aren't allowed in plain CSS.",
     accent_sass::Options::default().input_syntax(InputSyntax::Css)
 );
 test!(
@@ -247,5 +247,134 @@ error!(
         }
     }",
     "Error: Nested declarations aren't allowed in plain CSS.",
+    accent_sass::Options::default().input_syntax(InputSyntax::Css)
+);
+
+// CSS nesting is passed through: a rule written inside another rule keeps its
+// own selector and stays nested, because the browser resolves it, not Sass.
+// Every expectation below was checked against dart-sass 1.103.1.
+test!(
+    nesting_one_level,
+    "a {b {c: d}}",
+    "a {\n  b {\n    c: d;\n  }\n}\n",
+    accent_sass::Options::default().input_syntax(InputSyntax::Css)
+);
+test!(
+    nesting_two_levels,
+    "a {b {c {d: e}}}",
+    "a {\n  b {\n    c {\n      d: e;\n    }\n  }\n}\n",
+    accent_sass::Options::default().input_syntax(InputSyntax::Css)
+);
+test!(
+    nesting_multiple_complex,
+    "a, b {c, d {e: f}}",
+    "a, b {\n  c, d {\n    e: f;\n  }\n}\n",
+    accent_sass::Options::default().input_syntax(InputSyntax::Css)
+);
+test!(
+    nesting_between_declarations,
+    "a {b: c; d {e: f} g: h}",
+    "a {\n  b: c;\n  d {\n    e: f;\n  }\n  g: h;\n}\n",
+    accent_sass::Options::default().input_syntax(InputSyntax::Css)
+);
+test!(
+    nesting_leading_combinator,
+    "a {+ b {c: d}}",
+    "a {\n  + b {\n    c: d;\n  }\n}\n",
+    accent_sass::Options::default().input_syntax(InputSyntax::Css)
+);
+
+// `&` is the CSS nesting selector rather than Sass's parent selector, so it is
+// written out unresolved wherever it appears -- including at the top level.
+test!(
+    parent_selector_alone,
+    "a {& {b: c}}",
+    "a {\n  & {\n    b: c;\n  }\n}\n",
+    accent_sass::Options::default().input_syntax(InputSyntax::Css)
+);
+test!(
+    parent_selector_mid_compound,
+    "a {.b&.c {d: e}}",
+    "a {\n  .b&.c {\n    d: e;\n  }\n}\n",
+    accent_sass::Options::default().input_syntax(InputSyntax::Css)
+);
+test!(
+    top_level_parent_selector,
+    "& {a: b}",
+    "& {\n  a: b;\n}\n",
+    accent_sass::Options::default().input_syntax(InputSyntax::Css)
+);
+error!(
+    parent_selector_with_suffix,
+    "a {&b {c: d}}",
+    "Error: Parent selectors can't have suffixes in plain CSS.",
+    accent_sass::Options::default().input_syntax(InputSyntax::Css)
+);
+
+// An at-rule directly inside the outermost rule still bubbles out of it, the
+// way it does in Sass. Once nesting has been passed through, it stays where it
+// was written: the stylesheet already requires a browser that supports nesting.
+test!(
+    at_rule_bubbles_out_of_outermost_rule,
+    "a {@media b {c: d}}",
+    "@media b {\n  a {\n    c: d;\n  }\n}\n",
+    accent_sass::Options::default().input_syntax(InputSyntax::Css)
+);
+test!(
+    media_stays_inside_nested_rule,
+    "a {b {@media c {d: e}}}",
+    "a {\n  b {\n    @media c {\n      d: e;\n    }\n  }\n}\n",
+    accent_sass::Options::default().input_syntax(InputSyntax::Css)
+);
+test!(
+    nested_media_queries_are_not_merged,
+    "a {b {@media c {@media (d) {e: f}}}}",
+    "a {\n  b {\n    @media c {\n      @media (d) {\n        e: f;\n      }\n    }\n  }\n}\n",
+    accent_sass::Options::default().input_syntax(InputSyntax::Css)
+);
+test!(
+    supports_stays_inside_nested_rule,
+    "a {b {@supports (c: d) {e: f}}}",
+    "a {\n  b {\n    @supports (c: d) {\n      e: f;\n    }\n  }\n}\n",
+    accent_sass::Options::default().input_syntax(InputSyntax::Css)
+);
+test!(
+    unknown_at_rule_stays_inside_nested_rule,
+    "a {b {@c {d: e}}}",
+    "a {\n  b {\n    @c {\n      d: e;\n    }\n  }\n}\n",
+    accent_sass::Options::default().input_syntax(InputSyntax::Css)
+);
+// Bubbling resumes for a sibling written after the nested rule closes.
+test!(
+    at_rule_after_nested_rule_still_bubbles,
+    "a {b {c: d} @media e {f: g}}",
+    "a {\n  b {\n    c: d;\n  }\n}\n@media e {\n  a {\n    f: g;\n  }\n}\n",
+    accent_sass::Options::default().input_syntax(InputSyntax::Css)
+);
+
+// A combinator needs a rule to be relative to. Nested rules have one; the
+// top level does not, and nothing follows a trailing combinator anywhere.
+error!(
+    top_level_leading_combinator,
+    "> a {b: c}",
+    "Error: Top-level leading combinators aren't allowed in plain CSS.",
+    accent_sass::Options::default().input_syntax(InputSyntax::Css)
+);
+error!(
+    trailing_combinator_without_nesting,
+    "a > {b: c}",
+    "Error: expected selector.",
+    accent_sass::Options::default().input_syntax(InputSyntax::Css)
+);
+error!(
+    trailing_combinator_with_nesting,
+    "a > {b {c: d}}",
+    "Error: expected selector.",
+    accent_sass::Options::default().input_syntax(InputSyntax::Css)
+);
+error!(
+    placeholder_selector_in_nested_rule,
+    "a {b {%c {d: e}}}",
+    "Error: Placeholder selectors aren't allowed in plain CSS.",
     accent_sass::Options::default().input_syntax(InputSyntax::Css)
 );
