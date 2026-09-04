@@ -105,11 +105,11 @@ pub(crate) trait BaseParser {
     }
 
     fn scan_char(&mut self, c: char) -> bool {
-        if let Some(Token { kind, .. }) = self.toks().peek() {
-            if kind == c {
-                self.toks_mut().next();
-                return true;
-            }
+        if let Some(Token { kind, .. }) = self.toks().peek()
+            && kind == c
+        {
+            self.toks_mut().next();
+            return true;
         }
 
         false

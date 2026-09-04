@@ -68,7 +68,7 @@ git checkout -b fix/my-change
 
 # 2. Change, then run the gates
 cargo fmt --all -- --check
-cargo +1.85.0 clippy --features=macro --all-targets -- -D warnings
+cargo +1.96.1 clippy --features=macro --all-targets -- -D warnings
 cargo +stable  clippy --features=macro --all-targets -- -D warnings
 cargo test --features=macro
 
@@ -94,9 +94,8 @@ to push when you are"; push. If the push fails, resolve it and retry.
 
 ## Quality gates
 
-The gating jobs pin Rust **1.85.0**, the MSRV implied by the 2024 edition;
-the integration jobs use
-`stable`. The commands CI runs:
+The gating jobs pin Rust **1.96.1**, the MSRV normalised across the Accent
+crates; the integration jobs use `stable`. The commands CI runs:
 
 ```bash
 cargo fmt --all -- --check
@@ -106,13 +105,17 @@ cargo test --features=macro
 
 Clippy gates on **two** toolchains, the MSRV and current stable, and both must
 pass. Pinning the lint gate to the MSRV alone left CI blind to every lint added
-after 1.85, so a contributor on stable saw sixteen errors CI called clean. Run
-it locally the way CI does:
+after it, so a contributor on stable once saw sixteen errors CI called clean.
+Run it locally the way CI does:
 
 ```bash
-cargo +1.85.0 clippy --features=macro --all-targets -- -D warnings
+cargo +1.96.1 clippy --features=macro --all-targets -- -D warnings
 cargo +stable  clippy --features=macro --all-targets -- -D warnings
 ```
+
+Clippy reads `rust-version`, so raising the MSRV can turn lints on. Going from
+1.85 to 1.96 made `collapsible_if` suggest let chains, which need 1.88: 23
+findings appeared with no code change.
 
 `cargo test` does not need the `sass-spec` submodule; the crate keeps its own
 test suite deliberately separate from the spec.

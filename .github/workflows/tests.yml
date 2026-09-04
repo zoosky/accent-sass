@@ -14,7 +14,7 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: "1.85.0"
+          toolchain: "1.96.1"
 
       - name: version info
         run: rustc --version; cargo --version;
@@ -30,7 +30,7 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: "1.85.0"
+          toolchain: "1.96.1"
 
       - run: |
           rustup component add rustfmt
@@ -39,7 +39,7 @@ jobs:
   # Clippy runs on BOTH the MSRV and current stable, and both gate.
   #
   # Pinning the lint gate to the MSRV alone made CI blind to every lint added
-  # after 1.85: a contributor on stable saw sixteen errors that CI reported as
+  # after it: a contributor on stable saw sixteen errors that CI reported as
   # clean. The MSRV run still matters -- it catches code that only compiles on
   # a newer compiler -- but it cannot be the whole gate, because lints are how
   # the project finds out its own code has drifted.
@@ -52,7 +52,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        toolchain: ["1.85.0", "stable"]
+        toolchain: ["1.96.1", "stable"]
     name: clippy (${{ matrix.toolchain }})
     steps:
       - name: Checkout

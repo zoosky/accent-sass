@@ -161,10 +161,11 @@ impl<'a> Serializer<'a> {
     }
 
     fn write_pseudo_selector(&mut self, pseudo: &Pseudo) {
-        if let Some(sel) = &pseudo.selector {
-            if pseudo.name == "not" && sel.is_invisible() {
-                return;
-            }
+        if let Some(sel) = &pseudo.selector
+            && pseudo.name == "not"
+            && sel.is_invisible()
+        {
+            return;
         }
 
         self.buffer.push(b':');
@@ -271,12 +272,11 @@ impl<'a> Serializer<'a> {
         let mut last_component = None;
 
         for component in &complex.components {
-            if let Some(c) = last_component {
-                if !self.omit_spaces_around_complex_component(c)
-                    && !self.omit_spaces_around_complex_component(component)
-                {
-                    self.buffer.push(b' ');
-                }
+            if let Some(c) = last_component
+                && !self.omit_spaces_around_complex_component(c)
+                && !self.omit_spaces_around_complex_component(component)
+            {
+                self.buffer.push(b' ');
             }
             self.write_complex_selector_component(component);
             last_component = Some(component);
