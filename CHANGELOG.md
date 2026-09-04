@@ -13,7 +13,19 @@ at `0.13.4` and below are upstream's and are kept for lineage.
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- CSS nesting in plain CSS files. A `.css` file may nest style rules; Sass no
+  longer rejects them and no longer resolves them, since CSS nesting is the
+  browser's job. The rule keeps its own selector and stays nested, `&` is
+  written out unresolved, and at-rules stop bubbling out of a rule once nesting
+  has been passed through
+
+### Fixed
+
+- `selector.replace()` rejects a parent selector in any of its three arguments,
+  matching `selector.extend()` and dart-sass. It previously accepted `&` and
+  panicked while serializing the result
 
 ## [0.14.0] - 2026-09-04
 

@@ -172,15 +172,17 @@ pub(crate) fn selector_replace(
     visitor: &mut Visitor,
 ) -> SassResult<Value> {
     args.max_args(3)?;
+    // None of the three arguments may contain `&`: there is no enclosing rule
+    // to resolve it against, the same as `selector.extend`.
     let selector =
         args.get_err(0, "selector")?
-            .to_selector(visitor, "selector", true, args.span())?;
+            .to_selector(visitor, "selector", false, args.span())?;
     let target =
         args.get_err(1, "original")?
-            .to_selector(visitor, "original", true, args.span())?;
+            .to_selector(visitor, "original", false, args.span())?;
     let source =
         args.get_err(2, "replacement")?
-            .to_selector(visitor, "replacement", true, args.span())?;
+            .to_selector(visitor, "replacement", false, args.span())?;
     Ok(ExtensionStore::replace(selector.0, source.0, target.0, args.span())?.to_sass_list())
 }
 

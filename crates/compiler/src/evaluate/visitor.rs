@@ -132,6 +132,22 @@ pub struct Visitor<'a> {
     pub(crate) flags: ContextFlags,
     pub(crate) env: Environment,
     pub(crate) style_rule_ignoring_at_root: Option<ExtendedSelector>,
+
+    /// Whether `style_rule_ignoring_at_root` came from a plain CSS file.
+    ///
+    /// A style rule written inside one of those is CSS nesting: it keeps its
+    /// own selector and stays nested, instead of being merged into its parent
+    /// the way Sass nesting is.
+    style_rule_is_plain_css: bool,
+
+    /// Whether the enclosing style rule is itself nested inside another one in
+    /// the output, which only happens once plain CSS nesting has been passed
+    /// through.
+    ///
+    /// Past that point the stylesheet already requires a browser that supports
+    /// CSS nesting, so at-rules stop bubbling out of style rules and stay where
+    /// they were written.
+    has_css_nesting: bool,
     // avoid emitting duplicate warnings for the same span
     pub(crate) warnings_emitted: HashSet<Span>,
     pub(crate) media_queries: Option<Vec<MediaQuery>>,
@@ -192,6 +208,8 @@ impl<'a> Visitor<'a> {
         Self {
             declaration_name: None,
             style_rule_ignoring_at_root: None,
+            style_rule_is_plain_css: false,
+            has_css_nesting: false,
             flags,
             warnings_emitted: HashSet::new(),
             media_queries: None,
@@ -530,6 +548,25 @@ impl<'a> Visitor<'a> {
 
         let children = supports_rule.body;
 
+        // Once plain CSS nesting has been passed through, the stylesheet
+        // already needs a browser that supports nesting, so there is nothing to
+        // gain from hoisting this rule out of the style rule it sits in.
+        if self.has_css_nesting {
+            return self.with_parent_opt(
+                css_supports_rule,
+                true,
+                |visitor| {
+                    for stmt in children {
+                        let result = visitor.visit_stmt(stmt)?;
+                        debug_assert!(result.is_none());
+                    }
+
+                    Ok(())
+                },
+                None::<fn(&CssStmt) -> bool>,
+            );
+        }
+
         self.with_parent(
             css_supports_rule,
             true,
@@ -550,6 +587,7 @@ impl<'a> Visitor<'a> {
                         selector,
                         body: Vec::new(),
                         is_group_end: false,
+                        from_plain_css: visitor.style_rule_is_plain_css,
                     };
 
                     visitor.with_parent(
@@ -677,6 +715,9 @@ impl<'a> Visitor<'a> {
             // different rule.
             let in_import_context = visitor.in_import_context;
             let old_style_rule = visitor.style_rule_ignoring_at_root.take();
+            let old_style_rule_is_plain_css =
+                mem::replace(&mut visitor.style_rule_is_plain_css, false);
+            let old_has_css_nesting = mem::replace(&mut visitor.has_css_nesting, false);
             let old_media_queries = if in_import_context {
                 None
             } else {
@@ -709,6 +750,8 @@ impl<'a> Visitor<'a> {
             // visitor.end_of_imports = old_end_of_imports;
             // visitor.out_of_order_imports = old_out_of_order_imports;
             visitor.style_rule_ignoring_at_root = old_style_rule;
+            visitor.style_rule_is_plain_css = old_style_rule_is_plain_css;
+            visitor.has_css_nesting = old_has_css_nesting;
             if !in_import_context {
                 visitor.media_queries = old_media_queries;
             }
@@ -794,10 +837,24 @@ impl<'a> Visitor<'a> {
         }
 
         for &idx in top_level {
-            let selector_list = match self.css_tree.get(idx).as_ref() {
-                Some(CssStmt::RuleSet { selector, .. }) => selector.as_selector_list().clone(),
+            let (selector_list, from_plain_css) = match self.css_tree.get(idx).as_ref() {
+                Some(CssStmt::RuleSet {
+                    selector,
+                    from_plain_css,
+                    ..
+                }) => (selector.as_selector_list().clone(), *from_plain_css),
                 _ => continue,
             };
+
+            // A plain CSS rule that uses `&` keeps it: the browser resolves the
+            // CSS nesting selector against the enclosing rule, so the rule is
+            // nested under the load site rather than merged into it.
+            if from_plain_css && selector_list.contains_parent_selector() {
+                if let Some(parent) = self.parent {
+                    self.css_tree.reparent(idx, parent);
+                }
+                continue;
+            }
 
             let resolved = self.nest_selector_under_current_rule(selector_list)?;
 
@@ -820,8 +877,11 @@ impl<'a> Visitor<'a> {
             .as_ref()
             .map(|rule| rule.as_selector_list().clone());
 
-        let resolved = selector_list
-            .resolve_parent_selectors(parent, !self.flags.at_root_excluding_style_rule())?;
+        let resolved = selector_list.resolve_parent_selectors(
+            parent,
+            !self.flags.at_root_excluding_style_rule(),
+            false,
+        )?;
 
         Ok(self.extender.add_selector(resolved, &self.media_queries))
     }
@@ -857,14 +917,32 @@ impl<'a> Visitor<'a> {
         for node in recorded {
             let mut stmt = node.stmt;
 
+            // As in `renest_module_css`, a plain CSS rule that uses `&` stays
+            // where the load site puts it, selector untouched.
+            let mut nest_under_parent = false;
+
             if in_style_rule {
-                if let CssStmt::RuleSet { selector, .. } = &mut stmt {
+                if let CssStmt::RuleSet {
+                    selector,
+                    from_plain_css,
+                    ..
+                } = &mut stmt
+                {
                     let selector_list = selector.as_selector_list().clone();
-                    *selector = self.nest_selector_under_current_rule(selector_list)?;
+
+                    if *from_plain_css && selector_list.contains_parent_selector() {
+                        nest_under_parent = true;
+                    } else {
+                        *selector = self.nest_selector_under_current_rule(selector_list)?;
+                    }
                 }
             }
 
-            let new_idx = self.add_child(stmt, Some(CssStmt::is_style_rule));
+            let new_idx = if nest_under_parent {
+                self.add_child(stmt, None::<fn(&CssStmt) -> bool>)
+            } else {
+                self.add_child(stmt, Some(CssStmt::is_style_rule))
+            };
             self.replay_css_children(node.children, new_idx);
         }
 
@@ -1608,11 +1686,12 @@ impl<'a> Visitor<'a> {
         selector_text: &str,
         allows_parent: bool,
         allows_placeholder: bool,
+        plain_css: bool,
         span: Span,
     ) -> SassResult<SelectorList> {
         let sel_toks = Lexer::new_from_string(selector_text, span);
 
-        SelectorParser::new(sel_toks, allows_parent, allows_placeholder, span).parse()
+        SelectorParser::new(sel_toks, allows_parent, allows_placeholder, plain_css, span).parse()
     }
 
     fn visit_extend_rule(&mut self, extend_rule: AstExtendRule) -> SassResult<Option<Value>> {
@@ -1628,7 +1707,8 @@ impl<'a> Visitor<'a> {
 
         let target_text = self.interpolation_to_value(extend_rule.value, false, true)?;
 
-        let list = self.parse_selector_from_string(&target_text, false, true, extend_rule.span)?;
+        let list =
+            self.parse_selector_from_string(&target_text, false, true, false, extend_rule.span)?;
 
         for complex in list.components {
             if complex.components.len() != 1 || !complex.components.first().unwrap().is_compound() {
@@ -1711,6 +1791,38 @@ impl<'a> Visitor<'a> {
         }
 
         let queries1 = self.visit_media_queries(media_rule.query, media_rule.query_span)?;
+
+        // See the note in `visit_supports_rule`: inside passed-through CSS
+        // nesting this rule stays where it was written, with the query it was
+        // written with -- neither merged into an enclosing query nor hoisted
+        // out of the style rule.
+        if self.has_css_nesting {
+            let children = media_rule.body;
+            let stmt = CssStmt::Media(
+                MediaRule {
+                    query: queries1,
+                    body: Vec::new(),
+                },
+                false,
+            );
+
+            self.with_parent_opt(
+                stmt,
+                false,
+                |visitor| {
+                    for stmt in children {
+                        let result = visitor.visit_stmt(stmt)?;
+                        debug_assert!(result.is_none());
+                    }
+
+                    Ok(())
+                },
+                None::<fn(&CssStmt) -> bool>,
+            )?;
+
+            return Ok(None);
+        }
+
         // todo: superfluous clone?
         let queries2 = self.media_queries.clone();
         let merged_queries = queries2
@@ -1765,6 +1877,7 @@ impl<'a> Visitor<'a> {
                                 selector,
                                 body: Vec::new(),
                                 is_group_end: false,
+                                from_plain_css: visitor.style_rule_is_plain_css,
                             };
 
                             visitor.with_parent(
@@ -1859,6 +1972,30 @@ impl<'a> Visitor<'a> {
             false,
         );
 
+        // See the note in `visit_supports_rule`: inside passed-through CSS
+        // nesting this rule stays where it was written, unmerged.
+        if self.has_css_nesting {
+            self.with_parent_opt(
+                stmt,
+                true,
+                |visitor| {
+                    for stmt in children {
+                        let result = visitor.visit_stmt(stmt)?;
+                        debug_assert!(result.is_none());
+                    }
+
+                    Ok(())
+                },
+                None::<fn(&CssStmt) -> bool>,
+            )?;
+
+            self.flags.set(ContextFlags::IN_KEYFRAMES, was_in_keyframes);
+            self.flags
+                .set(ContextFlags::IN_UNKNOWN_AT_RULE, was_in_unknown_at_rule);
+
+            return Ok(None);
+        }
+
         self.with_parent(
             stmt,
             true,
@@ -1879,6 +2016,7 @@ impl<'a> Visitor<'a> {
                         selector,
                         body: Vec::new(),
                         is_group_end: false,
+                        from_plain_css: visitor.style_rule_is_plain_css,
                     };
 
                     visitor.with_parent(
@@ -2010,10 +2148,23 @@ impl<'a> Visitor<'a> {
         // default=true
         scope_when: bool,
         callback: F,
-        // todo: optional
         through: FT,
     ) -> SassResult<()> {
-        let parent_idx = self.add_child(parent, Some(through));
+        self.with_parent_opt(parent, scope_when, callback, Some(through))
+    }
+
+    /// As `with_parent`, but `through` may be absent, in which case the node is
+    /// added exactly where it was written instead of bubbling up past any
+    /// ancestor the predicate accepts.
+    fn with_parent_opt<F: FnOnce(&mut Self) -> SassResult<()>, FT: Fn(&CssStmt) -> bool>(
+        &mut self,
+        parent: CssStmt,
+        // default=true
+        scope_when: bool,
+        callback: F,
+        through: Option<FT>,
+    ) -> SassResult<()> {
+        let parent_idx = self.add_child(parent, through);
         let old_parent = self.parent;
         self.parent = Some(parent_idx);
         let result = self.with_scope(false, scope_when, callback);
@@ -3650,20 +3801,44 @@ impl<'a> Visitor<'a> {
             return Ok(None);
         }
 
+        // Plain CSS allows `&` -- it is the CSS nesting selector there, and the
+        // plain CSS mode of the selector parser applies the rules it does have
+        // for it. Placeholders it rejects outright.
         let mut parsed_selector = self.parse_selector_from_string(
             &selector_text,
+            true,
             !self.is_plain_css,
-            !self.is_plain_css,
+            self.is_plain_css,
             ruleset.selector_span,
         )?;
 
-        parsed_selector = parsed_selector.resolve_parent_selectors(
-            self.style_rule_ignoring_at_root
-                .as_ref()
-                // todo: this clone should be superfluous(?)
-                .map(|x| x.as_selector_list().clone()),
-            !self.flags.at_root_excluding_style_rule(),
-        )?;
+        // A rule written inside a plain CSS rule is CSS nesting: the browser
+        // resolves it, so it is left nested and its selector is left alone. A
+        // plain CSS rule that uses `&` explicitly is nested under a Sass rule
+        // for the same reason -- `a {@import "plain"}` over `& {b: c}` has to
+        // keep the `&` for the browser rather than resolve it to `a`.
+        let merge = if !self.style_rule_exists() {
+            true
+        } else if self.style_rule_is_plain_css {
+            false
+        } else {
+            !(self.is_plain_css && parsed_selector.contains_parent_selector())
+        };
+
+        if merge {
+            if self.is_plain_css {
+                Self::assert_no_leading_combinators(&parsed_selector, ruleset.selector_span)?;
+            }
+
+            parsed_selector = parsed_selector.resolve_parent_selectors(
+                self.style_rule_ignoring_at_root
+                    .as_ref()
+                    // todo: this clone should be superfluous(?)
+                    .map(|x| x.as_selector_list().clone()),
+                !self.flags.at_root_excluding_style_rule(),
+                self.is_plain_css,
+            )?;
+        }
 
         // todo: _mediaQueries
         let selector = self
@@ -3674,6 +3849,7 @@ impl<'a> Visitor<'a> {
             selector: selector.clone(),
             body: Vec::new(),
             is_group_end: false,
+            from_plain_css: self.is_plain_css,
         };
 
         let old_at_root_excluding_style_rule = self.flags.at_root_excluding_style_rule();
@@ -3682,9 +3858,13 @@ impl<'a> Visitor<'a> {
             .set(ContextFlags::AT_ROOT_EXCLUDING_STYLE_RULE, false);
 
         let old_style_rule_ignoring_at_root = self.style_rule_ignoring_at_root.take();
+        let old_style_rule_is_plain_css = self.style_rule_is_plain_css;
+        let old_has_css_nesting = self.has_css_nesting;
         self.style_rule_ignoring_at_root = Some(selector);
+        self.style_rule_is_plain_css = self.is_plain_css;
+        self.has_css_nesting = !merge;
 
-        self.with_parent(
+        self.with_parent_opt(
             rule,
             true,
             |visitor| {
@@ -3695,10 +3875,12 @@ impl<'a> Visitor<'a> {
 
                 Ok(())
             },
-            CssStmt::is_style_rule,
+            merge.then_some(CssStmt::is_style_rule),
         )?;
 
         self.style_rule_ignoring_at_root = old_style_rule_ignoring_at_root;
+        self.style_rule_is_plain_css = old_style_rule_is_plain_css;
+        self.has_css_nesting = old_has_css_nesting;
         self.flags.set(
             ContextFlags::AT_ROOT_EXCLUDING_STYLE_RULE,
             old_at_root_excluding_style_rule,
@@ -3707,6 +3889,29 @@ impl<'a> Visitor<'a> {
         self.set_group_end();
 
         Ok(None)
+    }
+
+    /// Rejects a selector that starts with a combinator, such as `> a`, when it
+    /// is not nested inside another rule.
+    ///
+    /// A leading combinator only means something relative to a parent rule.
+    /// Sass would resolve it against one; plain CSS leaves it for the browser,
+    /// which has nothing to resolve it against at the top level.
+    fn assert_no_leading_combinators(selector: &SelectorList, span: Span) -> SassResult<()> {
+        for complex in &selector.components {
+            if matches!(
+                complex.components.first(),
+                Some(ComplexSelectorComponent::Combinator(..))
+            ) {
+                return Err((
+                    "Top-level leading combinators aren't allowed in plain CSS.",
+                    span,
+                )
+                    .into());
+            }
+        }
+
+        Ok(())
     }
 
     fn set_group_end(&mut self) -> Option<()> {

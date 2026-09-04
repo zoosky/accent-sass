@@ -10,6 +10,12 @@ pub(crate) enum CssStmt {
         selector: ExtendedSelector,
         body: Vec<Self>,
         is_group_end: bool,
+        /// Whether this rule was written in a plain CSS file.
+        ///
+        /// A rule nested inside one of these is CSS nesting rather than Sass
+        /// nesting: its selector is passed through unresolved and it stays
+        /// nested in the output.
+        from_plain_css: bool,
     },
     Style(Style),
     Media(MediaRule, bool),
@@ -71,11 +77,13 @@ impl CssStmt {
             CssStmt::RuleSet {
                 selector,
                 is_group_end,
+                from_plain_css,
                 ..
             } => CssStmt::RuleSet {
                 selector: selector.clone(),
                 body: Vec::new(),
                 is_group_end: *is_group_end,
+                from_plain_css: *from_plain_css,
             },
             CssStmt::Style(..) | CssStmt::Comment(..) | CssStmt::Import(..) => unreachable!(),
             CssStmt::Media(media, is_group_end) => CssStmt::Media(

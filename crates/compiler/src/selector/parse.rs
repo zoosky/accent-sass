@@ -40,6 +40,15 @@ pub(crate) struct SelectorParser {
     /// Whether this parser allows placeholder selectors beginning with `%`.
     allows_placeholder: bool,
 
+    /// Whether to parse the selector as plain CSS rather than as Sass.
+    ///
+    /// Plain CSS selectors come from a `.css` file, where `&` is the CSS
+    /// nesting selector rather than Sass's parent selector: it may appear
+    /// anywhere in a compound selector, it may not carry a suffix, and the
+    /// selector is left unresolved for the output. Plain CSS also has no
+    /// placeholder selectors and no trailing combinators.
+    plain_css: bool,
+
     pub toks: Lexer,
 
     span: Span,
@@ -56,11 +65,18 @@ impl BaseParser for SelectorParser {
 }
 
 impl SelectorParser {
-    pub fn new(toks: Lexer, allows_parent: bool, allows_placeholder: bool, span: Span) -> Self {
+    pub fn new(
+        toks: Lexer,
+        allows_parent: bool,
+        allows_placeholder: bool,
+        plain_css: bool,
+        span: Span,
+    ) -> Self {
         Self {
             toks,
             allows_parent,
             allows_placeholder,
+            plain_css,
             span,
         }
     }
@@ -173,6 +189,17 @@ impl SelectorParser {
             return Err(("expected selector.", self.span).into());
         }
 
+        // A trailing combinator is a Sass-only hack; plain CSS rejects it even
+        // when the rule that follows would give it something to point at.
+        if self.plain_css
+            && matches!(
+                components.last(),
+                Some(ComplexSelectorComponent::Combinator(..))
+            )
+        {
+            return Err(("expected selector.", self.span).into());
+        }
+
         Ok(ComplexSelector::new(components, line_break))
     }
 
@@ -180,11 +207,11 @@ impl SelectorParser {
         let mut components = vec![self.parse_simple_selector(None)?];
 
         while let Some(Token { kind, .. }) = self.toks.peek() {
-            if !is_simple_selector_start(kind) {
+            if !self.is_simple_selector_start(kind) {
                 break;
             }
 
-            components.push(self.parse_simple_selector(Some(false))?);
+            components.push(self.parse_simple_selector(Some(self.plain_css))?);
         }
 
         Ok(CompoundSelector { components })
@@ -200,6 +227,13 @@ impl SelectorParser {
             Some(Token { kind: '.', .. }) => self.parse_class_selector(),
             Some(Token { kind: '#', .. }) => self.parse_id_selector(),
             Some(Token { kind: '%', .. }) => {
+                if self.plain_css {
+                    return Err((
+                        "Placeholder selectors aren't allowed in plain CSS.",
+                        self.span,
+                    )
+                        .into());
+                }
                 if !self.allows_placeholder {
                     return Err(("Placeholder selectors aren't allowed here.", self.span).into());
                 }
@@ -215,6 +249,19 @@ impl SelectorParser {
                 self.parse_parent_selector()
             }
             _ => self.parse_type_or_universal_selector(),
+        }
+    }
+
+    /// Returns whether `c` can start a simple selector other than a type
+    /// selector, partway through a compound selector.
+    ///
+    /// `&` counts only in plain CSS, where it may appear anywhere in a compound
+    /// selector; in Sass it is only valid at the start of one.
+    fn is_simple_selector_start(&self, c: char) -> bool {
+        match c {
+            '*' | '[' | '.' | '#' | '%' | ':' => true,
+            '&' => self.plain_css,
+            _ => false,
         }
     }
 
@@ -325,6 +372,17 @@ impl SelectorParser {
         } else {
             None
         };
+
+        // `&foo` means "the parent selector with `foo` appended" in Sass. Plain
+        // CSS has nothing to append to, since `&` is passed through unresolved.
+        if self.plain_css && suffix.is_some() {
+            return Err((
+                "Parent selectors can't have suffixes in plain CSS.",
+                self.span,
+            )
+                .into());
+        }
+
         Ok(SimpleSelector::Parent(suffix))
     }
 
@@ -465,12 +523,6 @@ impl SelectorParser {
         }
         Ok(buf)
     }
-}
-
-/// Returns whether `c` can start a simple selector other than a type
-/// selector.
-fn is_simple_selector_start(c: char) -> bool {
-    matches!(c, '*' | '[' | '.' | '#' | '%' | ':')
 }
 
 /// Returns whether `name` is the name of a pseudo-element that can be written

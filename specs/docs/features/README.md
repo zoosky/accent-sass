@@ -62,9 +62,12 @@ This is where the work is: 425 failures, none tracked by any item. The ten
 deepest areas are 192 of them; the other 233 are a long tail of areas with
 fewer than eleven each.
 
+`spec/css/plain` used to lead this table with 51. It is now item
+[09](09-plain-css.md) and sits under "Open items" below with 24 left, so the
+unclaimed total is 374.
+
 | Area | Failures | Kind | Note |
 |---|---|---|---|
-| `spec/css/plain` | 51 | 45 rejects valid input | Plain CSS the parser refuses. Includes the CSS `@function` rule (`@function --a(--b <color>) {result: c}` gives "This at-rule isn't allowed in plain CSS"), and leading/trailing combinators in a style rule. Largest single item on the board |
 | `spec/css/functions` | 24 | 20 different output | |
 | `spec/css/supports` | 21 | 15 rejects valid input | |
 | `spec/css/style_rule` | 17 | 9 rejects valid input | |
@@ -75,9 +78,11 @@ fewer than eleven each.
 | `spec/directives/for` | 12 | 12 rejects valid input | |
 | `spec/css/media` | 11 | 10 rejects valid input | |
 
-The `css/*` rows together are about 140 failures and mostly one theme: input
-that dart-sass accepts and this compiler does not. Writing `09` for plain CSS
-is the obvious next document.
+The `css/*` rows together are about 90 failures and mostly one theme: input
+that dart-sass accepts and this compiler does not -- the same theme as item
+09. `spec/css/function` and `spec/directives/function` are the CSS `@function`
+rule, which is also what most of item 09's remainder is; those 31 and item
+09's 8 are one feature and are best done together.
 
 ### Open items
 
@@ -85,6 +90,7 @@ is the obvious next document.
 |---|---|---|---|
 | [07-calculation-long-tail.md](07-calculation-long-tail.md) | What #12 left in the calculation suite: `%` and `mod()` with a signed zero against an infinite divisor, a rounding strategy arriving through interpolation, line noise inside an interpolated `calc()` | 3 | `spec/values/calculation` |
 | [08-calculation-warnings-and-error-wording.md](08-calculation-warnings-and-error-wording.md) | Deprecation warnings (none exist) and error wording in calculations | 57, invisible under the standard flags | `spec/values/calculation` |
+| [09-plain-css.md](09-plain-css.md) | Plain CSS. Nesting passthrough landed and closed 27 of the original 51; what is left is the CSS `@function` rule, whitespace in `@import ... supports(..)`, `if()` in plain CSS, and `//` in a plain CSS value | 24 | `spec/css/plain` |
 
 Item 07's 3 failures are the same three counted in item 01's residue below,
 not additional ones -- 07 exists to describe what 01 deliberately left. Item
@@ -95,7 +101,8 @@ re-measured since 2026-09-03 and needs a run with the flags dropped.
 ### Landed -- residue only
 
 The counts here and in the unclaimed table above sum to 650: 225 in areas a
-document claims, 425 in areas none does.
+document claims, 425 in areas none does. Both figures predate item 09, which
+moved 51 out of the unclaimed column and closed 27 of them.
 
 These six are done. The counts are what remains in the areas they touched,
 not open work, and they are listed so nobody mistakes a residue for a
@@ -123,8 +130,8 @@ Across the whole suite the 650 failures split into (2026-09-04):
 - 52 "Expected test to fail but it did not" — accent-sass accepts invalid input.
 
 The first kind dominates, and it concentrates in `spec/css/*`: this compiler
-rejects input dart-sass accepts. That is why the unclaimed table above leads
-with plain CSS.
+rejects input dart-sass accepts. That is why plain CSS led the unclaimed table
+when the ranking was drawn up, and why item 09 came out of it.
 
 The third kind means accent-sass is systematically more lenient than dart-sass.
 Closing those requires adding error checks, not features; several documents

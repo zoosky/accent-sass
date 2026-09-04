@@ -230,7 +230,15 @@ impl<'a> Serializer<'a> {
                 self.buffer.extend_from_slice(name.ident.as_bytes());
             }
             SimpleSelector::Attribute(attr) => write!(&mut self.buffer, "{}", attr).unwrap(),
-            SimpleSelector::Parent(..) => unreachable!("It should not be possible to format `&`."),
+            // A parent selector normally resolves before serialization. It
+            // survives only in plain CSS, where `&` is the CSS nesting selector
+            // and is written out as it was read.
+            SimpleSelector::Parent(suffix) => {
+                self.buffer.push(b'&');
+                if let Some(suffix) = suffix {
+                    self.buffer.extend_from_slice(suffix.as_bytes());
+                }
+            }
         }
     }
 
