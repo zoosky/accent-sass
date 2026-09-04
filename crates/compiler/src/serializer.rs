@@ -888,8 +888,15 @@ impl<'a> Serializer<'a> {
         if query.conditions.len() == 1 && query.conditions.first().unwrap().starts_with("(not ") {
             self.buffer.extend_from_slice(b"not ");
             let condition = query.conditions.first().unwrap();
-            self.buffer
-                .extend_from_slice(condition["(not ".len()..condition.len() - 1].as_bytes());
+            // Slicing the `str` and then taking its bytes, rather than slicing
+            // `as_bytes()` as clippy::sliced_string_as_bytes suggests. The two
+            // differ on malformed input: the str slice panics on a non-UTF-8
+            // boundary, while the byte slice would push invalid UTF-8 into the
+            // output buffer and corrupt the stylesheet silently. The bounds
+            // check the prefix guard above already proves is worth keeping.
+            #[allow(clippy::sliced_string_as_bytes)]
+            let inner = condition["(not ".len()..condition.len() - 1].as_bytes();
+            self.buffer.extend_from_slice(inner);
         } else {
             let operator = if query.conjunction { " and " } else { " or " };
             self.buffer

@@ -554,7 +554,7 @@ impl Value {
             _ => Self::String(
                 format!(
                     "+{}",
-                    &self.to_css_string(span, visitor.options.is_compressed())?
+                    self.to_css_string(span, visitor.options.is_compressed())?
                 ),
                 QuoteKind::None,
             ),
@@ -582,7 +582,7 @@ impl Value {
             _ => Self::String(
                 format!(
                     "-{}",
-                    &self.to_css_string(span, visitor.options.is_compressed())?
+                    self.to_css_string(span, visitor.options.is_compressed())?
                 ),
                 QuoteKind::None,
             ),
@@ -593,7 +593,7 @@ impl Value {
         Ok(Self::String(
             format!(
                 "/{}",
-                &self.to_css_string(span, visitor.options.is_compressed())?
+                self.to_css_string(span, visitor.options.is_compressed())?
             ),
             QuoteKind::None,
         ))

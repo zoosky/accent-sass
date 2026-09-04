@@ -47,7 +47,9 @@ fn import_no_semicolon() {
     let input = "@import \"import_no_semicolon\"\na {\n color: $a;\n}";
     tempfile!("import_no_semicolon", "$a: red;");
 
-    drop(input);
+    // The test is ignored; `input` exists to document the case it will cover.
+    // `drop` on a `&str` does nothing, so it never silenced anything.
+    let _ = input;
 }
 
 #[test]
