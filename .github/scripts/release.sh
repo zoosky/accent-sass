@@ -14,7 +14,7 @@
 #   .github/scripts/release.sh --dry-run      # verify only, publishes nothing
 #   .github/scripts/release.sh                # publish, prompting once
 #
-#   MSRV=1.85.0   toolchain the gates run on (default: the rust-version field)
+#   MSRV=1.96.1   toolchain the gates run on (default: the rust-version field)
 #   NO_TAG=1      skip creating the git tag
 #
 # See RELEASING.md for the surrounding checklist.
@@ -120,7 +120,7 @@ cargo "+$MSRV" fmt --all -- --check || die "cargo fmt reported differences"
 echo "  fmt: clean"
 
 # Clippy on both toolchains, matching CI. The MSRV alone is not enough: it
-# cannot see lints added after 1.85, which is how sixteen findings once sat in
+# cannot see lints added after it, which is how sixteen findings once sat in
 # the tree while every gate reported clean.
 for tc in "$MSRV" stable; do
   cargo "+$tc" clippy --features=macro --all-targets -- -D warnings \

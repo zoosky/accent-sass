@@ -382,11 +382,11 @@ pub(crate) fn color_from_channels(
             }
             let mut whiteness = channel1.map(|number| number.num.0);
             let mut blackness = channel2.map(|number| number.num.0);
-            if let (Some(white), Some(black)) = (whiteness, blackness) {
-                if white + black > 100.0 {
-                    whiteness = Some(white / (white + black) * 100.0);
-                    blackness = Some(black / (white + black) * 100.0);
-                }
+            if let (Some(white), Some(black)) = (whiteness, blackness)
+                && white + black > 100.0
+            {
+                whiteness = Some(white / (white + black) * 100.0);
+                blackness = Some(black / (white + black) * 100.0);
             }
             Color::for_space(
                 space,

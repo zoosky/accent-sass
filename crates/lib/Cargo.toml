@@ -21,7 +21,7 @@ include = [
     "LICENSE",
 ]
 default-run = "accent-sass"
-rust-version = "1.85"
+rust-version = "1.96"
 
 [[bin]]
 name = "accent-sass"

@@ -857,11 +857,9 @@ impl<'a> Visitor<'a> {
         for node in recorded {
             let mut stmt = node.stmt;
 
-            if in_style_rule {
-                if let CssStmt::RuleSet { selector, .. } = &mut stmt {
-                    let selector_list = selector.as_selector_list().clone();
-                    *selector = self.nest_selector_under_current_rule(selector_list)?;
-                }
+            if in_style_rule && let CssStmt::RuleSet { selector, .. } = &mut stmt {
+                let selector_list = selector.as_selector_list().clone();
+                *selector = self.nest_selector_under_current_rule(selector_list)?;
             }
 
             let new_idx = self.add_child(stmt, Some(CssStmt::is_style_rule));

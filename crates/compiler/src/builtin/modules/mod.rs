@@ -222,10 +222,10 @@ impl ForwardedModule {
 
         if let Some(shown) = &rule.shown_variables {
             names.retain(|name| shown.contains(name));
-        } else if let Some(hidden) = &rule.hidden_variables {
-            if !hidden.is_empty() {
-                names.retain(|name| !hidden.contains(name));
-            }
+        } else if let Some(hidden) = &rule.hidden_variables
+            && !hidden.is_empty()
+        {
+            names.retain(|name| !hidden.contains(name));
         }
 
         (*self.inner).borrow().could_have_been_configured(&names)

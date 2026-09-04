@@ -103,10 +103,10 @@ impl StringExpr {
             if char == '\n' || char == '\r' {
                 buffer.add_char('\\');
                 buffer.add_char('a');
-                if let Some(next) = chars.peek() {
-                    if next.is_ascii_whitespace() || next.is_ascii_hexdigit() {
-                        buffer.add_char(' ');
-                    }
+                if let Some(next) = chars.peek()
+                    && (next.is_ascii_whitespace() || next.is_ascii_hexdigit())
+                {
+                    buffer.add_char(' ');
                 }
             } else {
                 if char == quote

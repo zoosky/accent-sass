@@ -94,10 +94,10 @@ pub(crate) fn channel(mut args: ArgumentResult, _: &mut Visitor) -> SassResult<V
     let info = color.space().channels()[index];
     let unit = info.associated_unit();
     let mut value = color.channel(index);
-    if unit == Unit::Percent {
-        if let ChannelKind::Linear { max, .. } = info.kind {
-            value = value * 100.0 / max;
-        }
+    if unit == Unit::Percent
+        && let ChannelKind::Linear { max, .. } = info.kind
+    {
+        value = value * 100.0 / max;
     }
 
     Ok(Value::Dimension(SassNumber {

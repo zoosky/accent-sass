@@ -26,16 +26,16 @@ fn alpha_inner(mut args: ArgumentResult, function: &str) -> SassResult<Value> {
         let span = args.span();
         let color = args.get_err(0, "color")?;
 
-        if let Value::String(s, QuoteKind::None) = &color {
-            if is_ms_filter(s) {
-                return Ok(Value::String(format!("alpha({})", s), QuoteKind::None));
-            }
+        if let Value::String(s, QuoteKind::None) = &color
+            && is_ms_filter(s)
+        {
+            return Ok(Value::String(format!("alpha({})", s), QuoteKind::None));
         }
 
-        if let Value::Color(color) = &color {
-            if !color.is_legacy() {
-                return Err(legacy_only_error(function, "color.channel()", false, span));
-            }
+        if let Value::Color(color) = &color
+            && !color.is_legacy()
+        {
+            return Err(legacy_only_error(function, "color.channel()", false, span));
         }
 
         let color = color.assert_color_with_name("color", span)?;
