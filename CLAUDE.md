@@ -99,8 +99,18 @@ the integration jobs use
 
 ```bash
 cargo fmt --all -- --check
-cargo clippy --features=macro -- -D warnings
+cargo clippy --features=macro --all-targets -- -D warnings
 cargo test --features=macro
+```
+
+Clippy gates on **two** toolchains, the MSRV and current stable, and both must
+pass. Pinning the lint gate to the MSRV alone left CI blind to every lint added
+after 1.85, so a contributor on stable saw sixteen errors CI called clean. Run
+it locally the way CI does:
+
+```bash
+cargo +1.85.0 clippy --features=macro --all-targets -- -D warnings
+cargo +stable  clippy --features=macro --all-targets -- -D warnings
 ```
 
 `cargo test` does not need the `sass-spec` submodule; the crate keeps its own
@@ -110,7 +120,8 @@ CI jobs in `.github/workflows/tests.yml`:
 
 | Job | Gates? | What it does |
 |---|---|---|
-| `tests`, `fmt`, `clippy` | yes | the commands above |
+| `tests`, `fmt` | yes | the commands above, on the MSRV |
+| `clippy` | yes | the command above, on **both** the MSRV and stable |
 | `bootstrap` | advisory | compiles Bootstrap 5.0.2 with both engines; fails only on a colour-value difference |
 | `frameworks` | yes | compiles Bulma, Pico, Foundation and USWDS with both engines via `.github/scripts/frameworks.sh`; fails on a colour-value difference |
 | `sass-spec` | advisory | runs the official spec suite and publishes the tallies |

@@ -36,19 +36,37 @@ jobs:
           rustup component add rustfmt
           cargo fmt --all -- --check
 
+  # Clippy runs on BOTH the MSRV and current stable, and both gate.
+  #
+  # Pinning the lint gate to the MSRV alone made CI blind to every lint added
+  # after 1.85: a contributor on stable saw sixteen errors that CI reported as
+  # clean. The MSRV run still matters -- it catches code that only compiles on
+  # a newer compiler -- but it cannot be the whole gate, because lints are how
+  # the project finds out its own code has drifted.
+  #
+  # The cost is that a new stable release can turn CI red without anything in
+  # this repository changing. That is the intended behaviour: it is the signal
+  # arriving on time rather than months later.
   clippy:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        toolchain: ["1.85.0", "stable"]
+    name: clippy (${{ matrix.toolchain }})
     steps:
       - name: Checkout
         uses: actions/checkout@master
 
       - uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: "1.85.0"
+          toolchain: ${{ matrix.toolchain }}
+          components: clippy
 
-      - run: |
-          rustup component add clippy
-          cargo clippy --features=macro -- -D warnings
+      - name: version info
+        run: cargo clippy --version
+
+      - run: cargo clippy --features=macro --all-targets -- -D warnings
 
   # Compiles Bootstrap with both engines and reports how far apart they are.
   # Advisory: this fork does not reach exact byte equality across a whole

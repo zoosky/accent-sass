@@ -301,18 +301,16 @@ impl SassCalculation {
                 CalculationArg::Number(min),
                 Some(CalculationArg::Number(value)),
                 Some(CalculationArg::Number(max)),
-            ) => {
-                if min.is_comparable_to(&value) && min.is_comparable_to(&max) {
-                    if value.num <= min.num.convert(min.unit(), value.unit()) {
-                        return Ok(Value::Dimension(min));
-                    }
-
-                    if value.num >= max.num.convert(max.unit(), value.unit()) {
-                        return Ok(Value::Dimension(max));
-                    }
-
-                    return Ok(Value::Dimension(value));
+            ) if min.is_comparable_to(&value) && min.is_comparable_to(&max) => {
+                if value.num <= min.num.convert(min.unit(), value.unit()) {
+                    return Ok(Value::Dimension(min));
                 }
+
+                if value.num >= max.num.convert(max.unit(), value.unit()) {
+                    return Ok(Value::Dimension(max));
+                }
+
+                return Ok(Value::Dimension(value));
             }
             _ => {}
         }

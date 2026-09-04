@@ -30,10 +30,12 @@ mod rule;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 /// Different modes in which extension can run.
+#[derive(Default)]
 enum ExtendMode {
     /// Normal mode, used with the `@extend` rule.
     ///
     /// This preserves existing selectors and extends each target individually.
+    #[default]
     Normal,
 
     /// Replace mode, used by the `selector-replace()` function.
@@ -47,12 +49,6 @@ enum ExtendMode {
     /// This preserves existing selectors but requires every target to match to
     /// extend a given compound selector.
     AllTargets,
-}
-
-impl Default for ExtendMode {
-    fn default() -> Self {
-        Self::Normal
-    }
 }
 
 #[derive(Clone, Debug)]
@@ -220,7 +216,7 @@ impl ExtensionStore {
                     });
                 }
                 match extended.as_mut() {
-                    Some(v) => v.extend(result.into_iter()),
+                    Some(v) => v.extend(result),
                     None => unreachable!(),
                 }
             } else if let Some(extended) = extended.as_mut() {
@@ -386,7 +382,7 @@ impl ExtensionStore {
                     }
 
                     match options.as_mut() {
-                        Some(v) => v.extend(extended.into_iter()),
+                        Some(v) => v.extend(extended),
                         None => unreachable!(),
                     }
                 }

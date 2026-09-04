@@ -32,7 +32,7 @@ impl CssTree {
         tree
     }
 
-    pub fn get(&self, idx: CssTreeIdx) -> Ref<Option<CssStmt>> {
+    pub fn get(&self, idx: CssTreeIdx) -> Ref<'_, Option<CssStmt>> {
         self.stmts[idx.0].borrow()
     }
 
@@ -55,7 +55,7 @@ impl CssTree {
             .collect()
     }
 
-    pub fn get_mut(&self, idx: CssTreeIdx) -> RefMut<Option<CssStmt>> {
+    pub fn get_mut(&self, idx: CssTreeIdx) -> RefMut<'_, Option<CssStmt>> {
         self.stmts[idx.0].borrow_mut()
     }
 

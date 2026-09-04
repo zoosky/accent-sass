@@ -899,24 +899,23 @@ impl<'a> Visitor<'a> {
         };
 
         if let Some(builtin) = builtin {
-            // todo: lots of ugly unwraps here
-            if configuration.is_some()
-                && !(**configuration.as_ref().unwrap()).borrow().is_implicit()
-            {
-                let msg = if names_in_errors {
-                    format!(
-                        "Built-in module {} can't be configured.",
-                        url.to_string_lossy()
-                    )
-                } else {
-                    "Built-in modules can't be configured.".to_owned()
-                };
+            // A guarded match rather than `is_some()` plus `unwrap()`. A
+            // let-chain would read better but stabilised in Rust 1.88, and the
+            // MSRV is 1.85.
+            match configuration.as_ref() {
+                Some(config) if !(**config).borrow().is_implicit() => {
+                    let msg = if names_in_errors {
+                        format!(
+                            "Built-in module {} can't be configured.",
+                            url.to_string_lossy()
+                        )
+                    } else {
+                        "Built-in modules can't be configured.".to_owned()
+                    };
 
-                return Err((
-                    msg,
-                    (**configuration.as_ref().unwrap()).borrow().span.unwrap(),
-                )
-                    .into());
+                    return Err((msg, (**config).borrow().span.unwrap()).into());
+                }
+                _ => {}
             }
 
             callback(
