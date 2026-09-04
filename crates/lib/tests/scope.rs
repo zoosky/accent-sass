@@ -39,7 +39,8 @@ test!(
     "a {\n  color: false;\n  color: false;\n}\n"
 );
 test!(
-    variable_redeclarations_propagate_to_outer_scopes,
+    variable_redeclarations_propagate_to_outer_scopes, // Expectation corrected against dart-sass 1.103.1: a declaration written
+    // after a nested rule stays after it, so the parent rule splits.
     "
     a {
         $a: red;
@@ -57,7 +58,7 @@ test!(
         color: $a;
     }
     ",
-    "a {\n  color: orange;\n}\na b {\n  color: orange;\n}\na b c {\n  color: orange;\n}\na b c d {\n  color: orange;\n}\n"
+    "a b c d {\n  color: orange;\n}\na b c {\n  color: orange;\n}\na b {\n  color: orange;\n}\na {\n  color: orange;\n}\n"
 );
 test!(
     local_variable_exists_in_inner_fn_mixin_scope,

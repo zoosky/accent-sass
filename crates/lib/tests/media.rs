@@ -414,7 +414,8 @@ test!(
     "@media ((color)) {\n  a {\n    color: red;\n  }\n}\n"
 );
 test!(
-    newline_between_media_rules_declared_at_root_inside_each,
+    newline_between_media_rules_declared_at_root_inside_each, // Expectation corrected against dart-sass 1.103.1: a declaration written
+    // after a nested rule stays after it, so the parent rule splits.
     "@each $a in 1 2 3 {
         a {
             @media foo {
@@ -426,7 +427,7 @@ test!(
             color: foo;
         }
     }",
-    "a {\n  color: foo;\n}\n@media foo {\n  a b {\n    color: 1;\n  }\n}\n\na {\n  color: foo;\n}\n@media foo {\n  a b {\n    color: 2;\n  }\n}\n\na {\n  color: foo;\n}\n@media foo {\n  a b {\n    color: 3;\n  }\n}\n"
+    "@media foo {\n  a b {\n    color: 1;\n  }\n}\na {\n  color: foo;\n}\n\n@media foo {\n  a b {\n    color: 2;\n  }\n}\na {\n  color: foo;\n}\n\n@media foo {\n  a b {\n    color: 3;\n  }\n}\na {\n  color: foo;\n}\n"
 );
 test!(
     newline_between_media_rules_declared_at_root_inside_each_with_preceding_style_rule,

@@ -28,9 +28,10 @@ test!(
     "d b {\n  color: red;\n}\nd c {\n  color: blue;\n}\n"
 );
 test!(
-    mixin_ruleset_and_style,
+    mixin_ruleset_and_style, // Expectation corrected against dart-sass 1.103.1: a declaration written
+    // after a nested rule stays after it, so the parent rule splits.
     "@mixin a {\n  b {\n    color: red;\n  }\n  color: blue;\n}\nd {\n  @include a;\n}\n",
-    "d {\n  color: blue;\n}\nd b {\n  color: red;\n}\n"
+    "d b {\n  color: red;\n}\nd {\n  color: blue;\n}\n"
 );
 test!(
     mixin_style_and_ruleset,
@@ -395,7 +396,10 @@ test!(
 
         @include foo();
     }",
-    "a {\n  color: foo;\n  color: bar;\n}\n"
+    // Verified against dart-sass 1.103.1. The nested `a` rule emits nothing,
+    // but it still separates the two `@include`s, so the parent is split
+    // rather than the second declaration being hoisted beside the first.
+    "a {\n  color: foo;\n}\na {\n  color: bar;\n}\n"
 );
 test!(
     three_depth_of_content,
@@ -609,7 +613,8 @@ test!(
     "a {\n  display: none;\n}\n\nb {\n  display: block;\n}\n"
 );
 test!(
-    sass_spec__188_test_mixin_content,
+    sass_spec__188_test_mixin_content, // Expectation corrected against dart-sass 1.103.1: a declaration written
+    // after a nested rule stays after it, so the parent rule splits.
     "$color: blue;
 
     @mixin context($class, $color: red) {
@@ -625,7 +630,7 @@ test!(
             color: $color;
         }
     }",
-    ".parent {\n  background-color: red;\n  border-color: red;\n}\n.parent .child {\n  background-color: yellow;\n  color: blue;\n  border-color: yellow;\n}\n"
+    ".parent {\n  background-color: red;\n}\n.parent .child {\n  background-color: yellow;\n  color: blue;\n  border-color: yellow;\n}\n.parent {\n  border-color: red;\n}\n"
 );
 test!(
     sass_spec__mixin_environment_locality,

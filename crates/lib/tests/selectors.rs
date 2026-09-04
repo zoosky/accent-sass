@@ -410,9 +410,10 @@ test!(
     "a,\nb {\n  color: red;\n}\n"
 );
 test!(
-    nested_multiple_newline,
+    nested_multiple_newline, // Expectation corrected against dart-sass 1.103.1: a declaration written
+    // after a nested rule stays after it, so the parent rule splits.
     "a,\nb {\n  c {\n    color: blue;\n  }\n  color: red;\n}\n",
-    "a,\nb {\n  color: red;\n}\na c,\nb c {\n  color: blue;\n}\n"
+    "a c,\nb c {\n  color: blue;\n}\na,\nb {\n  color: red;\n}\n"
 );
 test!(
     trailing_comma_newline,

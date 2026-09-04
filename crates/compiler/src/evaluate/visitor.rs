@@ -3751,14 +3751,20 @@ impl<'a> Visitor<'a> {
             // If the value is an empty list, preserve it, because converting it to CSS
             // will throw an error that we want the user to see.
             if !value.is_blank() || value.is_empty_list() {
-                // todo: superfluous clones?
-                self.css_tree.add_stmt(
+                // Route through `add_child` rather than straight into the
+                // tree. dart-sass splits a style rule when a nested rule comes
+                // between two of its declarations, so that source order -- and
+                // therefore the cascade -- is preserved. `add_child` already
+                // implements that split; adding the statement directly skipped
+                // it and hoisted the later declaration back up beside the
+                // earlier one.
+                self.add_child(
                     CssStmt::Style(Style {
                         property: InternedString::get_or_intern(&name),
                         value: Box::new(value),
                         declared_as_custom_property: is_custom_property,
                     }),
-                    self.parent,
+                    Some(|_: &CssStmt| false),
                 );
             } else if name.starts_with("--") {
                 return Err(("Custom property values may not be empty.", style.span).into());
