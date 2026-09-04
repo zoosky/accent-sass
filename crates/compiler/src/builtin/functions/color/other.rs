@@ -5,7 +5,7 @@
 
 use crate::{
     builtin::builtin_imports::*,
-    color::{clamp_like_css, ChannelKind, ColorChannel, ColorSpace, GamutMapMethod},
+    color::{ChannelKind, ColorChannel, ColorSpace, GamutMapMethod, clamp_like_css},
     value::{fuzzy_equals, fuzzy_round},
 };
 
@@ -87,7 +87,7 @@ pub(crate) fn channel(mut args: ArgumentResult, _: &mut Visitor) -> SassResult<V
                 ),
                 span,
             )
-                .into())
+                .into());
         }
     };
 
@@ -235,7 +235,7 @@ pub(crate) fn to_gamut(mut args: ArgumentResult, _: &mut Visitor) -> SassResult<
                 format!("Unknown gamut map method \"{}\".", method_name),
                 method.span,
             )
-                .into())
+                .into());
         }
     };
 
@@ -345,7 +345,7 @@ fn channel_for_change(
                     Unit::None
                 },
                 as_slash: None,
-            }))
+            }));
         }
         Some(arg) => arg,
     };
@@ -399,7 +399,7 @@ fn change_color_channels(
                     ),
                     arg.span,
                 )
-                    .into())
+                    .into());
             }
         },
     };
@@ -436,7 +436,7 @@ fn scale_channel(
                 format!("${}: Channel isn't scalable.", channel.name),
                 factor_arg.span,
             )
-                .into())
+                .into());
         }
     };
 
@@ -486,7 +486,7 @@ fn adjust_channel(
                 color,
                 channel.name,
                 adjustment_arg.span,
-            ))
+            ));
         }
     };
 
@@ -598,7 +598,7 @@ fn update_components(mut args: ArgumentResult, update: UpdateComponents) -> Sass
                     ),
                     span,
                 )
-                    .into())
+                    .into());
             }
         }
     }
@@ -728,11 +728,7 @@ pub(crate) fn ie_hex_str(mut args: ArgumentResult, _: &mut Visitor) -> SassResul
 }
 
 fn bool_value(value: bool) -> Value {
-    if value {
-        Value::True
-    } else {
-        Value::False
-    }
+    if value { Value::True } else { Value::False }
 }
 
 pub(crate) fn declare(f: &mut GlobalFunctionMap) {

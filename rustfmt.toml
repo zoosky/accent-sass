@@ -1,1 +1,3 @@
-edition = "2018"
+# Follow the crate edition (see the manifests). style_edition defaults to
+# `edition`, so formatting is the Rust 2024 style.
+edition = "2024"

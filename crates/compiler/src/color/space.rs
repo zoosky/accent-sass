@@ -24,9 +24,9 @@ use std::f64::consts::PI;
 use crate::value::{fuzzy_equals, fuzzy_greater_than_or_equals};
 
 use super::{
+    Color,
     channel::{ChannelKind, ColorChannel},
     conversions::*,
-    Color,
 };
 
 /// A CSS Color 4 color space, plus the internal `lms` space that oklab and

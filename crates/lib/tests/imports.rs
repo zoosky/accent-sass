@@ -15,10 +15,7 @@ fn null_fs_cannot_import() {
     ) {
         Err(e)
             if e.to_string()
-                .starts_with("Error: Can't find stylesheet to import.\n") =>
-        {
-            ()
-        }
+                .starts_with("Error: Can't find stylesheet to import.\n") => {}
         Ok(..) => panic!("did not fail"),
         Err(e) => panic!("failed in the wrong way: {}", e),
     }
@@ -492,7 +489,7 @@ fn potentially_conflicting_directory_and_file_from_load_path() {
         "a {\n  color: right;\n}\n",
         &accent_sass::from_string(
             input.to_string(),
-            &accent_sass::Options::default().load_path(&Path::new(
+            &accent_sass::Options::default().load_path(Path::new(
                 "potentially_conflicting_directory_and_file_from_load_path__a"
             ))
         )

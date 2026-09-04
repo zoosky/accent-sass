@@ -1,7 +1,10 @@
 [workspace]
+# Edition 2024 members imply resolver 3; a virtual workspace does not inherit
+# it, so cargo warns and silently keeps resolver 1 unless it is stated here.
+resolver = "3"
 members = [
     "crates/compiler",
-    "crates/include_sass",
+    "crates/accent-sass-macro",
     "crates/lib",
 ]
 

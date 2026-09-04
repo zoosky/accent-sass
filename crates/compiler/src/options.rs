@@ -3,7 +3,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use crate::{builtin::Builtin, Fs, Logger, StdFs, StdLogger};
+use crate::{Fs, Logger, StdFs, StdLogger, builtin::Builtin};
 
 /// Configuration for Sass compilation
 ///

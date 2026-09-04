@@ -25,12 +25,12 @@
 //! Named colors retain their original casing,
 //! so `rEd` should be emitted as `rEd`.
 
-use crate::value::{fuzzy_equals, fuzzy_less_than, Number};
+use crate::value::{Number, fuzzy_equals, fuzzy_less_than};
 pub(crate) use channel::{ChannelKind, ColorChannel};
-pub(crate) use gamut::{clamp_like_css, GamutMapMethod};
+pub(crate) use gamut::{GamutMapMethod, clamp_like_css};
 pub(crate) use name::NAMED_COLORS;
-use space::dart_mod;
 pub(crate) use space::ColorSpace;
+use space::dart_mod;
 
 mod channel;
 mod conversions;
@@ -174,7 +174,7 @@ impl Color {
         );
 
         let alpha = alpha.map(|alpha| clamp_like_css(alpha, 0.0, 1.0));
-        let negative = |channel: Option<f64>| channel.map_or(false, |c| fuzzy_less_than(c, 0.0));
+        let negative = |channel: Option<f64>| channel.is_some_and(|c| fuzzy_less_than(c, 0.0));
 
         let channels = match space {
             ColorSpace::Hsl => [

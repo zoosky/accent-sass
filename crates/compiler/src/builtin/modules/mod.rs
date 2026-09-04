@@ -203,10 +203,7 @@ impl ForwardedModule {
 
         if rule.prefix.is_none()
             && rule.shown_variables.is_none()
-            && rule
-                .hidden_variables
-                .as_ref()
-                .map_or(true, HashSet::is_empty)
+            && rule.hidden_variables.as_ref().is_none_or(HashSet::is_empty)
         {
             return (*self.inner).borrow().could_have_been_configured(variables);
         }
@@ -244,11 +241,11 @@ impl ForwardedModule {
             && rule
                 .hidden_mixins_and_functions
                 .as_ref()
-                .map_or(false, HashSet::is_empty)
+                .is_some_and(HashSet::is_empty)
             && rule
                 .hidden_variables
                 .as_ref()
-                .map_or(false, HashSet::is_empty)
+                .is_some_and(HashSet::is_empty)
         {
             module
         } else {
@@ -487,7 +484,7 @@ impl Module {
     pub fn update_var(&mut self, name: Spanned<Identifier>, value: Value) -> SassResult<()> {
         let scope = match self {
             Self::Builtin { .. } => {
-                return Err(("Cannot modify built-in variable.", name.span).into())
+                return Err(("Cannot modify built-in variable.", name.span).into());
             }
             Self::Environment { scope, .. }
             | Self::Forwarded(ForwardedModule { scope, .. })

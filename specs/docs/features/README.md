@@ -7,11 +7,15 @@ sass-spec tests each item unlocks.
 ## Measurement
 
 The ranking comes from a full run of the pinned sass-spec revision
-(`4a9eea66`) against the release build on 2026-09-02:
+(`4a9eea66`) against the release build. Re-measured 2026-09-04, after items
+01-06 landed:
 
 ```
-14218 runs, 12492 passing, 1718 failures, 8 todo, 0 ignored, 0 errors
+14218 runs, 13560 passing, 650 failures, 8 todo, 0 ignored, 0 errors
 ```
+
+The original ranking was taken on 2026-09-02 at 12,492 passing against 1,718
+failures. Items 01-06 are what closed the difference.
 
 To reproduce:
 
@@ -35,28 +39,30 @@ records them). Drop the flags when an item's acceptance criteria say so.
 
 ## Work items
 
-| Doc | Area | Failing tests | Main spec directories |
-|---|---|---|---|
-| [01-calculation-functions.md](01-calculation-functions.md) | CSS math functions and constants in calculations | ~600 | `spec/values/calculation`, `spec/core_functions/color` |
-| [02-css-if-function.md](02-css-if-function.md) | The CSS `if()` function | 164 | `spec/expressions/if` |
-| [03-meta-module.md](03-meta-module.md) | `sass:meta` mixin reflection and `load-css` strictness | 152 | `spec/core_functions/meta` |
-| [04-selector-unification.md](04-selector-unification.md) | Selector unification ordering | 93 | `spec/core_functions/selector` |
-| [05-comments-and-arguments.md](05-comments-and-arguments.md) | Comment positions and argument-list syntax | ~100 | `spec/callable`, `spec/css`, `spec/directives` |
-| [06-module-system.md](06-module-system.md) | `@use`, `@forward` and `@import` edge cases | 114 | `spec/directives/use`, `spec/directives/forward`, `spec/directives/import` |
-| [07-calculation-long-tail.md](07-calculation-long-tail.md) | What #12 leaves in the calculation suite: `%` and `mod()` with a signed zero against an infinite divisor, a rounding strategy that arrives through interpolation, line noise inside an interpolated `calc()` | 3 | `spec/values/calculation` |
-| [08-calculation-warnings-and-error-wording.md](08-calculation-warnings-and-error-wording.md) | Deprecation warnings (none exist) and error wording in calculations; invisible under the standard flags | 57 hidden | `spec/values/calculation` |
+| Doc | Area | Status | Failing tests (2026-09-04) | Main spec directories |
+|---|---|---|---|---|
+| [01-calculation-functions.md](01-calculation-functions.md) | CSS math functions and constants in calculations | landed (#12) | 60 | `spec/values/calculation`, `spec/core_functions/color` |
+| [02-css-if-function.md](02-css-if-function.md) | The CSS `if()` function | landed (#13) | 1 | `spec/expressions/if` |
+| [03-meta-module.md](03-meta-module.md) | `sass:meta` mixin reflection and `load-css` strictness | landed (#14) | 38 | `spec/core_functions/meta` |
+| [04-selector-unification.md](04-selector-unification.md) | Selector unification ordering | landed (#15) | 37 | `spec/core_functions/selector` |
+| [05-comments-and-arguments.md](05-comments-and-arguments.md) | Comment positions and argument-list syntax | landed (#16) | 0 under `spec/callable` | `spec/callable`, `spec/css`, `spec/directives` |
+| [06-module-system.md](06-module-system.md) | `@use`, `@forward` and `@import` edge cases | landed (#17, #18) | 42 | `spec/directives/use`, `spec/directives/forward`, `spec/directives/import` |
+| [07-calculation-long-tail.md](07-calculation-long-tail.md) | What #12 leaves in the calculation suite: `%` and `mod()` with a signed zero against an infinite divisor, a rounding strategy that arrives through interpolation, line noise inside an interpolated `calc()` | open | 3 | `spec/values/calculation` |
+| [08-calculation-warnings-and-error-wording.md](08-calculation-warnings-and-error-wording.md) | Deprecation warnings (none exist) and error wording in calculations; invisible under the standard flags | open | 57 hidden (not re-measured 2026-09-04) | `spec/values/calculation` |
 
-Together these cover roughly 1,250 to 1,300 of the 1,718 failures. The
-remainder is mostly the `non_conformant/` and `libsass*` legacy suites
-(~113 tests) and assorted small items.
+Items 01-06 have landed, taking the suite from 12,492 passing to 13,560. No
+single area dominates the remaining 650: the largest groups are
+`core_functions/color` (57, mostly `calc(infinity)`/`calc(NaN)` channels),
+`css/plain` (51), `core_functions/meta` (38) and `core_functions/selector`
+(37), followed by a broad tail.
 
 ## Failure kinds
 
-Across the whole suite the 1,718 failures split into:
+Across the whole suite the 650 failures split into (2026-09-04):
 
-- 881 "test case should succeed but it did not" — accent-sass rejects valid input.
-- 573 "expected did not match output" — accent-sass produces different CSS.
-- 264 "expected test to fail but it did not" — accent-sass accepts invalid input.
+- 304 "Test case should succeed but it did not" — accent-sass rejects valid input.
+- 294 "Expected did not match output" — accent-sass produces different CSS.
+- 52 "Expected test to fail but it did not" — accent-sass accepts invalid input.
 
 The third kind means accent-sass is systematically more lenient than dart-sass.
 Closing those requires adding error checks, not features; several documents

@@ -11,7 +11,7 @@
 
 use crate::{
     builtin::builtin_imports::*,
-    color::{clamp_like_css, ChannelKind, ColorChannel, ColorFormat, ColorSpace},
+    color::{ChannelKind, ColorChannel, ColorFormat, ColorSpace, clamp_like_css},
 };
 
 use super::{
@@ -76,7 +76,7 @@ pub(crate) fn parse_channels(
                             with_name(name, format!("Unknown color space \"{}\".", space_name)),
                             span,
                         )
-                            .into())
+                            .into());
                     }
                 };
                 if matches!(
@@ -137,10 +137,7 @@ pub(crate) fn parse_channels(
         channels
     };
 
-    if alpha_value
-        .as_ref()
-        .map_or(false, Value::is_special_function)
-    {
+    if alpha_value.as_ref().is_some_and(Value::is_special_function) {
         return if channels.len() == 3 && uses_comma_fallback(space) {
             let mut args = channels;
             args.extend(alpha_value);

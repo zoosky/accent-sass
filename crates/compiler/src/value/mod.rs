@@ -3,6 +3,7 @@ use std::{cmp::Ordering, sync::Arc};
 use codemap::{Span, Spanned};
 
 use crate::{
+    Options, OutputStyle,
     ast::{Mixin, SassMixin},
     color::Color,
     common::{BinaryOp, Brackets, ListSeparator, QuoteKind},
@@ -12,7 +13,6 @@ use crate::{
     serializer::{inspect_value, serialize_value},
     unit::Unit,
     utils::is_special_function,
-    Options, OutputStyle,
 };
 
 pub use arglist::ArgList;
@@ -20,8 +20,8 @@ pub use calculation::*;
 pub use map::SassMap;
 pub use number::*;
 pub use sass_function::{SassFunction, UserDefinedFunction};
-pub(crate) use sass_number::conversion_factor;
 pub use sass_number::SassNumber;
+pub(crate) use sass_number::conversion_factor;
 
 mod arglist;
 mod calculation;
@@ -357,11 +357,7 @@ impl Value {
     }
 
     pub fn bool(b: bool) -> Self {
-        if b {
-            Value::True
-        } else {
-            Value::False
-        }
+        if b { Value::True } else { Value::False }
     }
 
     pub fn cmp(&self, other: &Self, span: Span, op: BinaryOp) -> SassResult<Option<Ordering>> {
@@ -393,7 +389,7 @@ impl Value {
                         ),
                         span,
                     )
-                        .into())
+                        .into());
                 }
             },
             _ => {
@@ -553,7 +549,7 @@ impl Value {
                     format!("Undefined operation \"+{}\".", self.inspect(span)?),
                     span,
                 )
-                    .into())
+                    .into());
             }
             _ => Self::String(
                 format!(
@@ -572,7 +568,7 @@ impl Value {
                     format!("Undefined operation \"-{}\".", self.inspect(span)?),
                     span,
                 )
-                    .into())
+                    .into());
             }
             Self::Dimension(SassNumber {
                 num,

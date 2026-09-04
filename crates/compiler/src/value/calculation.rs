@@ -4,15 +4,15 @@ use std::iter::Iterator;
 use codemap::Span;
 
 use crate::{
+    Options,
     common::BinaryOp,
     error::SassResult,
     serializer::inspect_number,
     unit::Unit,
     value::{
-        number::{fuzzy_ceil, fuzzy_floor, fuzzy_round},
         Number, SassNumber, Value,
+        number::{fuzzy_ceil, fuzzy_floor, fuzzy_round},
     },
-    Options,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -641,16 +641,14 @@ impl SassCalculation {
                     Unit::Rad | Unit::Deg | Unit::Grad | Unit::Turn => {
                         number.num.convert(&number.unit, &Unit::Rad).0
                     }
-                    _ => {
-                        return Err((
-                            format!(
+                    _ => return Err((
+                        format!(
                             "$number: Expected {} to have an angle unit (deg, grad, rad, turn).",
                             inspect_number(number, options, span)?
                         ),
-                            span,
-                        )
-                            .into())
-                    }
+                        span,
+                    )
+                        .into()),
                 };
 
                 let result = match name {
@@ -837,7 +835,7 @@ impl SassCalculation {
                     sum += value * value;
                 }
                 _ => {
-                    return Self::unsimplified_checked(CalculationName::Hypot, args, options, span)
+                    return Self::unsimplified_checked(CalculationName::Hypot, args, options, span);
                 }
             }
         }
@@ -920,7 +918,7 @@ impl SassCalculation {
                             format!("{} must be either nearest, up, down or to-zero.", text),
                             span,
                         )
-                            .into())
+                            .into());
                     }
                 },
                 CalculationArg::Number(number) => {
@@ -931,7 +929,7 @@ impl SassCalculation {
                         ),
                         span,
                     )
-                        .into())
+                        .into());
                 }
                 // An opaque first argument cannot be checked at compile time.
                 _ => None,
@@ -940,7 +938,7 @@ impl SassCalculation {
             match strategy {
                 Some(strategy) => (strategy, &args[1], Some(&args[2])),
                 None => {
-                    return Self::unsimplified_checked(CalculationName::Round, args, options, span)
+                    return Self::unsimplified_checked(CalculationName::Round, args, options, span);
                 }
             }
         } else if args.len() == 2 {

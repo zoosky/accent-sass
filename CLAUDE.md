@@ -93,7 +93,8 @@ to push when you are"; push. If the push fails, resolve it and retry.
 
 ## Quality gates
 
-The gating jobs pin Rust **1.70.0**, the MSRV; the integration jobs use
+The gating jobs pin Rust **1.85.0**, the MSRV implied by the 2024 edition;
+the integration jobs use
 `stable`. The commands CI runs:
 
 ```bash
@@ -131,24 +132,28 @@ dart-sass, say so in a comment next to the test with the reason.
 
 ## Fork operating rules
 
-This repository forks `connorskees/grass`. The upstream is dormant: the last
-release was 0.13.4 in August 2024; issue #105 -- which asks for the colour
-functions this fork implements -- was opened in February 2025 and has no
-maintainer response; and eight pull requests are open, the oldest from 2020.
+This repository began as a fork of `connorskees/grass`, whose last release
+was 0.13.4 in August 2024. **The owner decided on 2026-09-04 that no return
+to upstream is planned.** Upstream is the origin of this code, not a
+destination for it, and that changes how the rules below read: decisions are
+judged on what is right for this project, never on what keeps a merge back
+cheap.
 
-- **The fork is canonical.** Accent pins a fork revision, never crates.io,
-  for as long as the fork carries a delta.
-- **Keep the delta small and measured.** Add only what a measured input
-  needs. The delta is what makes returning to upstream cheap.
-- **Sync pull requests use merge commits, never squash or rebase.**
-  Squash- and rebase-merge destroy the upstream parent pointer and orphan the
-  upstream commits in the fork's history.
-- **Rebase against upstream monthly**, or confirm the upstream is unchanged.
-  For a dormant upstream this is nearly free, which is exactly why it gets
-  skipped.
-- **Upstream pull requests are never release-gating.** We ship the fork
-  either way. As of 2026-09-02 the owner decided not to file one; see Accent's
-  epic E043 for the reason.
-- Accent tracks this fork in `specs/epics/e043-grass-sass-fork.md`. Bump
-  Accent's pin after merging a fork pull request, once the `frameworks` job is
-  green on the revision being pinned.
+- **This project is canonical.** Accent pins a revision of this repository,
+  never upstream and never crates.io.
+- **Judge changes on their own merit.** There is no rebase budget to protect,
+  so a change that is right for the codebase is not weighed against how far
+  it moves from upstream. The 2024 style edition reformatting is the first
+  decision taken on this basis.
+- **No rebase cadence.** There is no obligation to track upstream. If
+  something useful lands there, cherry-pick it deliberately and say why in
+  the commit.
+- **No upstream contribution obligation.** The owner decided on 2026-09-02
+  not to file the pull request against upstream issue #105; that decision
+  stands and needs no revisiting.
+- **Preserve history on any merge you do make.** Use merge commits rather
+  than squash or rebase when merging a long-lived branch, so the parentage
+  stays readable.
+- Accent tracks this project in `specs/epics/e043-accent-sass-fork.md`. Bump
+  Accent's pin after merging a pull request here, once the `frameworks` job
+  is green on the revision being pinned.

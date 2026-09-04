@@ -1,113 +1,114 @@
 # accent-sass
 
-This crate aims to provide a high level interface for compiling [Sass](https://sass-lang.com/documentation/) into
-plain CSS. It offers a very limited API, currently exposing only 2 functions.
+Sass infrastructure for Rust, at parity with `dart-sass`.
 
-In addition to a library, this crate also includes a binary that is intended to act as an invisible
-replacement to the Sass commandline executable.
+`accent-sass` compiles [Sass](https://sass-lang.com/documentation/) to CSS in
+pure Rust, with no Node and no libsass. It is a fork of
+[`connorskees/grass`](https://github.com/connorskees/grass) that carries the
+modern Dart Sass features upstream has not released, so that a Rust program
+can build real-world stylesheets -- Bulma, Pico, Foundation, USWDS -- without
+shelling out to another toolchain.
 
-This crate aims to achieve complete feature parity with the `dart-sass` reference
-implementation. A deviation from the `dart-sass` implementation can be considered
-a bug except for in the case of error messages and error spans.
+Parity with `dart-sass` is the goal, not an aspiration to approximate it: a
+deviation from the reference implementation is a bug, except in error messages
+and error spans.
 
-This fork is not published to crates.io. Depend on it by git revision:
-[zoosky/accent-sass](https://github.com/zoosky/accent-sass).
+It is built for and maintained alongside [Accent CMS](https://accentcms.dev),
+the single-binary markdown CMS, which compiles theme Sass in-process through
+this crate. It is a general-purpose library, and does not depend on Accent.
+
+## Install
+
+Not published to crates.io. Depend on it by git revision:
+
+```toml
+accent-sass = { git = "https://github.com/zoosky/accent-sass.git", rev = "<commit>" }
+```
+
+## Use
+
+As a library:
+
+```rust
+fn main() -> Result<(), Box<accent_sass::Error>> {
+    let css = accent_sass::from_string(
+        "a { b { color: &; } }".to_owned(),
+        &accent_sass::Options::default(),
+    )?;
+    assert_eq!(css, "a b {\n  color: a b;\n}\n");
+    Ok(())
+}
+```
+
+The API is deliberately small: `from_string`, `from_path`, and an `Options`
+builder.
+
+As a binary, intended as a drop-in for the `sass` executable:
+
+```bash
+accent-sass input.scss
+```
 
 ## Status
 
-`accent-sass` has reached a stage where one can be quite confident in its output. For the average user there should not be perceptible differences from `dart-sass`.
+13,560 of 14,218 sass-spec tests pass against the pinned spec revision
+(measured 2026-09-04). CI compiles Bulma, Pico, Foundation and USWDS with both
+engines on every commit and fails on any colour-value difference; that corpus
+currently shows none.
 
-Every commit of `accent-sass` is tested against bootstrap v5.0.2, and every release is tested against the last 2,500 commits of bootstrap's `main` branch.
+| Job | Gates? | What it checks |
+|---|---|---|
+| `tests`, `fmt`, `clippy` | yes | the crate's own suite, on the 1.85.0 MSRV |
+| `frameworks` | yes | the four-framework corpus, gated on colour values |
+| `bootstrap` | advisory | Bootstrap 5.0.2; prints the delta |
+| `sass-spec` | advisory | publishes the spec tallies |
 
-That said, there are a number of known missing features and bugs. The rough edges of `accent-sass` largely include `@forward` and more complex uses of `@use`. We support basic usage of these rules, but more advanced features such as `@import`ing modules containing `@forward` with prefixes may not behave as expected.
+What each release changed is in [`CHANGELOG.md`](CHANGELOG.md). What is left
+is in [`specs/docs/features/`](specs/docs/features/README.md), one document
+per work item, ranked by the spec tests it unlocks.
 
-All known missing features and bugs are tracked in [#19](https://github.com/connorskees/grass/issues/19).
+`accent-sass` is not a drop-in replacement for `libsass` and does not intend
+to be.
 
-`accent-sass` is not a drop-in replacement for `libsass` and does not intend to be. If you are upgrading to `accent-sass` from `libsass`, you may have to make modifications to your stylesheets, though these changes should not differ from those you would have to make if upgrading to `dart-sass`.
+## Cargo features
 
-## Performance
-
-`accent-sass` is benchmarked against `dart-sass` and `sassc` (`libsass`) [here](https://github.com/connorskees/sass-perf). In general, `accent-sass` appears to be ~2x faster than `dart-sass` and ~1.7x faster than `sassc`.
-
-## Cargo Features
-
-### commandline
-
-(enabled by default): build a binary using clap
-
-### random
-
-(enabled by default): enable the builtin functions [`random([$limit])`](https://sass-lang.com/documentation/modules/math/#random) and [`unique-id()`](https://sass-lang.com/documentation/modules/string/#unique-id)
-
-### macro
-
-(disabled by default): enable the macro `accent_sass::include!` for compiling Sass to
-CSS at compile time
-
-### nightly
-
-(disabled by default): currently only used by `accent_sass::include!` to enable 
-[proc_macro::tracked_path](https://github.com/rust-lang/rust/issues/99515)
+| Feature | Default | Effect |
+|---|---|---|
+| `commandline` | yes | build the binary, using clap |
+| `random` | yes | the builtin [`random([$limit])`](https://sass-lang.com/documentation/modules/math/#random) and [`unique-id()`](https://sass-lang.com/documentation/modules/string/#unique-id) |
+| `macro` | no | the `accent_sass::include!` macro, compiling Sass at build time |
+| `nightly` | no | lets `include!` use [`proc_macro::tracked_path`](https://github.com/rust-lang/rust/issues/99515) |
 
 ## Testing
 
-As much as possible this library attempts to follow the same [philosophy for testing as
-`rust-analyzer`](https://internals.rust-lang.org/t/experience-report-contributing-to-rust-lang-rust/12012/17).
-Namely, all one should have to do is run `cargo test` to run all its tests.
-This library maintains a test suite distinct from the `sass-spec`, though it
-does include some spec tests verbatim. This has the benefit of allowing tests
-to be run without ruby as well as allowing the tests more granular than they
-are in the official spec.
+Running `cargo test` should be all you need. The crate keeps a suite distinct
+from `sass-spec`, following the same [philosophy as
+`rust-analyzer`](https://internals.rust-lang.org/t/experience-report-contributing-to-rust-lang-rust/12012/17),
+so tests run without ruby and can be more granular than the official spec.
 
-Having said that, to run the official test suite,
+To run the official suite (node >= v14.14.0; does not work on Windows):
 
 ```bash
-# This script expects node >=v14.14.0. Check version with `node --version`
 git clone https://github.com/zoosky/accent-sass --recursive
-cd accent-sass && cargo b --release
+cd accent-sass && cargo build --release
 cd sass-spec && npm install
-npm run sass-spec -- --impl=dart-sass --command '../target/release/accent-sass'
-```
-
-The spec runner does not work on Windows.
-
-The runner compares warnings and error spans exactly. To score only the CSS
-output and error messages -- which is how the numbers below are measured --
-pass the runner's leniency flags:
-
-```bash
 npm run sass-spec -- --impl=dart-sass --command '../target/release/accent-sass' \
   --trim-errors --ignore-warning-diffs --ignore-error-diffs
 ```
 
-Against the pinned spec revision, this fork achieves the following results:
-
-```
-2026-09-02
-PASSING: 12491
-FAILING: 1719
-TOTAL: 14218
-```
-
-One test varies between runs (it depends on `random()`), so the passing count
-moves by one either way.
-
-The suite more than doubled between the previously pinned revision (2022-12-08,
-6,905 tests, of which 6,149 passed) and the current one, and nearly all of the
-new tests cover CSS Color 4, which this fork now implements in full (every
-color space, missing channels, and the color-space functions). Of the 6,435
-tests under `spec/core_functions/color`, 177 still fail, and nearly all of
-those pass `calc(infinity)`, `calc(-infinity)`, or `calc(NaN)` as a channel,
-which the calculation parser does not accept yet. The largest remaining groups
-are `values/calculation` (436, the CSS math functions `round()`, `mod()`,
-`rem()`, `log()` and `tan()` inside calculations, and those same keywords),
-the new CSS `if()` function (164), and `core_functions/meta` (152). The rest
-are largely aesthetic, relating to whitespace around comments in expanded mode
-or to error messages.
+The leniency flags score CSS output and error messages only. Without them a
+test that differs solely in a missing deprecation warning or in error wording
+counts as a failure; that gap is sized in
+[`specs/docs/features/08-calculation-warnings-and-error-wording.md`](specs/docs/features/08-calculation-warnings-and-error-wording.md).
 
 ## Versioning
 
-The minimum supported rust version (MSRV) of `accent-sass` is `1.70.0`. An increase to the MSRV will correspond with a minor version bump. The current MSRV is not a hard minimum, but future bugfix
-versions of `accent-sass` are not guaranteed to work on versions prior to this.
+[Semantic Versioning](https://semver.org/spec/v2.0.0.html). While the major
+version is `0`, a breaking change bumps the minor version. Version numbers are
+this fork's own and do not track upstream `grass`.
 
-`accent-sass` currently targets `dart-sass` version `1.103.1`. An increase to this number will correspond to either a minor or bugfix version bump, depending on the changes.
+The crates are on the Rust 2024 edition, which sets the minimum supported
+Rust version at `1.85.0`; CI gates on it. Raising the MSRV is a minor version
+bump.
+
+`accent-sass` targets `dart-sass` version `1.103.1`.

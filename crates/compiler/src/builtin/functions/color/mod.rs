@@ -12,7 +12,7 @@ use crate::{
     color::ColorSpace,
     error::SassError,
     serializer::inspect_number,
-    value::{conversion_factor, Value},
+    value::{Value, conversion_factor},
 };
 
 use super::GlobalFunctionMap;

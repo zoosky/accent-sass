@@ -2,7 +2,7 @@ use std::path::Path;
 
 use codemap::Span;
 
-use crate::{lexer::Lexer, ContextFlags, Options};
+use crate::{ContextFlags, Options, lexer::Lexer};
 
 use super::{BaseParser, StylesheetParser};
 
@@ -35,7 +35,7 @@ impl<'a> ScssParser<'a> {
     }
 }
 
-impl<'a> BaseParser for ScssParser<'a> {
+impl BaseParser for ScssParser<'_> {
     fn toks(&self) -> &Lexer {
         &self.toks
     }

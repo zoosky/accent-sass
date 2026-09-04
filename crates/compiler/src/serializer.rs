@@ -3,6 +3,7 @@ use std::io::Write;
 use codemap::{CodeMap, Span};
 
 use crate::{
+    Options,
     ast::Mixin,
     ast::{CssStmt, MediaQuery, Style, SupportsRule},
     color::{Color, ColorFormat, ColorSpace, NAMED_COLORS},
@@ -15,11 +16,10 @@ use crate::{
     unit::Unit,
     utils::hex_char_for,
     value::{
-        fuzzy_equals, fuzzy_greater_than_or_equals, fuzzy_less_than, fuzzy_less_than_or_equals,
         ArgList, CalculationArg, CalculationName, Number, SassCalculation, SassFunction, SassMap,
-        SassNumber, Value,
+        SassNumber, Value, fuzzy_equals, fuzzy_greater_than_or_equals, fuzzy_less_than,
+        fuzzy_less_than_or_equals,
     },
-    Options,
 };
 
 pub(crate) fn serialize_selector_list(
@@ -438,11 +438,7 @@ impl<'a> Serializer<'a> {
         } else {
             channel == rounded
         };
-        if is_int {
-            Some(rounded)
-        } else {
-            None
-        }
+        if is_int { Some(rounded) } else { None }
     }
 
     /// Writes the three channels of an rgb-space color as comma-separated

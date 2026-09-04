@@ -564,7 +564,8 @@ test!(
 test!(
     relative_from_red_compressed,
     "@use \"sass:color\";\na {\n  color: color.change(lch(50% 10 20), $lightness: 150%, $hue: none);\n}\n",
-    "a{color:lch(from red 150 10 none)}", accent_sass::Options::default().style(accent_sass::OutputStyle::Compressed)
+    "a{color:lch(from red 150 10 none)}",
+    accent_sass::Options::default().style(accent_sass::OutputStyle::Compressed)
 );
 test!(
     out_of_gamut_srgb_serializes_unclamped,

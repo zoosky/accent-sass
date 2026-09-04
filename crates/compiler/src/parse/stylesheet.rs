@@ -10,17 +10,17 @@ use std::{
 use codemap::{Span, Spanned};
 
 use crate::{
+    ContextFlags, Options, Token,
     ast::*,
-    common::{unvendor, Identifier, QuoteKind},
+    common::{Identifier, QuoteKind, unvendor},
     error::SassResult,
     lexer::Lexer,
     utils::{is_name, is_name_start, is_plain_css_import, opposite_bracket},
-    ContextFlags, Options, Token,
 };
 
 use super::{
+    BaseParser, DeclarationOrBuffer, RESERVED_IDENTIFIERS, ScssParser, VariableDeclOrInterpolation,
     value::{Predicate, ValueParser},
-    BaseParser, DeclarationOrBuffer, ScssParser, VariableDeclOrInterpolation, RESERVED_IDENTIFIERS,
 };
 
 /// Default implementations are oriented towards the SCSS syntax, as both CSS and
@@ -210,7 +210,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
         for (idx, child) in style_sheet.body.iter().enumerate() {
             match child {
                 AstStmt::VariableDecl(_) | AstStmt::LoudComment(_) | AstStmt::SilentComment(_) => {
-                    continue
+                    continue;
                 }
                 AstStmt::Use(..) => style_sheet.uses.push(idx),
                 AstStmt::Forward(..) => style_sheet.forwards.push(idx),
@@ -540,7 +540,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
                     "Expected \"to\" or \"through\".",
                     self.toks().current_span(),
                 )
-                    .into())
+                    .into());
             }
         };
 
@@ -649,7 +649,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
             }
         }
 
-        return match self.plain_at_rule_name()?.as_str() {
+        match self.plain_at_rule_name()?.as_str() {
             "debug" => self.parse_debug_rule(),
             "each" => self.parse_each_rule(Self::function_child),
             "else" => self.parse_disallowed_at_rule(start),
@@ -660,7 +660,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
             "warn" => self.parse_warn_rule(),
             "while" => self.parse_while_rule(Self::function_child),
             _ => self.parse_disallowed_at_rule(start),
-        };
+        }
     }
 
     fn parse_if_rule(
@@ -1250,7 +1250,11 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
             let identifier = self.parse_interpolated_identifier()?;
             let ident_span = self.toks_mut().span_from(start);
 
-            if identifier.as_plain().unwrap_or("").to_ascii_lowercase() == "not" {
+            if identifier
+                .as_plain()
+                .unwrap_or("")
+                .eq_ignore_ascii_case("not")
+            {
                 return Err((r#""not" is not a valid identifier here."#, ident_span).into());
             }
 
@@ -1271,7 +1275,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
             } else {
                 match identifier.contents.first() {
                     Some(InterpolationPart::Expr(e)) => {
-                        return Ok(AstSupportsCondition::Interpolation(e.clone().node))
+                        return Ok(AstSupportsCondition::Interpolation(e.clone().node));
                     }
                     _ => unreachable!(),
                 }
@@ -1307,16 +1311,13 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
         // sense to parse that case faster in exchange for less code complexity and
         // a slower backtracking case.
 
-        let name: AstExpr;
         let name_start = self.toks().cursor();
         let was_in_parens = self.flags().in_parens();
 
         let expr = self.parse_expression(None, None, None);
         let found_colon = self.expect_char(':');
-        match (expr, found_colon) {
-            (Ok(val), Ok(..)) => {
-                name = val.node;
-            }
+        let name = match (expr, found_colon) {
+            (Ok(val), Ok(..)) => val.node,
             (Ok(..), Err(e)) | (Err(e), Ok(..)) | (Err(e), Err(..)) => {
                 self.toks_mut().set_cursor(name_start);
                 self.flags_mut().set(ContextFlags::IN_PARENS, was_in_parens);
@@ -1347,7 +1348,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
 
                 return Ok(AstSupportsCondition::Anything { contents });
             }
-        }
+        };
 
         let declaration = self.supports_declaration_value(name, start)?;
         self.expect_char(')')?;
@@ -1847,7 +1848,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
             match self.parse_variable_declaration_or_interpolation()? {
                 VariableDeclOrInterpolation::Interpolation(interpolation) => interpolation,
                 VariableDeclOrInterpolation::VariableDecl(decl) => {
-                    return Ok(AstStmt::VariableDecl(decl))
+                    return Ok(AstStmt::VariableDecl(decl));
                 }
             }
         } else {
@@ -2004,7 +2005,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
                 buffer.add_interpolation(self.parse_single_interpolation()?);
             }
             Some(..) | None => {
-                return Err(("Expected identifier.", self.toks().current_span()).into())
+                return Err(("Expected identifier.", self.toks().current_span()).into());
             }
         }
 
@@ -2017,7 +2018,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
         let first = match self.toks().peek() {
             Some(Token { kind: '\\', .. }) => return true,
             Some(Token { kind: '#', .. }) => {
-                return matches!(self.toks().peek_n(1), Some(Token { kind: '{', .. }))
+                return matches!(self.toks().peek_n(1), Some(Token { kind: '{', .. }));
             }
             Some(Token { kind, .. }) if is_name_start(kind) => return true,
             Some(tok) => tok,
@@ -2410,7 +2411,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
         match variable_or_interpolation {
             VariableDeclOrInterpolation::Interpolation(int) => name_buffer.add_interpolation(int),
             VariableDeclOrInterpolation::VariableDecl(v) => {
-                return Ok(DeclarationOrBuffer::Stmt(AstStmt::VariableDecl(v)))
+                return Ok(DeclarationOrBuffer::Stmt(AstStmt::VariableDecl(v)));
             }
         }
 
@@ -2740,7 +2741,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
                 _ => {
                     return Err(
                         ("Invalid flag name.", self.toks_mut().span_from(flag_start)).into(),
-                    )
+                    );
                 }
             }
 
@@ -2782,7 +2783,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
                     match self.toks_mut().next() {
                         Some(tok) => buffer.add_char(tok.kind),
                         None => {
-                            return Err(("expected more input.", self.toks().current_span()).into())
+                            return Err(("expected more input.", self.toks().current_span()).into());
                         }
                     }
                 }
@@ -3058,7 +3059,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
 
         let ident1 = self.parse_interpolated_identifier()?;
 
-        if ident1.as_plain().unwrap_or("").to_ascii_lowercase() == "not" {
+        if ident1.as_plain().unwrap_or("").eq_ignore_ascii_case("not") {
             // For example, "@media not (...) {"
             self.expect_whitespace()?;
             if !self.looking_at_interpolated_identifier() {
@@ -3079,7 +3080,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
 
         let ident2 = self.parse_interpolated_identifier()?;
 
-        if ident2.as_plain().unwrap_or("").to_ascii_lowercase() == "and" {
+        if ident2.as_plain().unwrap_or("").eq_ignore_ascii_case("and") {
             self.expect_whitespace()?;
             // For example, "@media screen and ..."
             buf.add_string(" and ".to_owned());
