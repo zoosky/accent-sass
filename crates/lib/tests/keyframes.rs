@@ -33,7 +33,10 @@ test!(
         @keyframes {}
         color: green;
     }",
-    "a {\n  color: red;\n  color: green;\n}\n@keyframes {}\n"
+    // Verified against dart-sass 1.103.1: the at-rule separates the two
+    // declarations, so the parent splits around it and the at-rule keeps its
+    // source position instead of being moved to the end.
+    "a {\n  color: red;\n}\n@keyframes {}\na {\n  color: green;\n}\n"
 );
 test!(
     keyframes_lowercase_to,

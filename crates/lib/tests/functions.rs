@@ -191,7 +191,9 @@ test!(
 
         color: foo();
     }",
-    "a {\n  color: foo;\n  color: bar;\n}\n"
+    // Verified against dart-sass 1.103.1. The nested `a` rule emits nothing,
+    // but it still separates the two declarations, so the parent is split.
+    "a {\n  color: foo;\n}\na {\n  color: bar;\n}\n"
 );
 error!(
     disallows_unknown_at_rule,

@@ -414,7 +414,8 @@ test!(
     "@media ((color)) {\n  a {\n    color: red;\n  }\n}\n"
 );
 test!(
-    newline_between_media_rules_declared_at_root_inside_each,
+    newline_between_media_rules_declared_at_root_inside_each, // Expectation corrected against dart-sass 1.103.1: a declaration written
+    // after a nested rule stays after it, so the parent rule splits.
     "@each $a in 1 2 3 {
         a {
             @media foo {
@@ -426,7 +427,7 @@ test!(
             color: foo;
         }
     }",
-    "a {\n  color: foo;\n}\n@media foo {\n  a b {\n    color: 1;\n  }\n}\n\na {\n  color: foo;\n}\n@media foo {\n  a b {\n    color: 2;\n  }\n}\n\na {\n  color: foo;\n}\n@media foo {\n  a b {\n    color: 3;\n  }\n}\n"
+    "@media foo {\n  a b {\n    color: 1;\n  }\n}\na {\n  color: foo;\n}\n\n@media foo {\n  a b {\n    color: 2;\n  }\n}\na {\n  color: foo;\n}\n\n@media foo {\n  a b {\n    color: 3;\n  }\n}\na {\n  color: foo;\n}\n"
 );
 test!(
     newline_between_media_rules_declared_at_root_inside_each_with_preceding_style_rule,
@@ -484,6 +485,9 @@ test!(
 );
 test!(
     splits_child_nodes_when_preceding_media,
+    // Corrected against dart-sass 1.103.1. The @media splits once, around the
+    // nested media rule; the two `a` rules that follow share the one copy
+    // rather than each getting an @media of its own.
     "@media (foo) {
         @media (prefers-reduced-motion: reduce) {
             a {
@@ -499,7 +503,7 @@ test!(
             color: red;
         }
     }",
-    "@media (foo) and (prefers-reduced-motion: reduce) {\n  a {\n    transition: none;\n  }\n}\n@media (foo) {\n  a {\n    color: red;\n  }\n}\n@media (foo) {\n  a {\n    color: red;\n  }\n}\n"
+    "@media (foo) and (prefers-reduced-motion: reduce) {\n  a {\n    transition: none;\n  }\n}\n@media (foo) {\n  a {\n    color: red;\n  }\n  a {\n    color: red;\n  }\n}\n"
 );
 test!(
     doesnt_split_child_nodes_when_trailing_media,

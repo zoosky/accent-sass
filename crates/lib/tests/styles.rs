@@ -42,9 +42,10 @@ error!(
 );
 test!(removes_empty_styles, "a {}\n", "");
 test!(
-    doesnt_eat_style_after_ruleset,
+    doesnt_eat_style_after_ruleset, // Expectation corrected against dart-sass 1.103.1: a declaration written
+    // after a nested rule stays after it, so the parent rule splits.
     "a {\n  b {\n  color: red;\n}\n  color: blue;\n}\n",
-    "a {\n  color: blue;\n}\na b {\n  color: red;\n}\n"
+    "a b {\n  color: red;\n}\na {\n  color: blue;\n}\n"
 );
 test!(
     multiline_style,
@@ -287,4 +288,30 @@ error!(
 
     @include foo();",
     "Error: Declarations may only be used within style rules."
+);
+
+// Source order across a nested rule. dart-sass splits the parent rule so a
+// declaration written after a nested rule is emitted after it; this compiler
+// used to hoist it back up beside the earlier declarations, which changes the
+// cascade when both set the same property. Every expectation below was checked
+// against dart-sass 1.103.1.
+test!(
+    declaration_after_nested_rule_splits_parent,
+    ".a {\n  b: c;\n  .d {e: f}\n  g: h;\n}\n",
+    ".a {\n  b: c;\n}\n.a .d {\n  e: f;\n}\n.a {\n  g: h;\n}\n"
+);
+test!(
+    declaration_after_nested_rule_keeps_cascade_order,
+    ".a {\n  color: red;\n  .b {color: blue}\n  color: green;\n}\n",
+    ".a {\n  color: red;\n}\n.a .b {\n  color: blue;\n}\n.a {\n  color: green;\n}\n"
+);
+test!(
+    declaration_before_nested_rule_does_not_split,
+    ".a {\n  b: c;\n  d: e;\n  .f {g: h}\n}\n",
+    ".a {\n  b: c;\n  d: e;\n}\n.a .f {\n  g: h;\n}\n"
+);
+test!(
+    two_nested_rules_between_declarations,
+    ".a {\n  b: c;\n  .d {e: f}\n  .g {h: i}\n  j: k;\n}\n",
+    ".a {\n  b: c;\n}\n.a .d {\n  e: f;\n}\n.a .g {\n  h: i;\n}\n.a {\n  j: k;\n}\n"
 );
