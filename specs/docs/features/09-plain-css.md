@@ -6,15 +6,16 @@ the pinned sass-spec revision `4a9eea66` and the dart-sass 1.103.1
 binary, under the roadmap's standard flags.
 
 **CSS nesting passthrough has landed** (`zoosky/accent-sass` #27), which
-closed 27 of the 51:
+closed 27 of the 51, and **the CSS `@function` rule has landed** (#29),
+which closed 8 more:
 
 ```
-236 runs, 212 passing, 24 failures, 0 todo, 0 ignored, 0 errors
+236 runs, 220 passing, 16 failures, 0 todo, 0 ignored, 0 errors
 ```
 
-The 24 that remain are four independent defects, none of them about
-nesting. They are described below so the next contributor can pick one
-without re-deriving the split.
+The 16 that remain are three independent defects, none of them about
+nesting or `@function`. They are described below so the next contributor
+can pick one without re-deriving the split.
 
 ## Landed: CSS nesting passthrough
 
@@ -53,25 +54,22 @@ and this fork now applies too:
   `@import` or `meta.load-css` is nested under that rule rather than
   merged into it, so the `&` still reaches the browser.
 
-## 1. The CSS `@function` rule
+## Landed: the CSS `@function` rule
 
-`spec/css/plain/function/**` -- 8 failures.
+`spec/css/plain/function/**` -- 8 failures, closed in #29 together with
+`spec/css/function` (16) and one of `spec/directives/function`'s. A
+`@function` whose name begins with `--` declares a CSS custom function,
+which Sass passes through untouched; its `result` descriptor is parsed
+like a custom property, taking the value verbatim rather than as
+SassScript.
 
-```css
-@function --a(--b <color>) {result: c}
-```
+What #29 deliberately left is the rest of `spec/directives/function`:
+the [function-name proposal]'s name rules (12 failures) and three
+indented-syntax whitespace tests. Neither is about the CSS rule.
 
-gives "This at-rule isn't allowed in plain CSS."; dart-sass passes the
-rule through. The same feature accounts for `spec/css/function` (16) and
-`spec/directives/function` (15) on the roadmap, so it is worth doing as
-its own item across all three areas rather than for these 8 alone.
+[function-name proposal]: https://github.com/sass/sass/tree/main/accepted/function-name.md
 
-Note the `result` descriptor is parsed specially: dart-sass's
-`_declarationOrBuffer` treats `result:` inside a plain CSS `@function`
-like a custom property, taking the rest of the value verbatim instead of
-as SassScript.
-
-## 2. Whitespace in `@import ... supports(...)`
+## 1. Whitespace in `@import ... supports(...)`
 
 `spec/css/plain/import/whitespace/supports/**` -- 13 failures, 11 of them
 in the indented syntax.
@@ -85,7 +83,7 @@ gives "Expected expression."; dart-sass accepts a newline after the open
 paren, around `and`, around `not`, and before the closing paren. This is
 a parser gap in the import-modifier path, not in `@supports` itself.
 
-## 3. The CSS `if()` function in plain CSS
+## 2. The CSS `if()` function in plain CSS
 
 `spec/css/plain/if` -- 1 failure.
 
@@ -97,7 +95,7 @@ gives `expected ")"`. `if()` with CSS-style conditions landed for Sass in
 [02-css-if-function.md](02-css-if-function.md) (#13); the plain CSS
 parser does not reach that code path.
 
-## 4. `//` inside a plain CSS value
+## 3. `//` inside a plain CSS value
 
 `spec/css/plain/slash/without_intermediate/no_whitespace` -- 1 failure.
 

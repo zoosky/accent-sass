@@ -7,5 +7,5 @@ use crate::{interner::InternedString, value::Value};
 pub(crate) struct Style {
     pub property: InternedString,
     pub value: Box<Spanned<Value>>,
-    pub declared_as_custom_property: bool,
+    pub parsed_as_sass_script: bool,
 }

@@ -562,8 +562,25 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
         }))
     }
 
-    fn parse_function_rule(&mut self, start: usize) -> SassResult<AstStmt> {
+    /// Parses `@function`, which declares either a Sass function or -- when the
+    /// name begins with `--` -- a plain CSS custom function.
+    ///
+    /// `at_rule_name` is the interpolation the name was read from, which the
+    /// plain CSS form passes on to [`StylesheetParser::unknown_at_rule`] so the
+    /// rule is written out as it was spelled.
+    fn parse_function_rule(
+        &mut self,
+        start: usize,
+        at_rule_name: Interpolation,
+    ) -> SassResult<AstStmt> {
         let name_start = self.toks().cursor();
+
+        // A `--`-prefixed name is a CSS custom function, which Sass passes
+        // through untouched rather than declaring anything.
+        if self.next_matches("--") {
+            return self.unknown_at_rule(at_rule_name, start);
+        }
+
         let name = self.parse_identifier(true, false)?;
         let name_span = self.toks_mut().span_from(name_start);
         self.whitespace()?;
@@ -1152,6 +1169,19 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
                 None
             };
 
+        // `@function --a() {result: b}` reaches this method: a `--`-prefixed
+        // name makes the rule a plain CSS custom function rather than a Sass
+        // one. The body's `result` descriptor is then parsed verbatim, so the
+        // flag has to be live while the children are parsed.
+        let was_in_plain_css_function = self.flags().in_plain_css_function();
+        if name
+            .as_plain()
+            .is_some_and(|name| name.eq_ignore_ascii_case("function"))
+        {
+            self.flags_mut()
+                .set(ContextFlags::IN_PLAIN_CSS_FUNCTION, true);
+        }
+
         let children = if self.looking_at_children()? {
             Some(self.with_children(Self::parse_statement)?.node)
         } else {
@@ -1159,6 +1189,10 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
             None
         };
 
+        self.flags_mut().set(
+            ContextFlags::IN_PLAIN_CSS_FUNCTION,
+            was_in_plain_css_function,
+        );
         self.flags_mut()
             .set(ContextFlags::IN_UNKNOWN_AT_RULE, was_in_unknown_at_rule);
 
@@ -1727,7 +1761,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
                 // }
                 self.parse_forward_rule(start)
             }
-            Some("function") => self.parse_function_rule(start),
+            Some("function") => self.parse_function_rule(start, name),
             Some("if") => self.parse_if_rule(child),
             Some("import") => self.parse_import_rule(start),
             Some("include") => self.parse_include_rule(),
@@ -1864,6 +1898,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
                 value: Some(value),
                 body: Vec::new(),
                 span: value_span,
+                parsed_as_sass_script: false,
             }));
         }
 
@@ -1893,6 +1928,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
                 value: None,
                 body: children,
                 span: self.toks_mut().span_from(start),
+                parsed_as_sass_script: true,
             }));
         }
 
@@ -1922,6 +1958,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
                 value: Some(value),
                 body: children,
                 span: self.toks_mut().span_from(start),
+                parsed_as_sass_script: true,
             }))
         } else {
             self.expect_statement_separator(None)?;
@@ -1930,6 +1967,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
                 value: Some(value),
                 body: Vec::new(),
                 span: self.toks_mut().span_from(start),
+                parsed_as_sass_script: true,
             }))
         }
     }
@@ -2427,12 +2465,28 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
         }
         mid_buffer.push(':');
 
-        // Parse custom properties as declarations no matter what.
-        if name_buffer.initial_plain().starts_with("--") {
+        // Parse custom properties as declarations no matter what, and the
+        // `result` descriptor of a plain CSS `@function` the same way: both take
+        // their value verbatim rather than as SassScript.
+        let is_custom_property = name_buffer.initial_plain().starts_with("--");
+        let is_css_function_result = self.flags().in_plain_css_function()
+            && name_buffer
+                .as_plain()
+                .is_some_and(|name| name.eq_ignore_ascii_case("result"));
+
+        if is_custom_property || is_css_function_result {
             let value_start = self.toks().cursor();
-            let value = self.parse_interpolated_declaration_value(false, false, true)?;
+            let value = if self.at_end_of_statement() {
+                Interpolation::new()
+            } else {
+                self.parse_interpolated_declaration_value(false, false, true)?
+            };
             let value_span = self.toks_mut().span_from(value_start);
-            self.expect_statement_separator(Some("custom property"))?;
+            self.expect_statement_separator(Some(if is_custom_property {
+                "custom property"
+            } else {
+                "@function result"
+            }))?;
             return Ok(DeclarationOrBuffer::Stmt(AstStmt::Style(AstStyle {
                 name: name_buffer,
                 value: Some(
@@ -2441,6 +2495,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
                 ),
                 span: self.toks_mut().span_from(start),
                 body: Vec::new(),
+                parsed_as_sass_script: false,
             })));
         }
 
@@ -2464,6 +2519,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
                 value: None,
                 span: self.toks_mut().span_from(start),
                 body,
+                parsed_as_sass_script: true,
             })));
         }
 
@@ -2514,6 +2570,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
                 value: Some(value),
                 span: self.toks_mut().span_from(start),
                 body,
+                parsed_as_sass_script: true,
             })))
         } else {
             self.expect_statement_separator(None)?;
@@ -2522,6 +2579,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
                 value: Some(value),
                 span: self.toks_mut().span_from(start),
                 body: Vec::new(),
+                parsed_as_sass_script: true,
             })))
         }
     }

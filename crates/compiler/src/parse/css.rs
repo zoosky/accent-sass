@@ -83,16 +83,10 @@ impl<'a> StylesheetParser<'a> for CssParser<'a> {
 
         match name.as_plain() {
             Some("at-root") | Some("content") | Some("debug") | Some("each") | Some("error")
-            | Some("extend") | Some("for") | Some("function") | Some("if") | Some("include")
-            | Some("mixin") | Some("return") | Some("warn") | Some("while") => {
-                self.almost_any_value(false)?;
-                Err((
-                    "This at-rule isn't allowed in plain CSS.",
-                    self.toks.span_from(start),
-                )
-                    .into())
-            }
+            | Some("extend") | Some("for") | Some("if") | Some("include") | Some("mixin")
+            | Some("return") | Some("warn") | Some("while") => self.forbidden_at_rule(start),
             Some("import") => self.parse_css_import_rule(start),
+            Some("function") => self.parse_css_function_rule(start, name),
             Some("media") => self.parse_media_rule(start),
             Some("-moz-document") => self._parse_moz_document_rule(name),
             Some("supports") => self.parse_supports_rule(),
@@ -114,6 +108,35 @@ impl<'a> CssParser<'a> {
             empty_span,
             flags: ContextFlags::empty(),
             options,
+        }
+    }
+
+    /// Rejects an at-rule that only exists in Sass.
+    fn forbidden_at_rule(&mut self, start: usize) -> SassResult<AstStmt> {
+        self.almost_any_value(false)?;
+        Err((
+            "This at-rule isn't allowed in plain CSS.",
+            self.toks.span_from(start),
+        )
+            .into())
+    }
+
+    /// Parses a plain CSS `@function` rule.
+    ///
+    /// Only the CSS custom function form is allowed here: the name must begin
+    /// with `--`, because a Sass function declaration has no meaning in a `.css`
+    /// file. The rule itself is passed through untouched.
+    fn parse_css_function_rule(
+        &mut self,
+        start: usize,
+        at_rule_name: Interpolation,
+    ) -> SassResult<AstStmt> {
+        self.whitespace()?;
+
+        if self.next_matches("--") {
+            self.unknown_at_rule(at_rule_name, start)
+        } else {
+            self.forbidden_at_rule(start)
         }
     }
 

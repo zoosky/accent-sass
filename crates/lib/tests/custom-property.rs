@@ -57,9 +57,12 @@ test!(
     "a {\n    --without-semicolon: {\n        a: b\n    }\n}\n",
     "a {\n  --without-semicolon: {\n      a: b\n  } ;\n}\n"
 );
-error!(
+// dart-sass 1.103.1 allows a custom property to have an empty value, per the
+// CSS spec; it used to be an error.
+test!(
     nothing_after_colon,
-    "a {\n  --btn-font-family:;\n}\n", "Error: Expected token."
+    "a {\n  --btn-font-family:;\n}\n",
+    "a {\n  --btn-font-family:;\n}\n"
 );
 error!(
     #[ignore = "dart-sass crashes on this input https://github.com/sass/dart-sass/issues/1857"]
@@ -95,10 +98,12 @@ error!(
     }",
     r#"Error: Declarations whose names begin with "--" may not be nested"#
 );
-error!(
+// As above: an interpolation that resolves to nothing leaves the custom
+// property with an empty value rather than raising an error.
+test!(
     empty_value,
     "a {
         --color:#{null};
     }",
-    "Error: Custom property values may not be empty."
+    "a {\n  --color:;\n}\n"
 );

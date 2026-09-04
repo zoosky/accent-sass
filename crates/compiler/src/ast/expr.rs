@@ -30,6 +30,12 @@ pub struct FunctionCallExpr {
     pub name: Identifier,
     pub arguments: Arc<ArgumentInvocation>,
     pub span: Span,
+    /// Whether the name was written with a leading `--`, which reserves it for
+    /// a plain CSS custom function, so the call never resolves to a Sass one.
+    ///
+    /// [`Identifier`] normalises `_` to `-`, which makes `__a` and `--a` the
+    /// same name; only the spelling tells the two apart.
+    pub is_custom_function: bool,
 }
 
 #[derive(Debug, Clone)]

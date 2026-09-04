@@ -15,6 +15,13 @@ at `0.13.4` and below are upstream's and are kept for lineage.
 
 ### Added
 
+- the plain CSS `@function` rule. `@function` whose name begins with `--`
+  declares a CSS custom function rather than a Sass one, so Sass passes the
+  rule through untouched -- parameters, `returns` clause, nested rules and all.
+  Its `result` descriptor is parsed like a custom property, taking its value
+  verbatim instead of as SassScript, and `--a()` at a call site always names a
+  CSS custom function even where identifier normalisation would otherwise reach
+  `@function __a()`
 - CSS nesting in plain CSS files. A `.css` file may nest style rules; Sass no
   longer rejects them and no longer resolves them, since CSS nesting is the
   browser's job. The rule keeps its own selector and stays nested, `&` is
@@ -35,6 +42,15 @@ at `0.13.4` and below are upstream's and are kept for lineage.
 
 ### Fixed
 
+- a custom property may have an empty value (`--a:;`), per the CSS spec and
+  dart-sass 1.103.1. It was an error, and `--a:{b: c}` was accepted where
+  dart-sass expects a `;`
+- a declaration whose value has no CSS representation -- an empty list, say --
+  now raises the error dart-sass raises instead of being dropped from the
+  output silently
+- the indented syntax names what a stray indented block sits beneath, as
+  dart-sass does: `Nothing may be indented beneath a @import rule.` rather than
+  `Nothing may be indented here`
 - `selector.replace()` rejects a parent selector in any of its three arguments,
   matching `selector.extend()` and dart-sass. It previously accepted `&` and
   panicked while serializing the result

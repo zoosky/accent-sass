@@ -139,7 +139,7 @@ impl<'a> StylesheetParser<'a> for SassParser<'a> {
         Ok(buffer)
     }
 
-    fn expect_statement_separator(&mut self, _name: Option<&str>) -> SassResult<()> {
+    fn expect_statement_separator(&mut self, name: Option<&str>) -> SassResult<()> {
         if !self.at_end_of_statement() {
             self.expect_newline()?;
         }
@@ -149,9 +149,15 @@ impl<'a> StylesheetParser<'a> for SassParser<'a> {
         }
 
         // todo: position: _nextIndentationEnd!.position
-        // todo: error message, "Nothing may be indented ${name == null ? 'here' : 'beneath a $name'}."
 
-        Err(("Nothing may be indented here", self.toks.current_span()).into())
+        Err((
+            match name {
+                Some(name) => format!("Nothing may be indented beneath a {name}."),
+                None => "Nothing may be indented here.".to_owned(),
+            },
+            self.toks.current_span(),
+        )
+            .into())
     }
 
     fn at_end_of_statement(&self) -> bool {

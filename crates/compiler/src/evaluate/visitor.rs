@@ -3017,7 +3017,16 @@ impl<'a> Visitor<'a> {
     fn visit_function_call_expr(&mut self, func_call: FunctionCallExpr) -> SassResult<Value> {
         let name = func_call.name;
 
-        let func = match self.env.get_fn(name, func_call.namespace, func_call.span)? {
+        // A `--`-prefixed name belongs to a plain CSS custom function, so it is
+        // never looked up among Sass functions even though `Identifier`
+        // normalisation would otherwise make `--a()` reach `@function __a()`.
+        let declared = if func_call.is_custom_function {
+            None
+        } else {
+            self.env.get_fn(name, func_call.namespace, func_call.span)?
+        };
+
+        let func = match declared {
             Some(func) => func,
             None => {
                 // A namespaced call names a member of that module and nothing
@@ -3544,6 +3553,7 @@ impl<'a> Visitor<'a> {
                 span,
             }),
             span,
+            is_custom_function: false,
         };
 
         self.visit_function_call_expr(func_call)
@@ -3945,7 +3955,7 @@ impl<'a> Visitor<'a> {
                 .into());
         }
 
-        let is_custom_property = style.is_custom_property();
+        let parsed_as_sass_script = style.parsed_as_sass_script;
 
         let mut name = self.interpolation_to_value(style.name, false, true)?;
 
@@ -3964,8 +3974,9 @@ impl<'a> Visitor<'a> {
             .transpose()?
         {
             // If the value is an empty list, preserve it, because converting it to CSS
-            // will throw an error that we want the user to see.
-            if !value.is_blank() || value.is_empty_list() {
+            // will throw an error that we want the user to see. Custom properties
+            // are allowed to have empty values, per spec.
+            if !value.is_blank() || value.is_empty_list() || name.starts_with("--") {
                 // Route through `add_child` rather than straight into the
                 // tree. dart-sass splits a style rule when a nested rule comes
                 // between two of its declarations, so that source order -- and
@@ -3977,12 +3988,10 @@ impl<'a> Visitor<'a> {
                     CssStmt::Style(Style {
                         property: InternedString::get_or_intern(&name),
                         value: Box::new(value),
-                        declared_as_custom_property: is_custom_property,
+                        parsed_as_sass_script,
                     }),
                     Some(|_: &CssStmt| false),
                 );
-            } else if name.starts_with("--") {
-                return Err(("Custom property values may not be empty.", style.span).into());
             }
         }
 

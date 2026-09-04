@@ -79,12 +79,12 @@ pub struct AstStyle {
     pub value: Option<Spanned<AstExpr>>,
     pub body: Vec<AstStmt>,
     pub span: Span,
-}
-
-impl AstStyle {
-    pub fn is_custom_property(&self) -> bool {
-        self.name.initial_plain().starts_with("--")
-    }
+    /// Whether the value was parsed as SassScript rather than taken verbatim.
+    ///
+    /// Custom properties and the `result` descriptor of a plain CSS
+    /// `@function` keep their text as written, and are serialized without the
+    /// space a SassScript value gets after the colon.
+    pub parsed_as_sass_script: bool,
 }
 
 #[derive(Debug, Clone)]
