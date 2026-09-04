@@ -15,6 +15,10 @@ at `0.13.4` and below are upstream's and are kept for lineage.
 
 ### Added
 
+- the CSS `if()` function in plain CSS files. `if()` with CSS-style conditions
+  landed for Sass earlier; the plain CSS parser did not reach that code path
+  and stopped at the first `:`. A `sass()` condition, which is settled at
+  compile time, is rejected there
 - the plain CSS `@function` rule. `@function` whose name begins with `--`
   declares a CSS custom function rather than a Sass one, so Sass passes the
   rule through untouched -- parameters, `returns` clause, nested rules and all.
@@ -42,6 +46,18 @@ at `0.13.4` and below are upstream's and are kept for lineage.
 
 ### Fixed
 
+- `//` inside a plain CSS value is two slashes, not the start of a comment
+  plain CSS forbids. `a {b: 1///bar}` in a `.css` file was rejected
+- whitespace may fall anywhere inside `@import ... supports(...)`, including a
+  newline in the indented syntax: the whole query sits inside parentheses, so
+  it is whitespace there the way it is in an argument list. The same applies to
+  a non-`supports` modifier's arguments
+- the indented syntax tolerates a trailing `;` at the end of a statement, and
+  says "multiple statements on one line are not supported in the indented
+  syntax." when a second statement follows it. A `;` was rejected outright
+- `@import` ends with a statement separator, so `@import "a.css" b` and an
+  indented block beneath an `@import` are errors, and a trailing `;` after it
+  in the indented syntax is not
 - a custom property may have an empty value (`--a:;`), per the CSS spec and
   dart-sass 1.103.1. It was an error, and `--a:{b: c}` was accepted where
   dart-sass expects a `;`

@@ -21,6 +21,15 @@ pub(crate) trait BaseParser {
     /// Restores the depth returned by [`BaseParser::enter_parens`].
     fn restore_parens(&mut self, _depth: usize) {}
 
+    /// Whether a newline currently counts as whitespace rather than as the end
+    /// of a statement.
+    ///
+    /// Only the indented syntax ever answers `false`, and only outside
+    /// parentheses; every other syntax treats a newline as whitespace always.
+    fn newlines_are_whitespace(&self) -> bool {
+        true
+    }
+
     fn whitespace_without_comments(&mut self) {
         while matches!(
             self.toks().peek(),
@@ -51,10 +60,7 @@ pub(crate) trait BaseParser {
         }
 
         Ok(match self.toks().peek_n(1) {
-            Some(Token { kind: '/', .. }) => {
-                self.skip_silent_comment()?;
-                true
-            }
+            Some(Token { kind: '/', .. }) => self.skip_silent_comment()?,
             Some(Token { kind: '*', .. }) => {
                 self.skip_loud_comment()?;
                 true
@@ -63,14 +69,18 @@ pub(crate) trait BaseParser {
         })
     }
 
-    fn skip_silent_comment(&mut self) -> SassResult<()> {
+    /// Consumes a silent (`//`) comment, and reports whether one was there.
+    ///
+    /// Plain CSS overrides this to reject the comment, or -- inside a value,
+    /// where `//` is just two slashes -- to leave it alone and return `false`.
+    fn skip_silent_comment(&mut self) -> SassResult<bool> {
         debug_assert!(self.next_matches("//"));
         self.toks_mut().next();
         self.toks_mut().next();
         while self.toks().peek().is_some() && !self.toks().next_char_is('\n') {
             self.toks_mut().next();
         }
-        Ok(())
+        Ok(true)
     }
 
     fn next_matches(&mut self, s: &str) -> bool {

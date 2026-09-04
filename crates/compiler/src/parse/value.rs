@@ -111,11 +111,34 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
             }
         };
 
-        value_parser.start = parser.toks().cursor();
+        // From here on the parser is inside an expression, which plain CSS cares
+        // about: `//` in a value is two slashes, not a silent comment.
+        let was_in_expression = parser.flags().in_expression();
+        parser.flags_mut().set(ContextFlags::IN_EXPRESSION, true);
 
-        value_parser.single_expression = Some(value_parser.parse_single_expression(parser)?);
+        let value = value_parser.parse_expression_body(parser, start);
 
-        let mut value = value_parser.parse_value(parser)?;
+        parser
+            .flags_mut()
+            .set(ContextFlags::IN_EXPRESSION, was_in_expression);
+
+        value
+    }
+
+    /// Parses the expression itself, once [`ValueParser::parse_expression`] has
+    /// dealt with the bracketed-list prefix.
+    ///
+    /// `start` is the cursor from before that prefix, so the span covers it.
+    fn parse_expression_body(
+        &mut self,
+        parser: &mut P,
+        start: usize,
+    ) -> SassResult<Spanned<AstExpr>> {
+        self.start = parser.toks().cursor();
+
+        self.single_expression = Some(self.parse_single_expression(parser)?);
+
+        let mut value = self.parse_value(parser)?;
         value.span = parser.toks_mut().span_from(start);
 
         Ok(value)
@@ -1898,7 +1921,7 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
     }
 
     /// Parses `if(<condition>: <value>; ...)`.
-    fn parse_css_if(parser: &mut P, start: usize) -> SassResult<Spanned<AstExpr>> {
+    pub(crate) fn parse_css_if(parser: &mut P, start: usize) -> SassResult<Spanned<AstExpr>> {
         parser.expect_char('(')?;
         let parens = parser.enter_parens();
 
@@ -2214,6 +2237,8 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
 
     /// Parses a single term of a condition.
     fn parse_css_if_atom(parser: &mut P) -> SassResult<CssIfAtom> {
+        let start = parser.toks().cursor();
+
         if parser.toks().next_char_is('(') {
             parser.toks_mut().next();
             parser.whitespace()?;
@@ -2244,6 +2269,17 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
                 )?;
                 parser.whitespace()?;
                 parser.expect_char(')')?;
+
+                // A `sass()` condition is settled at compile time, which a
+                // `.css` file has no business doing.
+                if parser.is_plain_css() {
+                    return Err((
+                        "sass() conditions aren't allowed in plain CSS",
+                        parser.toks_mut().span_from(start),
+                    )
+                        .into());
+                }
+
                 return Ok(CssIfAtom::Sass(expr.node));
             }
 

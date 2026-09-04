@@ -56,6 +56,10 @@ impl BaseParser for SassParser<'_> {
         depth
     }
 
+    fn newlines_are_whitespace(&self) -> bool {
+        self.parens_depth > 0
+    }
+
     fn restore_parens(&mut self, depth: usize) {
         self.parens_depth = depth;
     }
@@ -140,8 +144,10 @@ impl<'a> StylesheetParser<'a> for SassParser<'a> {
     }
 
     fn expect_statement_separator(&mut self, name: Option<&str>) -> SassResult<()> {
+        let trailing_semicolon = self.try_trailing_semicolon()?;
+
         if !self.at_end_of_statement() {
-            self.expect_newline()?;
+            self.expect_newline(trailing_semicolon)?;
         }
 
         if self.peek_indentation()? <= self.current_indentation {
@@ -351,7 +357,7 @@ impl<'a> StylesheetParser<'a> for SassParser<'a> {
 
             // Preserve empty lines.
             while self.looking_at_double_newline() {
-                self.expect_newline()?;
+                self.expect_newline(false)?;
                 buffer.add_char('\n');
                 buffer.add_char(' ');
                 buffer.add_char('*');
@@ -483,13 +489,23 @@ impl<'a> SassParser<'a> {
         Ok(())
     }
 
-    fn expect_newline(&mut self) -> SassResult<()> {
+    /// Consumes a semicolon that ends a statement, and reports whether one was
+    /// there.
+    ///
+    /// The indented syntax ends a statement at the newline, but tolerates a
+    /// trailing `;` before it. A second statement after that `;` is what draws
+    /// the error, which is why the caller needs to know.
+    fn try_trailing_semicolon(&mut self) -> SassResult<bool> {
+        if !self.scan_char(';') {
+            return Ok(false);
+        }
+
+        self.whitespace()?;
+        Ok(true)
+    }
+
+    fn expect_newline(&mut self, after_trailing_semicolon: bool) -> SassResult<()> {
         match self.toks.peek() {
-            Some(Token { kind: ';', .. }) => Err((
-                "semicolons aren't allowed in the indented syntax.",
-                self.toks.current_span(),
-            )
-                .into()),
             Some(Token { kind: '\r', .. }) => {
                 self.toks.next();
                 self.scan_char('\n');
@@ -499,6 +515,11 @@ impl<'a> SassParser<'a> {
                 self.toks.next();
                 Ok(())
             }
+            _ if after_trailing_semicolon => Err((
+                "multiple statements on one line are not supported in the indented syntax.",
+                self.toks.current_span(),
+            )
+                .into()),
             _ => Err(("expected newline.", self.toks.current_span()).into()),
         }
     }

@@ -739,7 +739,22 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
         Ok(Some(AstSupportsCondition::Function { name, args: value }))
     }
 
+    /// Parses the contents of `supports(...)` after an `@import` rule, without
+    /// the function name or its parentheses.
+    ///
+    /// The whole query sits inside those parentheses, so a newline in it is
+    /// whitespace even in the indented syntax; [`BaseParser::enter_parens`]
+    /// says so for the duration.
     fn parse_import_supports_query(&mut self) -> SassResult<AstSupportsCondition> {
+        let parens = self.enter_parens();
+        let query = self.parse_import_supports_query_contents();
+        self.restore_parens(parens);
+        query
+    }
+
+    fn parse_import_supports_query_contents(&mut self) -> SassResult<AstSupportsCondition> {
+        self.whitespace()?;
+
         Ok(if self.scan_identifier("not", false)? {
             self.whitespace()?;
             AstSupportsCondition::Negation(Box::new(self.supports_condition_in_parens()?))
@@ -793,10 +808,14 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
                             buffer.add_char(')');
                         }
                     } else {
+                        // The arguments sit inside parentheses, so a newline in
+                        // them is whitespace even in the indented syntax.
+                        let parens = self.enter_parens();
+                        let args = self.parse_interpolated_declaration_value(true, true, true);
+                        self.restore_parens(parens);
+
                         buffer.add_char('(');
-                        buffer.add_interpolation(
-                            self.parse_interpolated_declaration_value(true, true, true)?,
-                        );
+                        buffer.add_interpolation(args?);
                         buffer.add_char(')');
                     }
 
@@ -942,6 +961,8 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
                 break;
             }
         }
+
+        self.expect_statement_separator(Some("@import rule"))?;
 
         Ok(AstStmt::ImportRule(AstImportRule { imports }))
     }
@@ -2189,7 +2210,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
                     }
                 }
                 '\n' | '\r' => {
-                    if self.is_indented() {
+                    if self.is_indented() && !self.newlines_are_whitespace() {
                         break;
                     }
                     if !matches!(
