@@ -6,7 +6,7 @@ use accent_sass_compiler::StdFs;
 use proc_macro::TokenStream;
 #[cfg(not(feature = "nightly"))]
 use quote::format_ident;
-use syn::{parse_macro_input, LitStr};
+use syn::{LitStr, parse_macro_input};
 
 use quote::__private::TokenStream as TokenStream2;
 
@@ -16,7 +16,7 @@ struct FileTracker<'a> {
     fs: &'a dyn accent_sass_compiler::Fs,
 }
 
-impl<'a> accent_sass_compiler::Fs for FileTracker<'a> {
+impl accent_sass_compiler::Fs for FileTracker<'_> {
     fn is_dir(&self, path: &std::path::Path) -> bool {
         #[cfg(feature = "nightly")]
         if let Ok(p) = std::fs::canonicalize(path) {

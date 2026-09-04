@@ -9,7 +9,7 @@ use super::{function_string, legacy_only_error};
 fn is_ms_filter(s: &str) -> bool {
     let mut bytes = s.bytes();
 
-    if !bytes.next().map_or(false, |c| c.is_ascii_alphabetic()) {
+    if !bytes.next().is_some_and(|c| c.is_ascii_alphabetic()) {
         return false;
     }
 
@@ -17,22 +17,6 @@ fn is_ms_filter(s: &str) -> bool {
         .skip_while(u8::is_ascii_alphabetic)
         .find(|c| !matches!(c, b' ' | b'\t' | b'\n'))
         == Some(b'=')
-}
-
-#[cfg(test)]
-mod test {
-    use super::is_ms_filter;
-    #[test]
-    fn test_is_ms_filter() {
-        assert!(is_ms_filter("a=a"));
-        assert!(is_ms_filter("a="));
-        assert!(is_ms_filter("a  \t\n  =a"));
-        assert!(!is_ms_filter("a  \t\n  a=a"));
-        assert!(!is_ms_filter("aa"));
-        assert!(!is_ms_filter("   aa"));
-        assert!(!is_ms_filter("=a"));
-        assert!(!is_ms_filter("1=a"));
-    }
 }
 
 /// The shared body of the global `alpha()` and `color.alpha()`, which only
@@ -174,4 +158,20 @@ pub(crate) fn declare(f: &mut GlobalFunctionMap) {
     f.insert("fade-in", Builtin::new(fade_in));
     f.insert("transparentize", Builtin::new(transparentize));
     f.insert("fade-out", Builtin::new(fade_out));
+}
+
+#[cfg(test)]
+mod test {
+    use super::is_ms_filter;
+    #[test]
+    fn test_is_ms_filter() {
+        assert!(is_ms_filter("a=a"));
+        assert!(is_ms_filter("a="));
+        assert!(is_ms_filter("a  \t\n  =a"));
+        assert!(!is_ms_filter("a  \t\n  a=a"));
+        assert!(!is_ms_filter("aa"));
+        assert!(!is_ms_filter("   aa"));
+        assert!(!is_ms_filter("=a"));
+        assert!(!is_ms_filter("1=a"));
+    }
 }

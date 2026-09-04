@@ -462,13 +462,10 @@ impl Environment {
 
         match self.scopes.get_var(name) {
             Ok(v) => Ok(v),
-            Err(e) => {
-                if let Some(v) = self.get_variable_from_global_modules(name.node, name.span)? {
-                    Ok(v)
-                } else {
-                    Err(e)
-                }
-            }
+            Err(e) => match self.get_variable_from_global_modules(name.node, name.span)? {
+                Some(v) => Ok(v),
+                None => Err(e),
+            },
         }
     }
 

@@ -136,6 +136,12 @@ pub struct TestFs {
     files: BTreeMap<PathBuf, Cow<'static, str>>,
 }
 
+impl Default for TestFs {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[allow(unused)]
 impl TestFs {
     pub fn new() -> Self {

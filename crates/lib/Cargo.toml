@@ -1,14 +1,17 @@
 [package]
 name = "accent-sass"
-version = "0.13.4"
+version = "0.14.0"
 description = "A Sass compiler written purely in Rust"
-readme = "../../README.md"
+readme = "README.md"
 license = "MIT"
 categories = ["command-line-utilities", "web-programming"]
 keywords = ["scss", "sass", "css", "web"]
 repository = "https://github.com/zoosky/accent-sass"
-authors = ["Connor Skees <39542938+ConnorSkees@users.noreply.github.com>"]
-edition = "2021"
+authors = [
+    "Connor Skees <39542938+ConnorSkees@users.noreply.github.com>",
+    "Zoo Sky <127824+zoosky@users.noreply.github.com>",
+]
+edition = "2024"
 include = [
     "src",
     "Cargo.toml",
@@ -18,7 +21,7 @@ include = [
     "LICENSE",
 ]
 default-run = "accent-sass"
-rust-version = "1.70"
+rust-version = "1.85"
 
 [[bin]]
 name = "accent-sass"
@@ -41,8 +44,8 @@ rustdoc-args = ["--cfg", "doc_cfg"]
 [dependencies]
 wasm-bindgen = { version = "0.2", optional = true }
 getrandom = { version = "0.2", features = ["js"] }
-accent_sass_compiler = { path = "../compiler", version = "=0.13.4", default-features = false }
-include_sass = { path = "../include_sass", version = "0.13.4", optional = true }
+accent_sass_compiler = { path = "../compiler", version = "=0.14.0", default-features = false }
+accent-sass-macro = { path = "../accent-sass-macro", version = "0.14.0", optional = true }
 clap = { version = "4.3.10", optional = true }
 
 [features]
@@ -52,10 +55,15 @@ default = ["commandline", "random"]
 commandline = ["clap"]
 random = ["accent_sass_compiler/random"]
 wasm-exports = ["accent_sass_compiler/wasm-exports", "wasm-bindgen"]
-# Option: include the proc macro `include_sass!`
-macro = ["include_sass"]
-nightly = ["include_sass/nightly"]
+# Option: include the proc macro `accent_sass::include!`
+macro = ["accent-sass-macro"]
+nightly = ["accent-sass-macro/nightly"]
 
 [dev-dependencies]
 tempfile = "3.3.0"
 paste = "1.0.3"
+
+[lints.rust]
+# `doc_cfg` is set by the docs.rs build (see [package.metadata.docs.rs]); it is
+# not a Cargo feature, so the 1.80+ `unexpected_cfgs` lint needs it declared.
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(doc_cfg)'] }

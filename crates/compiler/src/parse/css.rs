@@ -3,11 +3,11 @@ use std::{collections::BTreeMap, path::Path, sync::Arc};
 use codemap::{Span, Spanned};
 
 use crate::{
-    ast::*, builtin::DISALLOWED_PLAIN_CSS_FUNCTION_NAMES, common::QuoteKind, error::SassResult,
-    lexer::Lexer, ContextFlags, Options,
+    ContextFlags, Options, ast::*, builtin::DISALLOWED_PLAIN_CSS_FUNCTION_NAMES, common::QuoteKind,
+    error::SassResult, lexer::Lexer,
 };
 
-use super::{value::ValueParser, BaseParser, StylesheetParser};
+use super::{BaseParser, StylesheetParser, value::ValueParser};
 
 pub(crate) struct CssParser<'a> {
     pub toks: Lexer,
@@ -17,7 +17,7 @@ pub(crate) struct CssParser<'a> {
     pub options: &'a Options<'a>,
 }
 
-impl<'a> BaseParser for CssParser<'a> {
+impl BaseParser for CssParser<'_> {
     fn toks(&self) -> &Lexer {
         &self.toks
     }

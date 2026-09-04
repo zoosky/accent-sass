@@ -100,9 +100,8 @@ impl Iterator for Lexer {
     type Item = Token;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.buf.get(self.cursor).copied().map(|tok| {
+        self.buf.get(self.cursor).copied().inspect(|_| {
             self.cursor += 1;
-            tok
         })
     }
 
@@ -125,7 +124,7 @@ impl<'a> TokenLexer<'a> {
     }
 }
 
-impl<'a> Iterator for TokenLexer<'a> {
+impl Iterator for TokenLexer<'_> {
     type Item = Token;
     fn next(&mut self) -> Option<Self::Item> {
         let kind = match self.buf.next()? {

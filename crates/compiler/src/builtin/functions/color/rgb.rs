@@ -2,7 +2,7 @@
 
 use crate::{
     builtin::builtin_imports::*,
-    color::{clamp_like_css, ColorSpace, HueInterpolationMethod},
+    color::{ColorSpace, HueInterpolationMethod, clamp_like_css},
 };
 
 use super::{
@@ -84,7 +84,7 @@ fn inner_rgb_3_arg(
     if red.is_special_function()
         || green.is_special_function()
         || blue.is_special_function()
-        || alpha.as_ref().map_or(false, Value::is_special_function)
+        || alpha.as_ref().is_some_and(Value::is_special_function)
     {
         let mut values = vec![red, green, blue];
         values.extend(alpha);
@@ -218,7 +218,7 @@ pub(crate) fn parse_interpolation_method(
                 "$method: Expected a color interpolation method, got an empty list.",
                 span,
             )
-                .into())
+                .into());
         }
     };
 
@@ -233,7 +233,7 @@ pub(crate) fn parse_interpolation_method(
                         format!("$method: Unknown hue interpolation method {}.", name),
                         span,
                     )
-                        .into())
+                        .into());
                 }
             }
         }
@@ -248,7 +248,7 @@ pub(crate) fn parse_interpolation_method(
                 ),
                 span,
             )
-                .into())
+                .into());
         }
         Some(hue) => {
             let hue_inspected = dart_to_string(&hue, span)?;

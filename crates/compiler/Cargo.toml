@@ -1,15 +1,18 @@
 [package]
 name = "accent_sass_compiler"
-version = "0.13.4"
-edition = "2021"
+version = "0.14.0"
+edition = "2024"
 description = "Internal implementation of the accent-sass compiler"
 readme = "README.md"
 license = "MIT"
 categories = ["web-programming"]
 keywords = ["scss", "sass", "css", "web"]
 repository = "https://github.com/zoosky/accent-sass"
-authors = ["Connor Skees <39542938+ConnorSkees@users.noreply.github.com>"]
-rust-version = "1.70"
+authors = [
+    "Connor Skees <39542938+ConnorSkees@users.noreply.github.com>",
+    "Zoo Sky <127824+zoosky@users.noreply.github.com>",
+]
+rust-version = "1.85"
 
 [lib]
 name = "accent_sass_compiler"
@@ -46,3 +49,8 @@ random = ["rand"]
 wasm-exports = ["wasm-bindgen"]
 # Option: expose internals necessary to implement custom builtin functions
 custom-builtin-fns = []
+
+[lints.rust]
+# `doc_cfg` is set by the docs.rs build (see [package.metadata.docs.rs]); it is
+# not a Cargo feature, so the 1.80+ `unexpected_cfgs` lint needs it declared.
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(doc_cfg)'] }

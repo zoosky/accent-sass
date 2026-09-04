@@ -115,7 +115,7 @@ fn calc_args(mut args: ArgumentResult, visitor: &mut Visitor) -> SassResult<Valu
                 format!("$calc: {} is not a calculation.", v.inspect(args.span())?),
                 args.span(),
             )
-                .into())
+                .into());
         }
     };
 
@@ -162,7 +162,7 @@ fn get_mixin(mut args: ArgumentResult, visitor: &mut Visitor) -> SassResult<Valu
                 format!("$module: {} is not a string.", v.inspect(span)?),
                 span,
             )
-                .into())
+                .into());
         }
     };
 
@@ -229,7 +229,7 @@ fn calc_name(mut args: ArgumentResult, _visitor: &mut Visitor) -> SassResult<Val
                 format!("$calc: {} is not a calculation.", v.inspect(args.span())?),
                 args.span(),
             )
-                .into())
+                .into());
         }
     };
 

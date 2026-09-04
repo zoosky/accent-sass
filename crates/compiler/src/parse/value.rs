@@ -3,14 +3,14 @@ use std::{iter::Iterator, marker::PhantomData, sync::Arc};
 use codemap::Spanned;
 
 use crate::{
+    ContextFlags, Token,
     ast::*,
     color::{Color, ColorFormat, NAMED_COLORS},
-    common::{unvendor, BinaryOp, Brackets, Identifier, ListSeparator, QuoteKind, UnaryOp},
+    common::{BinaryOp, Brackets, Identifier, ListSeparator, QuoteKind, UnaryOp, unvendor},
     error::SassResult,
     unit::Unit,
     utils::{as_hex, opposite_bracket},
     value::{CalculationName, Number},
-    ContextFlags, Token,
 };
 
 use super::StylesheetParser;
@@ -1461,7 +1461,7 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
                         parser.toks_mut().span_from(start),
                     )
                     .span(parser.toks_mut().span_from(start))
-                }))
+                }));
             }
             _ => return Ok(None),
         }
@@ -2111,7 +2111,7 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
                 // A run of substitutions has no place for a parenthesized
                 // condition: `a (b) c` is not a condition Sass can read.
                 CssIfAtom::Paren(..) => {
-                    return Err((r#"expected ":"."#, parser.toks().current_span()).into())
+                    return Err((r#"expected ":"."#, parser.toks().current_span()).into());
                 }
                 CssIfAtom::Sass(..) => has_sass = true,
                 CssIfAtom::Raw(..) => {}

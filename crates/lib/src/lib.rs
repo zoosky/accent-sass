@@ -66,8 +66,8 @@ accent-sass input.scss
 )]
 
 pub use accent_sass_compiler::{
-    from_path, from_string, Error, ErrorKind, Fs, InputSyntax, Logger, NullFs, NullLogger, Options,
-    OutputStyle, Result, StdFs, StdLogger,
+    Error, ErrorKind, Fs, InputSyntax, Logger, NullFs, NullLogger, Options, OutputStyle, Result,
+    StdFs, StdLogger, from_path, from_string,
 };
 
 /// Include CSS in your binary at compile time from a Sass source file
@@ -93,7 +93,7 @@ pub use accent_sass_compiler::{
 #[cfg_attr(doc_cfg, doc(cfg(feature = "macro")))]
 macro_rules! include {
     ($path:literal) => {
-        $crate::__internal::include_sass::include_sass!($path);
+        $crate::__internal::accent_sass_macro::include_sass!($path);
     };
 }
 
@@ -101,5 +101,5 @@ macro_rules! include {
 #[cfg(feature = "macro")]
 pub mod __internal {
     #[doc(hidden)]
-    pub use include_sass;
+    pub use accent_sass_macro;
 }

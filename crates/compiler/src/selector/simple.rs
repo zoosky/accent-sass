@@ -126,7 +126,7 @@ impl SimpleSelector {
             | Self::Class(..)
             | Self::Attribute(..) => false,
             Self::Pseudo(Pseudo { name, selector, .. }) => {
-                name != "not" && selector.as_ref().map_or(false, |sel| sel.is_invisible())
+                name != "not" && selector.as_ref().is_some_and(|sel| sel.is_invisible())
             }
             Self::Placeholder(..) => true,
             Self::Parent(..) => unreachable!("parent selectors should be resolved at this point"),
@@ -719,7 +719,7 @@ impl Pseudo {
                 return Specificity {
                     min: BASE_SPECIFICITY,
                     max: BASE_SPECIFICITY,
-                }
+                };
             }
         };
 

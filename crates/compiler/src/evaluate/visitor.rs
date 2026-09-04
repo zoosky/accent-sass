@@ -14,16 +14,18 @@ use codemap::{CodeMap, Span, Spanned};
 use indexmap::IndexSet;
 
 use crate::{
+    ContextFlags, InputSyntax, Options,
     ast::*,
     builtin::{
+        GLOBAL_FUNCTIONS,
         meta::if_arguments,
         modules::{
-            declare_module_color, declare_module_list, declare_module_map, declare_module_math,
-            declare_module_meta, declare_module_selector, declare_module_string, Module,
+            Module, declare_module_color, declare_module_list, declare_module_map,
+            declare_module_math, declare_module_meta, declare_module_selector,
+            declare_module_string,
         },
-        GLOBAL_FUNCTIONS,
     },
-    common::{unvendor, BinaryOp, Brackets, Identifier, ListSeparator, QuoteKind, UnaryOp},
+    common::{BinaryOp, Brackets, Identifier, ListSeparator, QuoteKind, UnaryOp, unvendor},
     error::{SassError, SassResult},
     interner::InternedString,
     lexer::Lexer,
@@ -37,10 +39,9 @@ use crate::{
     },
     utils::{to_sentence, trim_ascii},
     value::{
-        contains_opaque_value, ArgList, CalculationArg, CalculationName, Number, SassCalculation,
-        SassFunction, SassMap, SassNumber, UserDefinedFunction, Value,
+        ArgList, CalculationArg, CalculationName, Number, SassCalculation, SassFunction, SassMap,
+        SassNumber, UserDefinedFunction, Value, contains_opaque_value,
     },
-    ContextFlags, InputSyntax, Options,
 };
 
 use super::{
@@ -604,7 +605,7 @@ impl<'a> Visitor<'a> {
                 let same_original = self
                     .module_configurations
                     .get(&url)
-                    .map_or(false, |original| Rc::ptr_eq(original, &current_original));
+                    .is_some_and(|original| Rc::ptr_eq(original, &current_original));
 
                 let could_have_applied = || {
                     let names: HashSet<Identifier> = (*current_configuration)
@@ -1123,8 +1124,11 @@ impl<'a> Visitor<'a> {
             let extension = path_buf.extension().unwrap().to_str().unwrap().to_owned();
 
             if for_import {
-                resolve!(self
-                    .import_candidates(&path_buf.with_extension(format!(".import{}", extension))));
+                resolve!(
+                    self.import_candidates(
+                        &path_buf.with_extension(format!(".import{}", extension))
+                    )
+                );
             }
             resolve!(self.import_candidates(&path_buf));
 
@@ -3002,7 +3006,7 @@ impl<'a> Visitor<'a> {
                 CssIfDecision::Known(true) => return self.visit_expr(branch.value.clone()),
                 CssIfDecision::Known(false) => continue,
                 CssIfDecision::Unknown(condition) => {
-                    return self.emit_css_if(if_expr, idx, condition, span)
+                    return self.emit_css_if(if_expr, idx, condition, span);
                 }
             }
         }
@@ -3105,7 +3109,7 @@ impl<'a> Visitor<'a> {
         for operand in operands {
             match self.simplify_css_if_condition(operand)? {
                 CssIfDecision::Known(known) if known == short_circuit => {
-                    return Ok(CssIfDecision::Known(short_circuit))
+                    return Ok(CssIfDecision::Known(short_circuit));
                 }
                 CssIfDecision::Known(..) => continue,
                 CssIfDecision::Unknown(text) => remaining.push((operand, text)),
@@ -3218,7 +3222,7 @@ impl<'a> Visitor<'a> {
                             ),
                             span,
                         )
-                            .into())
+                            .into());
                     }
                 }
             }
@@ -3276,7 +3280,7 @@ impl<'a> Visitor<'a> {
             (Ok(args), _) => args,
             (Err(err), None) => return Err(err),
             (Err(err), Some(fallback)) => {
-                return self.call_sass_function_fallback(name, fallback.clone(), span, err)
+                return self.call_sass_function_fallback(name, fallback.clone(), span, err);
             }
         };
 

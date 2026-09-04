@@ -3,7 +3,7 @@
 
 use crate::{
     builtin::builtin_imports::*,
-    color::{clamp_like_css, ChannelKind, ColorChannel, ColorSpace, HueInterpolationMethod},
+    color::{ChannelKind, ColorChannel, ColorSpace, HueInterpolationMethod, clamp_like_css},
     value::fuzzy_equals,
 };
 
@@ -36,7 +36,7 @@ fn hsl_3_args(
     if hue.is_special_function()
         || saturation.is_special_function()
         || lightness.is_special_function()
-        || alpha.as_ref().map_or(false, Value::is_special_function)
+        || alpha.as_ref().is_some_and(Value::is_special_function)
     {
         let mut values = vec![hue, saturation, lightness];
         values.extend(alpha);
@@ -244,7 +244,7 @@ fn grayscale_inner(
                 format!("$color: {} is not a color.", v.inspect(span)?),
                 span,
             )
-                .into())
+                .into());
         }
     };
 
@@ -316,7 +316,7 @@ pub(crate) fn complement(mut args: ArgumentResult, _: &mut Visitor) -> SassResul
     let space_arg = args.get(1, "space").map(|space| space.node);
     let has_space = space_arg
         .as_ref()
-        .map_or(false, |space| *space != Value::Null);
+        .is_some_and(|space| *space != Value::Null);
 
     let space = if color.is_legacy() && !has_space {
         ColorSpace::Hsl
