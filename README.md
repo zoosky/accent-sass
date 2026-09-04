@@ -19,7 +19,11 @@ this crate. It is a general-purpose library, and does not depend on Accent.
 
 ## Install
 
-Not published to crates.io. Depend on it by git revision:
+```toml
+accent-sass = "0.14.0"
+```
+
+To track work that has not been released yet, pin a git revision instead:
 
 ```toml
 accent-sass = { git = "https://github.com/zoosky/accent-sass.git", rev = "<commit>" }
