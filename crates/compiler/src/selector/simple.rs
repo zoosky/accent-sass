@@ -552,10 +552,11 @@ impl Hash for Pseudo {
 
 impl fmt::Display for Pseudo {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if let Some(sel) = &self.selector {
-            if self.name == "not" && sel.is_invisible() {
-                return Ok(());
-            }
+        if let Some(sel) = &self.selector
+            && self.name == "not"
+            && sel.is_invisible()
+        {
+            return Ok(());
         }
 
         f.write_char(':')?;

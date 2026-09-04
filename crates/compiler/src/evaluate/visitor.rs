@@ -921,20 +921,19 @@ impl<'a> Visitor<'a> {
             // where the load site puts it, selector untouched.
             let mut nest_under_parent = false;
 
-            if in_style_rule {
-                if let CssStmt::RuleSet {
+            if in_style_rule
+                && let CssStmt::RuleSet {
                     selector,
                     from_plain_css,
                     ..
                 } = &mut stmt
-                {
-                    let selector_list = selector.as_selector_list().clone();
+            {
+                let selector_list = selector.as_selector_list().clone();
 
-                    if *from_plain_css && selector_list.contains_parent_selector() {
-                        nest_under_parent = true;
-                    } else {
-                        *selector = self.nest_selector_under_current_rule(selector_list)?;
-                    }
+                if *from_plain_css && selector_list.contains_parent_selector() {
+                    nest_under_parent = true;
+                } else {
+                    *selector = self.nest_selector_under_current_rule(selector_list)?;
                 }
             }
 

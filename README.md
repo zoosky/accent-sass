@@ -62,7 +62,7 @@ currently shows none.
 
 | Job | Gates? | What it checks |
 |---|---|---|
-| `tests`, `fmt`, `clippy` | yes | the crate's own suite, on the 1.85.0 MSRV |
+| `tests`, `fmt`, `clippy` | yes | the crate's own suite, on the 1.96.1 MSRV |
 | `frameworks` | yes | the four-framework corpus, gated on colour values |
 | `bootstrap` | advisory | Bootstrap 5.0.2; prints the delta |
 | `sass-spec` | advisory | publishes the spec tallies |
@@ -111,8 +111,8 @@ counts as a failure; that gap is sized in
 version is `0`, a breaking change bumps the minor version. Version numbers are
 this fork's own and do not track upstream `grass`.
 
-The crates are on the Rust 2024 edition, which sets the minimum supported
-Rust version at `1.85.0`; CI gates on it. Raising the MSRV is a minor version
-bump.
+The crates are on the Rust 2024 edition. The minimum supported Rust version is
+`1.96.1`, normalised across the Accent crates; CI gates on it. Raising the MSRV
+is a minor version bump.
 
 `accent-sass` targets `dart-sass` version `1.103.1`.

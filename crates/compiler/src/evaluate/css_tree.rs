@@ -137,10 +137,10 @@ impl CssTree {
     /// nested back under the rule the module was loaded from, when its selector
     /// says it belongs there rather than merged into it.
     pub fn reparent(&mut self, child_idx: CssTreeIdx, parent_idx: CssTreeIdx) {
-        if let Some(old_parent) = self.child_to_parent.get(&child_idx).copied() {
-            if let Some(siblings) = self.parent_to_child.get_mut(&old_parent) {
-                siblings.retain(|&sibling| sibling != child_idx);
-            }
+        if let Some(old_parent) = self.child_to_parent.get(&child_idx).copied()
+            && let Some(siblings) = self.parent_to_child.get_mut(&old_parent)
+        {
+            siblings.retain(|&sibling| sibling != child_idx);
         }
 
         self.link_child_to_parent(child_idx, parent_idx);

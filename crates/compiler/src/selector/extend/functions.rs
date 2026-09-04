@@ -539,14 +539,13 @@ fn merge_final_combinators(
             merge_final_combinators(components_one, components_two, Some(result))
         }
         (Some(combinator_one), None) => {
-            if *combinator_one == Combinator::Child && !components_two.is_empty() {
-                if let Some(ComplexSelectorComponent::Compound(c1)) = components_one.back() {
-                    if let Some(ComplexSelectorComponent::Compound(c2)) = components_two.back() {
-                        if c2.is_super_selector(c1, &None) {
-                            components_two.pop_back();
-                        }
-                    }
-                }
+            if *combinator_one == Combinator::Child
+                && !components_two.is_empty()
+                && let Some(ComplexSelectorComponent::Compound(c1)) = components_one.back()
+                && let Some(ComplexSelectorComponent::Compound(c2)) = components_two.back()
+                && c2.is_super_selector(c1, &None)
+            {
+                components_two.pop_back();
             }
 
             result.push_front(vec![vec![
@@ -557,14 +556,13 @@ fn merge_final_combinators(
             merge_final_combinators(components_one, components_two, Some(result))
         }
         (None, Some(combinator_two)) => {
-            if *combinator_two == Combinator::Child && !components_one.is_empty() {
-                if let Some(ComplexSelectorComponent::Compound(c1)) = components_one.back() {
-                    if let Some(ComplexSelectorComponent::Compound(c2)) = components_two.back() {
-                        if c1.is_super_selector(c2, &None) {
-                            components_one.pop_back();
-                        }
-                    }
-                }
+            if *combinator_two == Combinator::Child
+                && !components_one.is_empty()
+                && let Some(ComplexSelectorComponent::Compound(c1)) = components_one.back()
+                && let Some(ComplexSelectorComponent::Compound(c2)) = components_two.back()
+                && c1.is_super_selector(c2, &None)
+            {
+                components_one.pop_back();
             }
 
             result.push_front(vec![vec![

@@ -89,10 +89,10 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
         let start = parser.toks().cursor();
         let mut value_parser = Self::new(parser, parse_until, inside_bracketed_list, single_equals);
 
-        if let Some(parse_until) = value_parser.parse_until {
-            if parse_until(parser)? {
-                return Err(("Expected expression.", parser.toks().current_span()).into());
-            }
+        if let Some(parse_until) = value_parser.parse_until
+            && parse_until(parser)?
+        {
+            return Err(("Expected expression.", parser.toks().current_span()).into());
         }
 
         if value_parser.inside_bracketed_list {
@@ -155,10 +155,10 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
         loop {
             parser.whitespace()?;
 
-            if let Some(parse_until) = self.parse_until {
-                if parse_until(parser)? {
-                    break;
-                }
+            if let Some(parse_until) = self.parse_until
+                && parse_until(parser)?
+            {
+                break;
             }
 
             let first = parser.toks().peek();
@@ -1418,10 +1418,10 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
         name: &str,
         start: usize,
     ) -> SassResult<Option<Spanned<AstExpr>>> {
-        if matches!(parser.toks().peek(), Some(Token { kind: '(', .. })) {
-            if let Some(calculation) = ValueParser::try_parse_calculation(parser, name, start)? {
-                return Ok(Some(calculation));
-            }
+        if matches!(parser.toks().peek(), Some(Token { kind: '(', .. }))
+            && let Some(calculation) = ValueParser::try_parse_calculation(parser, name, start)?
+        {
+            return Ok(Some(calculation));
         }
 
         let normalized = unvendor(name);

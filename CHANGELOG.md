@@ -21,6 +21,18 @@ at `0.13.4` and below are upstream's and are kept for lineage.
   written out unresolved, and at-rules stop bubbling out of a rule once nesting
   has been passed through
 
+### Changed
+
+- **Breaking: the minimum supported Rust version rises from `1.85.0` to
+  `1.96.1`**, normalising the floor across the Accent crates. Per this
+  project's policy, that makes the next release a minor version bump. The
+  gating CI jobs move with it.
+
+  Clippy reads `rust-version`, so the bump turned lints on with no code
+  change: `collapsible_if` began suggesting let chains, which need 1.88, at 23
+  sites. All 23 are collapsed. No comment was displaced -- each sat above the
+  outer `if`.
+
 ### Fixed
 
 - `selector.replace()` rejects a parent selector in any of its three arguments,
