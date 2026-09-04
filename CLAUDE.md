@@ -68,7 +68,8 @@ git checkout -b fix/my-change
 
 # 2. Change, then run the gates
 cargo fmt --all -- --check
-cargo clippy --features=macro -- -D warnings
+cargo +1.85.0 clippy --features=macro --all-targets -- -D warnings
+cargo +stable  clippy --features=macro --all-targets -- -D warnings
 cargo test --features=macro
 
 # 3. Commit and push

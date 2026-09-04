@@ -75,8 +75,15 @@ below carry a strictness section for their area.
   re-baseline a test to whatever the new code prints.
 - Add regression tests to `crates/lib/tests/` using the `test!` and
   `error!` macros alongside the spec run.
-- Run the quality gates before committing:
-  `cargo fmt --all -- --check`,
-  `cargo clippy --features=macro -- -D warnings`,
-  `cargo test --features=macro`.
+- Run the quality gates before committing. Clippy runs on **two** toolchains
+  and both gate, because pinning the lint gate to the MSRV alone left it
+  unable to see any lint added after 1.85 -- sixteen findings sat in the tree
+  while every job reported clean:
+
+  ```bash
+  cargo fmt --all -- --check
+  cargo +1.85.0 clippy --features=macro --all-targets -- -D warnings
+  cargo +stable  clippy --features=macro --all-targets -- -D warnings
+  cargo test --features=macro
+  ```
 - One work item per branch and pull request.

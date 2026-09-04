@@ -7,9 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 While the major version is `0`, a breaking change bumps the minor version.
 
 `accent-sass` is a fork of [`connorskees/grass`](https://github.com/connorskees/grass).
-It is not published to crates.io; a release is a commit consumers pin by git
-revision. Entries at `0.13.4` and below are upstream's and are kept for
-lineage.
+Published to crates.io as `accent-sass`, `accent_sass_compiler` and
+`accent-sass-macro`, which share a version and are released together. Entries
+at `0.13.4` and below are upstream's and are kept for lineage.
 
 ## [Unreleased]
 

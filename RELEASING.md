@@ -21,11 +21,13 @@ Allow a minute between publishes for the index to update.
 
 ## Before you publish
 
-1. **Gates**, on the pinned MSRV:
+1. **Gates.** Clippy runs on both the MSRV and stable, matching CI and
+   `release.sh`; the MSRV alone cannot see lints added after 1.85:
 
    ```bash
    cargo fmt --all -- --check
-   cargo clippy --features=macro -- -D warnings
+   cargo +1.85.0 clippy --features=macro --all-targets -- -D warnings
+   cargo +stable  clippy --features=macro --all-targets -- -D warnings
    cargo test --features=macro
    ```
 
