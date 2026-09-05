@@ -27,7 +27,7 @@ The original ranking was taken on 2026-09-02 at 12,492 passing against 1,718
 failures; items 01-06 closed the difference, reaching 650 on `6d43969`. Five
 pull requests since then took it to 397: #27 (CSS nesting passthrough) to 590,
 #29 (the CSS `@function` rule) to 563, #30 (the rest of plain CSS) to 524, #31
-(the function-name proposal) to 511, and item 10 (the `consumeNewlines`
+(the function-name proposal) to 511, and #32 (the `consumeNewlines`
 parameter) to 397. One or two tests depend on `random()` and move between
 runs.
 
@@ -118,7 +118,7 @@ priority.
 | [05-comments-and-arguments.md](05-comments-and-arguments.md) | #16 | 13 | `spec/css/comment`; `spec/callable` is clear |
 | [06-module-system.md](06-module-system.md) | #17, #18 | 29 | `directives/use` 21, `forward` 6, `import` 2 |
 | [09-plain-css.md](09-plain-css.md) | #27, #29, #30 | 0 | `spec/css/plain` is clear; `directives/import` has 2 left, counted under 06 |
-| [10-indented-newlines.md](10-indented-newlines.md) | | 0 | cut across 26 areas; `directives/for`, `directives/function`, `values/lists`, `css/media` and `css/style_rule` are clear |
+| [10-indented-newlines.md](10-indented-newlines.md) | #32 | 0 | cut across 26 areas; `directives/for`, `directives/function`, `values/lists`, `css/media` and `css/style_rule` are clear |
 
 Residue is not automatically worth chasing. `core_functions/color`'s 57 are
 mostly one cause -- calculation keywords passed as a channel -- so they are

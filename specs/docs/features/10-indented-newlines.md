@@ -6,10 +6,10 @@ variable. dart-sass decides that per call site with a `consumeNewlines`
 parameter on `whitespace()`. This fork modelled it with a parenthesis depth
 counter, which covered the parentheses and nothing else.
 
-**This item is closed.** Measured 2026-09-05 against the pinned sass-spec
-revision `4a9eea66` and the dart-sass 1.103.1 binary, under the roadmap's
-standard flags: the suite went from 511 failures to **397**, 114 closed and
-none opened.
+**This item is closed** by `zoosky/accent-sass` #32. Measured 2026-09-05
+against the pinned sass-spec revision `4a9eea66` and the dart-sass 1.103.1
+binary, under the roadmap's standard flags: the suite went from 511 failures
+to **397**, 114 closed and none opened.
 
 ## The defect
 
