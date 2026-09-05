@@ -55,6 +55,11 @@ at `0.13.4` and below are upstream's and are kept for lineage.
 
 ### Fixed
 
+- the three crate manifests declare `rust-version = "1.96.1"`, the MSRV this
+  project documents and gates on. They said `1.96`, so cargo accepted a build
+  on 1.96.0 -- a release this project has never tested against and does not
+  support. The supported floor does not move; the manifests now say what the
+  README, this file and the three gating CI jobs already said
 - an at-rule header in the indented syntax may be split across lines wherever
   dart-sass allows it. A newline ends a statement in `.sass`, but not at a
   position where a statement cannot end -- between `@function` and its name,
