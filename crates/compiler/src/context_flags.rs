@@ -21,6 +21,7 @@ impl ContextFlags {
     pub const IN_SUPPORTS_DECLARATION: ContextFlag = ContextFlag(1 << 11);
     pub const IN_SEMI_GLOBAL_SCOPE: ContextFlag = ContextFlag(1 << 12);
     pub const IN_PLAIN_CSS_FUNCTION: ContextFlag = ContextFlag(1 << 13);
+    pub const IN_EXPRESSION: ContextFlag = ContextFlag(1 << 14);
 
     pub const fn empty() -> Self {
         Self(0)
@@ -86,6 +87,14 @@ impl ContextFlags {
     /// `result` declaration takes its value verbatim instead of as SassScript.
     pub fn in_plain_css_function(self) -> bool {
         (self.0 & Self::IN_PLAIN_CSS_FUNCTION) != 0
+    }
+
+    /// Whether the parser sits inside a SassScript expression.
+    ///
+    /// Plain CSS cares: `//` is the start of a silent comment at statement
+    /// level, where plain CSS forbids it, but two slashes inside a value.
+    pub fn in_expression(self) -> bool {
+        (self.0 & Self::IN_EXPRESSION) != 0
     }
 
     pub fn found_content_rule(self) -> bool {

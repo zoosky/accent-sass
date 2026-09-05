@@ -5,17 +5,16 @@ failures, 45 of them "rejects valid input". Measured 2026-09-04 against
 the pinned sass-spec revision `4a9eea66` and the dart-sass 1.103.1
 binary, under the roadmap's standard flags.
 
-**CSS nesting passthrough has landed** (`zoosky/accent-sass` #27), which
-closed 27 of the 51, and **the CSS `@function` rule has landed** (#29),
-which closed 8 more:
+**This item is closed.** It took three pull requests, one per defect
+group: CSS nesting passthrough (`zoosky/accent-sass` #27) closed 27 of
+the 51, the CSS `@function` rule (#29) closed 8, and the remaining three
+defects (#30) closed the last 16.
 
 ```
-236 runs, 220 passing, 16 failures, 0 todo, 0 ignored, 0 errors
+236 runs, 236 passing, 0 failures, 0 todo, 0 ignored, 0 errors
 ```
 
-The 16 that remain are three independent defects, none of them about
-nesting or `@function`. They are described below so the next contributor
-can pick one without re-deriving the split.
+What each defect was, and what it turned out to be, is recorded below.
 
 ## Landed: CSS nesting passthrough
 
@@ -69,44 +68,63 @@ indented-syntax whitespace tests. Neither is about the CSS rule.
 
 [function-name proposal]: https://github.com/sass/sass/tree/main/accepted/function-name.md
 
-## 1. Whitespace in `@import ... supports(...)`
+## Landed: whitespace in `@import ... supports(...)`
 
-`spec/css/plain/import/whitespace/supports/**` -- 13 failures, 11 of them
-in the indented syntax.
+`spec/css/plain/import/whitespace/supports/**` -- 14 failures, closed in
+#30.
 
 ```scss
 @import "a.css" supports(
     a: b)
 ```
 
-gives "Expected expression."; dart-sass accepts a newline after the open
-paren, around `and`, around `not`, and before the closing paren. This is
-a parser gap in the import-modifier path, not in `@supports` itself.
+gave "Expected expression.". Two of the 14 were plain whitespace after
+the open paren in SCSS, which the query parser simply did not skip. The
+other twelve were the indented syntax, and they split again:
 
-## 2. The CSS `if()` function in plain CSS
+- Eleven were newlines. The query sits inside `supports(`...`)`, so a
+  newline in it is whitespace the way it is in an argument list. The
+  fork already models that with `enter_parens`; the import-modifier path
+  did not use it, and neither did the newline case in
+  `parse_interpolated_declaration_value`.
+- One, `supports/calc/sass`, was not about `supports()` at all: it was
+  the trailing `;` in `@import "a.css" supports(calc(1));`. The indented
+  syntax tolerates one, and `@import` was not calling
+  `expect_statement_separator` in the first place. Adding both closed 22
+  further failures elsewhere -- `spec/css/style_rule/sass`,
+  `spec/core_functions/newlines`, and the `sass/semicolon` test under
+  half a dozen directives.
 
-`spec/css/plain/if` -- 1 failure.
+## Landed: the CSS `if()` function in plain CSS
+
+`spec/css/plain/if` -- 1 failure, closed in #30.
 
 ```css
 a {b: if(css(1): c; css(2): d; else: e)}
 ```
 
-gives `expected ")"`. `if()` with CSS-style conditions landed for Sass in
+gave `expected ")"`. `if()` with CSS-style conditions landed for Sass in
 [02-css-if-function.md](02-css-if-function.md) (#13); the plain CSS
-parser does not reach that code path.
+parser had its own `identifier_like` and did not reach that code path.
+Routing it there exposed five error tests that had been passing for the
+wrong reason: a `sass()` condition is settled at compile time, so plain
+CSS rejects it.
 
-## 3. `//` inside a plain CSS value
+## Landed: `//` inside a plain CSS value
 
-`spec/css/plain/slash/without_intermediate/no_whitespace` -- 1 failure.
+`spec/css/plain/slash/without_intermediate/no_whitespace` -- 1 failure,
+closed in #30.
 
 ```css
 a {b: 1///bar}
 ```
 
-gives "Silent comments aren't allowed in plain CSS.". There are no silent
-comments in plain CSS, so `//` in a value position is just two slashes;
-the value parser should not be looking for a comment there. The sibling
-test with whitespace (`1/ / /bar`) already passes.
+gave "Silent comments aren't allowed in plain CSS.". There are no silent
+comments in plain CSS, so `//` in a value position is just two slashes.
+dart-sass's plain CSS parser answers "not a comment" rather than raising
+when it is inside an expression, which needed the fork's
+`skip_silent_comment` to gain a return value and the value parser to
+record that it is inside one.
 
 ## Ground rules
 

@@ -117,12 +117,15 @@ error!(
     "Error: Expected expression.",
     accent_sass::Options::default().input_syntax(InputSyntax::Css)
 );
+// `if()` in plain CSS is the CSS function, which takes conditions rather than
+// a comma-separated argument list, so the legacy Sass call fails on its first
+// argument. dart-sass 1.103.1 raises the same error at the same point.
 error!(
     disallows_if_function,
     "a {
         color: if(true, a, b);
     }",
-    "Error: This function isn't allowed in plain CSS.",
+    "Error: expected \"(\".",
     accent_sass::Options::default().input_syntax(InputSyntax::Css)
 );
 error!(

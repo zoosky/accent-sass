@@ -27,11 +27,12 @@ passing against 1,718 failures; items 01-06 closed the difference. CI reports
 13,558 on the same tree -- one or two tests depend on `random()` and move
 between runs.
 
-Since that measurement, #27 (CSS nesting passthrough) took the suite to 590
-failures and #29 (the CSS `@function` rule) to **563**. The ranking below is
-still stated against the 650 baseline, and the rows #27 and #29 touched are
-annotated where they changed; a rebuild of the whole table is worth doing once
-another large item lands.
+Since that measurement, item 09 landed in three pull requests and took the
+suite from 650 to **524**: #27 (CSS nesting passthrough) to 590, #29 (the CSS
+`@function` rule) to 563, #30 (the rest of plain CSS) to 524. The ranking below
+is still stated against the 650 baseline, and the rows those three touched are
+annotated where they changed; a rebuild of the whole table is the first thing
+the next contributor should do.
 
 To reproduce:
 
@@ -69,13 +70,13 @@ deepest areas are 192 of them; the other 233 are a long tail of areas with
 fewer than eleven each.
 
 `spec/css/plain` used to lead this table with 51. It is now item
-[09](09-plain-css.md) and sits under "Open items" below with 16 left.
+[09](09-plain-css.md), is closed, and sits under "Landed" below.
 
 | Area | Failures | Kind | Note |
 |---|---|---|---|
 | `spec/css/functions` | 24 | 20 different output | |
 | `spec/css/supports` | 21 | 15 rejects valid input | |
-| `spec/css/style_rule` | 17 | 9 rejects valid input | |
+| `spec/css/style_rule` | ~~17~~ 8 | 9 rejects valid input | 9 closed by #30 |
 | `spec/css/function` | ~~16~~ 0 | | closed by #29 |
 | `spec/directives/function` | ~~15~~ 14 | 12 rejects valid input | see below |
 | `spec/values/lists` | 13 | 13 rejects valid input | |
@@ -103,10 +104,12 @@ here.
   calculation of the same name.
 - **Indented-syntax whitespace** -- 3 failures. `@function` followed by a
   newline and then `a()` splits an at-rule header across lines. That is
-  dart-sass's `consumeNewlines` parameter, which this fork does not have, so
-  it is a cross-cutting change rather than a `@function` one. `spec/directives/for`
-  and the indented half of item 09's `@import ... supports()` failures look
-  like the same gap.
+  dart-sass's `consumeNewlines` parameter, which this fork models coarsely
+  with `enter_parens`: a newline is whitespace inside parentheses and ends a
+  statement outside them. These three are outside any parentheses, so they
+  need the parameter itself. `spec/directives/for` looks like the same gap.
+  (Item 09's `@import ... supports()` failures did turn out to be the
+  `enter_parens` half, and #30 closed them that way.)
 
 [function-name proposal]: https://github.com/sass/sass/tree/main/accepted/function-name.md
 
@@ -116,7 +119,6 @@ here.
 |---|---|---|---|
 | [07-calculation-long-tail.md](07-calculation-long-tail.md) | What #12 left in the calculation suite: `%` and `mod()` with a signed zero against an infinite divisor, a rounding strategy arriving through interpolation, line noise inside an interpolated `calc()` | 3 | `spec/values/calculation` |
 | [08-calculation-warnings-and-error-wording.md](08-calculation-warnings-and-error-wording.md) | Deprecation warnings (none exist) and error wording in calculations | 57, invisible under the standard flags | `spec/values/calculation` |
-| [09-plain-css.md](09-plain-css.md) | Plain CSS. Nesting passthrough landed in #27 and closed 27 of the original 51, and the CSS `@function` rule in #29 closed 8 more; what is left is whitespace in `@import ... supports(..)`, `if()` in plain CSS, and `//` in a plain CSS value | 16 | `spec/css/plain` |
 
 Item 07's 3 failures are the same three counted in item 01's residue below,
 not additional ones -- 07 exists to describe what 01 deliberately left. Item
@@ -128,9 +130,9 @@ re-measured since 2026-09-03 and needs a run with the flags dropped.
 
 The counts here and in the unclaimed table above sum to 650: 225 in areas a
 document claims, 425 in areas none does. Both figures predate item 09, which
-moved 51 out of the unclaimed column and closed 27 of them.
+moved 51 out of the unclaimed column and has since closed all of them.
 
-These six are done. The counts are what remains in the areas they touched,
+These seven are done. The counts are what remains in the areas they touched,
 not open work, and they are listed so nobody mistakes a residue for a
 priority.
 
@@ -142,6 +144,7 @@ priority.
 | [04-selector-unification.md](04-selector-unification.md) | #15 | 71 | `core_functions/selector` 37, `css/selector` 34 |
 | [05-comments-and-arguments.md](05-comments-and-arguments.md) | #16 | 13 | `spec/css/comment`; `spec/callable` is clear |
 | [06-module-system.md](06-module-system.md) | #17, #18 | 42 | `directives/use` 24, `forward` 13, `import` 5 |
+| [09-plain-css.md](09-plain-css.md) | #27, #29, #30 | 0 | `spec/css/plain` is clear; `directives/import` has 2 left |
 
 Residue is not automatically worth chasing. `core_functions/color`'s 57 are
 mostly one cause -- calculation keywords passed as a channel -- so they are

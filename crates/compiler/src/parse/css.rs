@@ -26,7 +26,13 @@ impl BaseParser for CssParser<'_> {
         &mut self.toks
     }
 
-    fn skip_silent_comment(&mut self) -> SassResult<()> {
+    fn skip_silent_comment(&mut self) -> SassResult<bool> {
+        // Inside a value there are no silent comments to forbid: `//` is two
+        // slashes, as in `a {b: 1///bar}`.
+        if self.flags.in_expression() {
+            return Ok(false);
+        }
+
         Err((
             "Silent comments aren't allowed in plain CSS.",
             self.toks.current_span(),
@@ -180,6 +186,12 @@ impl<'a> CssParser<'a> {
         }
 
         let before_args = self.toks.cursor();
+
+        // `if()` in plain CSS is always the CSS function -- there is no legacy
+        // Sass `if()` to disambiguate from.
+        if lower == "if" && self.toks.next_char_is('(') {
+            return ValueParser::parse_css_if(self, start);
+        }
 
         if !self.scan_char('(') {
             let span = self.toks.span_from(start);
