@@ -27,10 +27,11 @@ passing against 1,718 failures; items 01-06 closed the difference. CI reports
 13,558 on the same tree -- one or two tests depend on `random()` and move
 between runs.
 
-Since that measurement, item 09 landed in three pull requests and took the
-suite from 650 to **524**: #27 (CSS nesting passthrough) to 590, #29 (the CSS
-`@function` rule) to 563, #30 (the rest of plain CSS) to 524. The ranking below
-is still stated against the 650 baseline, and the rows those three touched are
+Since that measurement, item 09 landed in three pull requests and the
+`@function` work in two, taking the suite from 650 to **511**: #27 (CSS nesting
+passthrough) to 590, #29 (the CSS `@function` rule) to 563, #30 (the rest of
+plain CSS) to 524, #31 (the function-name proposal) to 511. The ranking below
+is still stated against the 650 baseline, and the rows those four touched are
 annotated where they changed; a rebuild of the whole table is the first thing
 the next contributor should do.
 
@@ -78,7 +79,7 @@ fewer than eleven each.
 | `spec/css/supports` | 21 | 15 rejects valid input | |
 | `spec/css/style_rule` | ~~17~~ 8 | 9 rejects valid input | 9 closed by #30 |
 | `spec/css/function` | ~~16~~ 0 | | closed by #29 |
-| `spec/directives/function` | ~~15~~ 14 | 12 rejects valid input | see below |
+| `spec/directives/function` | ~~15~~ 3 | | 12 closed by #29 and #31; see below |
 | `spec/values/lists` | 13 | 13 rejects valid input | |
 | `spec/core_functions/math` | 12 | 11 different output | |
 | `spec/directives/for` | 12 | 12 rejects valid input | |
@@ -91,25 +92,19 @@ that dart-sass accepts and this compiler does not -- the same theme as item
 The original ranking read `spec/css/function` and `spec/directives/function`
 as one feature together with item 09's `@function` residue. That was half
 right. #29 closed all 16 of `spec/css/function` and item 09's 8 with the CSS
-`@function` rule, but it took only one test out of `spec/directives/function`.
-The other 14 are two unrelated defects, and are the next thing to pick up
-here.
+`@function` rule, but it took only one test out of `spec/directives/function`,
+whose other 14 are two unrelated defects. #31 closed 11 of those with the
+[function-name proposal]. What is left is three indented-syntax whitespace
+tests.
 
-- **The [function-name proposal]** -- 11 failures. `calc`, `clamp` and a
-  vendor-prefixed `-a-and` are legal Sass function names now; `type` is
-  reserved for the plain-CSS function; and `unvendor(name) == "element"` is
-  the only prefix rule left. Two of the 11 are "accepts invalid input", so
-  they need the `type` check added rather than a check removed. `calc` and
-  `clamp` also need the evaluator to prefer a user-defined function over the
-  calculation of the same name.
-- **Indented-syntax whitespace** -- 3 failures. `@function` followed by a
-  newline and then `a()` splits an at-rule header across lines. That is
-  dart-sass's `consumeNewlines` parameter, which this fork models coarsely
-  with `enter_parens`: a newline is whitespace inside parentheses and ends a
-  statement outside them. These three are outside any parentheses, so they
-  need the parameter itself. `spec/directives/for` looks like the same gap.
-  (Item 09's `@import ... supports()` failures did turn out to be the
-  `enter_parens` half, and #30 closed them that way.)
+**Indented-syntax whitespace** -- `@function` followed by a newline and then
+`a()` splits an at-rule header across lines. That is dart-sass's
+`consumeNewlines` parameter, which this fork models coarsely with
+`enter_parens`: a newline is whitespace inside parentheses and ends a statement
+outside them. These three are outside any parentheses, so they need the
+parameter itself. `spec/directives/for` looks like the same gap. (Item 09's
+`@import ... supports()` failures did turn out to be the `enter_parens` half,
+and #30 closed them that way.)
 
 [function-name proposal]: https://github.com/sass/sass/tree/main/accepted/function-name.md
 

@@ -19,7 +19,7 @@ use crate::{
 };
 
 use super::{
-    BaseParser, DeclarationOrBuffer, RESERVED_IDENTIFIERS, ScssParser, VariableDeclOrInterpolation,
+    BaseParser, DeclarationOrBuffer, ScssParser, VariableDeclOrInterpolation,
     value::{Predicate, ValueParser},
 };
 
@@ -581,8 +581,32 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
             return self.unknown_at_rule(at_rule_name, start);
         }
 
-        let name = self.parse_identifier(true, false)?;
+        // The name is read without normalising `_` to `-`, because the checks
+        // below are on the name as written: `-moz_element` is a legal function
+        // name and `-moz-element` is not.
+        let name = self.parse_identifier(false, false)?;
         let name_span = self.toks_mut().span_from(name_start);
+
+        // `type()` is the plain-CSS function, which no Sass function may shadow.
+        if name.eq_ignore_ascii_case("type") {
+            return Err((
+                "This name is reserved for the plain-CSS function.",
+                name_span,
+            )
+                .into());
+        }
+
+        // The rest of the reserved names are those with special parsing that a
+        // call could never reach. `element` is the only one a vendor prefix
+        // does not rescue, because a prefixed `element()` is special too.
+        //
+        // See https://github.com/sass/sass/tree/main/accepted/function-name.md
+        if matches!(name.as_str(), "expression" | "url" | "and" | "or" | "not")
+            || unvendor(&name) == "element"
+        {
+            return Err(("Invalid function name.", name_span).into());
+        }
+
         self.whitespace()?;
         let arguments = self.parse_argument_declaration()?;
 
@@ -598,10 +622,6 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
                 self.toks_mut().span_from(start),
             )
                 .into());
-        }
-
-        if RESERVED_IDENTIFIERS.contains(&unvendor(&name)) {
-            return Err(("Invalid function name.", self.toks_mut().span_from(start)).into());
         }
 
         self.whitespace()?;

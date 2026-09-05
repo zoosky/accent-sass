@@ -34,6 +34,15 @@ at `0.13.4` and below are upstream's and are kept for lineage.
 
 ### Changed
 
+- **Breaking: which names a `@function` may have**, following the
+  [function-name proposal](https://github.com/sass/sass/tree/main/accepted/function-name.md)
+  and dart-sass 1.103.1. `calc` and `clamp` are ordinary names now, and a
+  function of either name wins over the calculation. `expression`, `url`,
+  `and`, `or` and `not` are reserved only as spelled, so `-a-and()` is a legal
+  name; `element` stays reserved through any vendor prefix. `type` is newly
+  reserved for the plain-CSS function. The name is checked as written rather
+  than with `_` normalised to `-`, so `-moz_element` is legal and
+  `-moz-element` is not
 - **Breaking: the minimum supported Rust version rises from `1.85.0` to
   `1.96.1`**, normalising the floor across the Accent crates. Per this
   project's policy, that makes the next release a minor version bump. The
