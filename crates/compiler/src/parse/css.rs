@@ -85,7 +85,7 @@ impl<'a> StylesheetParser<'a> for CssParser<'a> {
 
         self.expect_char('@')?;
         let name = self.parse_interpolated_identifier()?;
-        self.whitespace()?;
+        self.whitespace(true)?;
 
         match name.as_plain() {
             Some("at-root") | Some("content") | Some("debug") | Some("each") | Some("error")
@@ -137,7 +137,7 @@ impl<'a> CssParser<'a> {
         start: usize,
         at_rule_name: Interpolation,
     ) -> SassResult<AstStmt> {
-        self.whitespace()?;
+        self.whitespace(true)?;
 
         if self.next_matches("--") {
             self.unknown_at_rule(at_rule_name, start)
@@ -161,7 +161,7 @@ impl<'a> CssParser<'a> {
             .span(string.span)
         };
 
-        self.whitespace()?;
+        self.whitespace(true)?;
         let modifiers = self.try_import_modifiers()?;
         self.expect_statement_separator(Some("@import rule"))?;
 
@@ -204,7 +204,7 @@ impl<'a> CssParser<'a> {
 
         if !self.scan_char(')') {
             loop {
-                self.whitespace()?;
+                self.whitespace(true)?;
 
                 let arg_start = self.toks.cursor();
                 if allow_empty_second_arg && arguments.len() == 1 && self.toks.next_char_is(')') {
@@ -216,7 +216,7 @@ impl<'a> CssParser<'a> {
                 }
 
                 arguments.push(self.parse_expression_until_comma(true)?.node);
-                self.whitespace()?;
+                self.whitespace(true)?;
                 if !self.scan_char(',') {
                     break;
                 }

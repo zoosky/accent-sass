@@ -16,11 +16,6 @@ pub(crate) struct SassParser<'a> {
     pub next_indentation: Option<usize>,
     pub spaces: Option<bool>,
     pub next_indentation_end: Option<usize>,
-    /// How many parentheses deep the parser currently is.
-    ///
-    /// Newlines are statement terminators in the indented syntax but ordinary
-    /// whitespace inside parentheses, so this decides which one a newline is.
-    pub parens_depth: usize,
 }
 
 impl BaseParser for SassParser<'_> {
@@ -32,15 +27,13 @@ impl BaseParser for SassParser<'_> {
         &mut self.toks
     }
 
-    fn whitespace_without_comments(&mut self) {
+    fn whitespace_without_comments(&mut self, consume_newlines: bool) {
         while let Some(next) = self.toks.peek() {
-            // A newline ends a statement in the indented syntax, so it is not
-            // whitespace to skip -- unless it falls inside parentheses, where
-            // the syntax behaves like SCSS and an argument list may be broken
-            // across lines.
+            // A newline ends a statement in the indented syntax, so it is only
+            // whitespace to skip where the caller says a statement cannot end.
             let is_whitespace = next.kind == '\t'
                 || next.kind == ' '
-                || (self.parens_depth > 0 && (next.kind == '\n' || next.kind == '\r'));
+                || (consume_newlines && (next.kind == '\n' || next.kind == '\r'));
 
             if !is_whitespace {
                 break;
@@ -48,20 +41,6 @@ impl BaseParser for SassParser<'_> {
 
             self.toks.next();
         }
-    }
-
-    fn enter_parens(&mut self) -> usize {
-        let depth = self.parens_depth;
-        self.parens_depth += 1;
-        depth
-    }
-
-    fn newlines_are_whitespace(&self) -> bool {
-        self.parens_depth > 0
-    }
-
-    fn restore_parens(&mut self, depth: usize) {
-        self.parens_depth = depth;
     }
 
     fn skip_loud_comment(&mut self) -> SassResult<()> {
@@ -398,7 +377,6 @@ impl<'a> SassParser<'a> {
             next_indentation: None,
             next_indentation_end: None,
             spaces: None,
-            parens_depth: 0,
         }
     }
 
@@ -500,7 +478,7 @@ impl<'a> SassParser<'a> {
             return Ok(false);
         }
 
-        self.whitespace()?;
+        self.whitespace(false)?;
         Ok(true)
     }
 

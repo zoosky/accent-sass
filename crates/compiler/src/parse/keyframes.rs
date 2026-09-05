@@ -36,7 +36,7 @@ impl KeyframesSelectorParser {
     pub fn parse_keyframes_selector(&mut self) -> SassResult<Vec<KeyframesSelector>> {
         let mut selectors = Vec::new();
         loop {
-            self.whitespace()?;
+            self.whitespace(false)?;
             if self.looking_at_identifier() {
                 if self.scan_identifier("to", false)? {
                     selectors.push(KeyframesSelector::To);
@@ -49,7 +49,7 @@ impl KeyframesSelectorParser {
                 selectors.push(self.parse_percentage_selector()?);
             }
 
-            self.whitespace()?;
+            self.whitespace(false)?;
 
             if !self.scan_char(',') {
                 break;

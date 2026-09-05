@@ -55,6 +55,15 @@ at `0.13.4` and below are upstream's and are kept for lineage.
 
 ### Fixed
 
+- an at-rule header in the indented syntax may be split across lines wherever
+  dart-sass allows it. A newline ends a statement in `.sass`, but not at a
+  position where a statement cannot end -- between `@function` and its name,
+  between `@for` and its variable, after `from`, after a binary operator,
+  inside an argument list or a bracketed list. This fork modelled that with a
+  parenthesis depth counter, which only covered the parentheses; it now carries
+  dart-sass's `consumeNewlines` value at each call site, which closed 114
+  sass-spec failures across 26 areas. See
+  [`specs/docs/features/10-indented-newlines.md`](specs/docs/features/10-indented-newlines.md)
 - `//` inside a plain CSS value is two slashes, not the start of a comment
   plain CSS forbids. `a {b: 1///bar}` in a `.css` file was rejected
 - whitespace may fall anywhere inside `@import ... supports(...)`, including a

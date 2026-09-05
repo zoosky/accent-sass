@@ -104,9 +104,9 @@ fn attribute_operator(parser: &mut SelectorParser) -> SassResult<AttributeOp> {
 impl Attribute {
     pub fn from_tokens(parser: &mut SelectorParser) -> SassResult<Attribute> {
         let start = parser.toks.cursor();
-        parser.whitespace_without_comments();
+        parser.whitespace_without_comments(false);
         let attr = attribute_name(parser)?;
-        parser.whitespace_without_comments();
+        parser.whitespace_without_comments(false);
         if parser
             .toks
             .peek()
@@ -125,7 +125,7 @@ impl Attribute {
         }
 
         let op = attribute_operator(parser)?;
-        parser.whitespace_without_comments();
+        parser.whitespace_without_comments(false);
 
         let peek = parser
             .toks
@@ -136,7 +136,7 @@ impl Attribute {
             '\'' | '"' => parser.parse_string()?,
             _ => parser.parse_identifier(false, false)?,
         };
-        parser.whitespace_without_comments();
+        parser.whitespace_without_comments(false);
 
         let modifier = match parser.toks.peek() {
             Some(Token {
@@ -148,7 +148,7 @@ impl Attribute {
                 ..
             }) => {
                 parser.toks.next();
-                parser.whitespace_without_comments();
+                parser.whitespace_without_comments(false);
                 Some(c)
             }
             _ => None,

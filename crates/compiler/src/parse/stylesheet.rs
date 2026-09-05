@@ -45,7 +45,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
     }
 
     fn expect_statement_separator(&mut self, _name: Option<&str>) -> SassResult<()> {
-        self.whitespace_without_comments();
+        self.whitespace_without_comments(false);
         match self.toks().peek() {
             Some(Token {
                 kind: ';' | '}', ..
@@ -75,7 +75,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
     fn scan_else(&mut self, _if_indentation: usize) -> SassResult<bool> {
         let start = self.toks().cursor();
 
-        self.whitespace()?;
+        self.whitespace(false)?;
 
         if self.scan_char('@') {
             if self.scan_identifier("else", true)? {
@@ -100,7 +100,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
         child: fn(&mut Self) -> SassResult<AstStmt>,
     ) -> SassResult<Vec<AstStmt>> {
         self.expect_char('{')?;
-        self.whitespace_without_comments();
+        self.whitespace_without_comments(false);
         let mut children = Vec::new();
 
         let mut found_matching_brace = false;
@@ -113,17 +113,17 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
                 '/' => match self.toks().peek_n(1) {
                     Some(Token { kind: '/', .. }) => {
                         children.push(self.parse_silent_comment()?);
-                        self.whitespace_without_comments();
+                        self.whitespace_without_comments(false);
                     }
                     Some(Token { kind: '*', .. }) => {
                         children.push(AstStmt::LoudComment(self.parse_loud_comment()?));
-                        self.whitespace_without_comments();
+                        self.whitespace_without_comments(false);
                     }
                     _ => children.push(child(self)?),
                 },
                 ';' => {
                     self.toks_mut().next();
-                    self.whitespace_without_comments();
+                    self.whitespace_without_comments(false);
                 }
                 '}' => {
                     self.expect_char('}')?;
@@ -146,7 +146,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
         statement: fn(&mut Self) -> SassResult<Option<AstStmt>>,
     ) -> SassResult<Vec<AstStmt>> {
         let mut stmts = Vec::new();
-        self.whitespace_without_comments();
+        self.whitespace_without_comments(false);
         while let Some(tok) = self.toks().peek() {
             match tok.kind {
                 '$' => stmts.push(AstStmt::VariableDecl(
@@ -155,11 +155,11 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
                 '/' => match self.toks().peek_n(1) {
                     Some(Token { kind: '/', .. }) => {
                         stmts.push(self.parse_silent_comment()?);
-                        self.whitespace_without_comments();
+                        self.whitespace_without_comments(false);
                     }
                     Some(Token { kind: '*', .. }) => {
                         stmts.push(AstStmt::LoudComment(self.parse_loud_comment()?));
-                        self.whitespace_without_comments();
+                        self.whitespace_without_comments(false);
                     }
                     _ => {
                         if let Some(stmt) = statement(self)? {
@@ -169,7 +169,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
                 },
                 ';' => {
                     self.toks_mut().next();
-                    self.whitespace_without_comments();
+                    self.whitespace_without_comments(false);
                 }
                 _ => {
                     if let Some(stmt) = statement(self)? {
@@ -199,7 +199,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
             if parser.next_matches("@charset") {
                 parser.expect_char('@')?;
                 parser.expect_identifier("charset", false)?;
-                parser.whitespace()?;
+                parser.whitespace(false)?;
                 parser.parse_string()?;
                 return Ok(None);
             }
@@ -244,8 +244,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
 
     fn parse_argument_declaration(&mut self) -> SassResult<ArgumentDeclaration> {
         self.expect_char('(')?;
-        let parens = self.enter_parens();
-        self.whitespace()?;
+        self.whitespace(true)?;
 
         let mut arguments = Vec::new();
         let mut named = HashSet::new();
@@ -256,23 +255,23 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
             let name_start = self.toks().cursor();
             let name = Identifier::from(self.parse_variable_name()?);
             let name_span = self.toks_mut().span_from(name_start);
-            self.whitespace()?;
+            self.whitespace(true)?;
 
             let mut default_value: Option<AstExpr> = None;
 
             if self.scan_char(':') {
-                self.whitespace()?;
+                self.whitespace(true)?;
                 default_value = Some(self.parse_expression_until_comma(false)?.node);
             } else if self.scan_char('.') {
                 self.expect_char('.')?;
                 self.expect_char('.')?;
-                self.whitespace()?;
+                self.whitespace(true)?;
                 rest_argument = Some(name);
 
                 // A rest parameter ends the list, but the list may still carry
                 // a trailing comma: `@mixin a($b..., )`.
                 if self.scan_char(',') {
-                    self.whitespace()?;
+                    self.whitespace(true)?;
                 }
 
                 break;
@@ -290,10 +289,9 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
             if !self.scan_char(',') {
                 break;
             }
-            self.whitespace()?;
+            self.whitespace(true)?;
         }
         self.expect_char(')')?;
-        self.restore_parens(parens);
 
         Ok(ArgumentDeclaration {
             args: arguments,
@@ -303,9 +301,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
 
     fn plain_at_rule_name(&mut self) -> SassResult<String> {
         self.expect_char('@')?;
-        let name = self.parse_identifier(false, false)?;
-        self.whitespace()?;
-        Ok(name)
+        self.parse_identifier(false, false)
     }
 
     fn with_children(
@@ -315,7 +311,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
         let start = self.toks().cursor();
         let children = self.parse_children(child)?;
         let span = self.toks_mut().span_from(start);
-        self.whitespace_without_comments();
+        self.whitespace_without_comments(false);
         Ok(Spanned {
             node: children,
             span,
@@ -327,30 +323,32 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
         self.expect_char('(')?;
         buffer.add_char('(');
 
-        self.whitespace()?;
+        self.whitespace(true)?;
 
-        buffer.add_expr(self.parse_expression(None, None, None)?);
+        buffer.add_expr(self.parse_expression(None, true, None, None)?);
 
         if self.scan_char(':') {
-            self.whitespace()?;
+            self.whitespace(true)?;
             buffer.add_char(':');
             buffer.add_char(' ');
-            buffer.add_expr(self.parse_expression(None, None, None)?);
+            buffer.add_expr(self.parse_expression(None, true, None, None)?);
         }
 
         self.expect_char(')')?;
-        self.whitespace()?;
+        self.whitespace(false)?;
         buffer.add_char(')');
 
         Ok(buffer)
     }
 
     fn parse_at_root_rule(&mut self, start: usize) -> SassResult<AstStmt> {
+        self.whitespace(false)?;
+
         Ok(AstStmt::AtRootRule(if self.toks_mut().next_char_is('(') {
             let query_start = self.toks().cursor();
             let query = self.parse_at_root_query()?;
             let query_span = self.toks_mut().span_from(query_start);
-            self.whitespace()?;
+            self.whitespace(false)?;
             let children = self.with_children(Self::parse_statement)?.node;
 
             AstAtRootRule {
@@ -387,7 +385,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
                 .into());
         }
 
-        self.whitespace()?;
+        self.whitespace(false)?;
 
         let args = if self.toks_mut().next_char_is('(') {
             self.parse_argument_invocation(true, false)?
@@ -396,7 +394,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
         };
 
         // A comment may follow the argument list before the `;`.
-        self.whitespace()?;
+        self.whitespace(false)?;
         self.expect_statement_separator(Some("@content rule"))?;
 
         self.flags_mut().set(ContextFlags::FOUND_CONTENT_RULE, true);
@@ -405,7 +403,8 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
     }
 
     fn parse_debug_rule(&mut self) -> SassResult<AstStmt> {
-        let value = self.parse_expression(None, None, None)?;
+        self.whitespace(true)?;
+        let value = self.parse_expression(None, false, None, None)?;
         self.expect_statement_separator(Some("@debug rule"))?;
 
         Ok(AstStmt::Debug(AstDebugRule {
@@ -418,21 +417,23 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
         &mut self,
         child: fn(&mut Self) -> SassResult<AstStmt>,
     ) -> SassResult<AstStmt> {
+        self.whitespace(true)?;
+
         let was_in_control_directive = self.flags().in_control_flow();
         self.flags_mut().set(ContextFlags::IN_CONTROL_FLOW, true);
 
         let mut variables = vec![Identifier::from(self.parse_variable_name()?)];
-        self.whitespace()?;
+        self.whitespace(true)?;
         while self.scan_char(',') {
-            self.whitespace()?;
+            self.whitespace(true)?;
             variables.push(Identifier::from(self.parse_variable_name()?));
-            self.whitespace()?;
+            self.whitespace(true)?;
         }
 
         self.expect_identifier("in", false)?;
-        self.whitespace()?;
+        self.whitespace(true)?;
 
-        let list = self.parse_expression(None, None, None)?.node;
+        let list = self.parse_expression(None, false, None, None)?.node;
 
         let body = self.with_children(child)?.node;
 
@@ -447,6 +448,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
     }
 
     fn parse_disallowed_at_rule(&mut self, start: usize) -> SassResult<AstStmt> {
+        self.whitespace(false)?;
         self.almost_any_value(false)?;
         Err((
             "This at-rule is not allowed here.",
@@ -456,7 +458,8 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
     }
 
     fn parse_error_rule(&mut self) -> SassResult<AstStmt> {
-        let value = self.parse_expression(None, None, None)?;
+        self.whitespace(true)?;
+        let value = self.parse_expression(None, false, None, None)?;
         self.expect_statement_separator(Some("@error rule"))?;
         Ok(AstStmt::ErrorRule(AstErrorRule {
             value: value.node,
@@ -465,6 +468,8 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
     }
 
     fn parse_extend_rule(&mut self, start: usize) -> SassResult<AstStmt> {
+        self.whitespace(true)?;
+
         if !self.flags().in_style_rule()
             && !self.flags().in_mixin()
             && !self.flags().in_content_block()
@@ -485,7 +490,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
         }
 
         // As in `@use`, a comment may follow the flag before the `;`.
-        self.whitespace()?;
+        self.whitespace(false)?;
         self.expect_statement_separator(Some("@extend rule"))?;
 
         Ok(AstStmt::Extend(AstExtendRule {
@@ -499,6 +504,8 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
         &mut self,
         child: fn(&mut Self) -> SassResult<AstStmt>,
     ) -> SassResult<AstStmt> {
+        self.whitespace(true)?;
+
         let was_in_control_directive = self.flags().in_control_flow();
         self.flags_mut().set(ContextFlags::IN_CONTROL_FLOW, true);
 
@@ -507,10 +514,10 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
             node: Identifier::from(self.parse_variable_name()?),
             span: self.toks_mut().span_from(var_start),
         };
-        self.whitespace()?;
+        self.whitespace(true)?;
 
         self.expect_identifier("from", false)?;
-        self.whitespace()?;
+        self.whitespace(true)?;
 
         let exclusive: Cell<Option<bool>> = Cell::new(None);
 
@@ -529,6 +536,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
                     false
                 })
             }),
+            true,
             None,
             None,
         )?;
@@ -544,9 +552,9 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
             }
         };
 
-        self.whitespace()?;
+        self.whitespace(true)?;
 
-        let to = self.parse_expression(None, None, None)?;
+        let to = self.parse_expression(None, false, None, None)?;
 
         let body = self.with_children(child)?.node;
 
@@ -573,6 +581,8 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
         start: usize,
         at_rule_name: Interpolation,
     ) -> SassResult<AstStmt> {
+        self.whitespace(true)?;
+
         let name_start = self.toks().cursor();
 
         // A `--`-prefixed name is a CSS custom function, which Sass passes
@@ -607,7 +617,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
             return Err(("Invalid function name.", name_span).into());
         }
 
-        self.whitespace()?;
+        self.whitespace(true)?;
         let arguments = self.parse_argument_declaration()?;
 
         if self.flags().in_mixin() || self.flags().in_content_block() {
@@ -624,7 +634,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
                 .into());
         }
 
-        self.whitespace()?;
+        self.whitespace(false)?;
 
         let children = self.with_children(Self::function_child)?.node;
 
@@ -704,23 +714,25 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
         &mut self,
         child: fn(&mut Self) -> SassResult<AstStmt>,
     ) -> SassResult<AstStmt> {
+        self.whitespace(true)?;
+
         let if_indentation = self.current_indentation();
 
         let was_in_control_directive = self.flags().in_control_flow();
         self.flags_mut().set(ContextFlags::IN_CONTROL_FLOW, true);
-        let condition = self.parse_expression(None, None, None)?.node;
+        let condition = self.parse_expression(None, false, None, None)?.node;
         let body = self.parse_children(child)?;
-        self.whitespace_without_comments();
+        self.whitespace_without_comments(false);
 
         let mut clauses = vec![AstIfClause { condition, body }];
 
         let mut last_clause: Option<Vec<AstStmt>> = None;
 
         while self.scan_else(if_indentation)? {
-            self.whitespace()?;
+            self.whitespace(false)?;
             if self.scan_identifier("if", false)? {
-                self.whitespace()?;
-                let condition = self.parse_expression(None, None, None)?.node;
+                self.whitespace(true)?;
+                let condition = self.parse_expression(None, false, None, None)?.node;
                 let body = self.parse_children(child)?;
                 clauses.push(AstIfClause { condition, body });
             } else {
@@ -731,7 +743,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
 
         self.flags_mut()
             .set(ContextFlags::IN_CONTROL_FLOW, was_in_control_directive);
-        self.whitespace_without_comments();
+        self.whitespace_without_comments(false);
 
         Ok(AstStmt::If(AstIf {
             if_clauses: clauses,
@@ -753,7 +765,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
             return Ok(None);
         }
 
-        let value = self.parse_interpolated_declaration_value(true, true, true)?;
+        let value = self.parse_interpolated_declaration_value(true, true, true, true)?;
         self.expect_char(')')?;
 
         Ok(Some(AstSupportsCondition::Function { name, args: value }))
@@ -761,31 +773,20 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
 
     /// Parses the contents of `supports(...)` after an `@import` rule, without
     /// the function name or its parentheses.
-    ///
-    /// The whole query sits inside those parentheses, so a newline in it is
-    /// whitespace even in the indented syntax; [`BaseParser::enter_parens`]
-    /// says so for the duration.
     fn parse_import_supports_query(&mut self) -> SassResult<AstSupportsCondition> {
-        let parens = self.enter_parens();
-        let query = self.parse_import_supports_query_contents();
-        self.restore_parens(parens);
-        query
-    }
-
-    fn parse_import_supports_query_contents(&mut self) -> SassResult<AstSupportsCondition> {
-        self.whitespace()?;
+        self.whitespace(true)?;
 
         Ok(if self.scan_identifier("not", false)? {
-            self.whitespace()?;
+            self.whitespace(true)?;
             AstSupportsCondition::Negation(Box::new(self.supports_condition_in_parens()?))
         } else if self.toks_mut().next_char_is('(') {
-            self.parse_supports_condition()?
+            self.parse_supports_condition(true)?
         } else {
             match self.try_parse_import_supports_function()? {
                 Some(function) => function,
                 None => {
                     let start = self.toks().cursor();
-                    let name = self.parse_expression(None, None, None)?;
+                    let name = self.parse_expression(None, true, None, None)?;
                     self.expect_char(':')?;
                     self.supports_declaration_value(name.node, start)?
                 }
@@ -828,11 +829,8 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
                             buffer.add_char(')');
                         }
                     } else {
-                        // The arguments sit inside parentheses, so a newline in
-                        // them is whitespace even in the indented syntax.
-                        let parens = self.enter_parens();
-                        let args = self.parse_interpolated_declaration_value(true, true, true);
-                        self.restore_parens(parens);
+                        let args =
+                            self.parse_interpolated_declaration_value(true, true, true, true);
 
                         buffer.add_char('(');
                         buffer.add_interpolation(args?);
@@ -840,9 +838,9 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
                     }
 
                     self.expect_char(')')?;
-                    self.whitespace()?;
+                    self.whitespace(false)?;
                 } else {
-                    self.whitespace()?;
+                    self.whitespace(false)?;
                     if self.scan_char(',') {
                         buffer.add_char(',');
                         buffer.add_char(' ');
@@ -868,7 +866,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
         if !self.scan_char('(') {
             return Ok(None);
         }
-        self.whitespace_without_comments();
+        self.whitespace_without_comments(true);
 
         // Match Ruby Sass's behavior: parse a raw URL() if possible, and if not
         // backtrack and re-parse as a function expression.
@@ -898,7 +896,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
                     return Ok(Some(buffer));
                 }
                 ' ' | '\t' | '\n' | '\r' => {
-                    self.whitespace_without_comments();
+                    self.whitespace_without_comments(true);
                     if !self.toks_mut().next_char_is(')') {
                         break;
                     }
@@ -932,7 +930,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
     fn parse_import_argument(&mut self, start: usize) -> SassResult<AstImport> {
         if self.toks_mut().next_char_is('u') || self.toks_mut().next_char_is('U') {
             let url = self.parse_dynamic_url()?;
-            self.whitespace()?;
+            self.whitespace(false)?;
             let modifiers = self.try_import_modifiers()?;
             return Ok(AstImport::Plain(AstPlainCssImport {
                 url: Interpolation::new_with_expr(url.span(self.toks_mut().span_from(start))),
@@ -944,7 +942,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
         let start = self.toks().cursor();
         let url = self.parse_string()?;
         let raw_url = self.toks().raw_text(start);
-        self.whitespace()?;
+        self.whitespace(false)?;
         let modifiers = self.try_import_modifiers()?;
 
         let span = self.toks_mut().span_from(start);
@@ -965,7 +963,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
         let mut imports = Vec::new();
 
         loop {
-            self.whitespace()?;
+            self.whitespace(false)?;
             let argument = self.parse_import_argument(self.toks().cursor())?;
 
             // todo: _inControlDirective
@@ -975,7 +973,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
             }
 
             imports.push(argument);
-            self.whitespace()?;
+            self.whitespace(false)?;
 
             if !self.scan_char(',') {
                 break;
@@ -996,6 +994,8 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
     }
 
     fn parse_include_rule(&mut self) -> SassResult<AstStmt> {
+        self.whitespace(true)?;
+
         let mut namespace: Option<Spanned<Identifier>> = None;
 
         let name_start = self.toks().cursor();
@@ -1015,7 +1015,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
         let name = Identifier::from(name);
         let name_span = self.toks_mut().span_from(name_start);
 
-        self.whitespace()?;
+        self.whitespace(false)?;
 
         let args = if self.toks_mut().next_char_is('(') {
             self.parse_argument_invocation(true, false)?
@@ -1023,12 +1023,12 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
             ArgumentInvocation::empty(self.toks().current_span())
         };
 
-        self.whitespace()?;
+        self.whitespace(false)?;
 
         let content_args = if self.scan_identifier("using", false)? {
-            self.whitespace()?;
+            self.whitespace(true)?;
             let args = self.parse_argument_declaration()?;
-            self.whitespace()?;
+            self.whitespace(false)?;
             Some(args)
         } else {
             None
@@ -1064,6 +1064,8 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
     }
 
     fn parse_media_rule(&mut self, start: usize) -> SassResult<AstStmt> {
+        self.whitespace(false)?;
+
         let query_start = self.toks().cursor();
         let query = self.parse_media_query_list()?;
         let query_span = self.toks_mut().span_from(query_start);
@@ -1141,7 +1143,8 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
     }
 
     fn parse_return_rule(&mut self) -> SassResult<AstStmt> {
-        let value = self.parse_expression(None, None, None)?;
+        self.whitespace(true)?;
+        let value = self.parse_expression(None, false, None, None)?;
         self.expect_statement_separator(None)?;
         Ok(AstStmt::Return(AstReturn {
             val: value.node,
@@ -1150,8 +1153,10 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
     }
 
     fn parse_mixin_rule(&mut self, start: usize) -> SassResult<AstStmt> {
+        self.whitespace(true)?;
+
         let name = Identifier::from(self.parse_identifier(true, false)?);
-        self.whitespace()?;
+        self.whitespace(false)?;
         let args = if self.toks_mut().next_char_is('(') {
             self.parse_argument_declaration()?
         } else {
@@ -1172,7 +1177,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
                 .into());
         }
 
-        self.whitespace()?;
+        self.whitespace(false)?;
 
         let old_found_content_rule = self.flags().found_content_rule();
         self.flags_mut()
@@ -1200,6 +1205,8 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
     }
 
     fn unknown_at_rule(&mut self, name: Interpolation, start: usize) -> SassResult<AstStmt> {
+        self.whitespace(false)?;
+
         let was_in_unknown_at_rule = self.flags().in_unknown_at_rule();
         self.flags_mut().set(ContextFlags::IN_UNKNOWN_AT_RULE, true);
 
@@ -1261,7 +1268,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
         };
 
         let before_whitespace = self.toks().cursor();
-        self.whitespace()?;
+        self.whitespace(true)?;
 
         let mut operation: Option<AstSupportsCondition> = None;
         let mut operator: Option<String> = None;
@@ -1278,7 +1285,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
                 return Ok(None);
             }
 
-            self.whitespace()?;
+            self.whitespace(true)?;
 
             let right = self.supports_condition_in_parens()?;
             operation = Some(AstSupportsCondition::Operation {
@@ -1288,7 +1295,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
                 operator: operator.clone(),
                 right: Box::new(right),
             });
-            self.whitespace()?;
+            self.whitespace(true)?;
         }
 
         Ok(operation)
@@ -1303,15 +1310,15 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
             AstExpr::String(StringExpr(text, QuoteKind::None), ..)
                 if text.initial_plain().starts_with("--") =>
             {
-                let text = self.parse_interpolated_declaration_value(false, false, true)?;
+                let text = self.parse_interpolated_declaration_value(false, false, true, false)?;
                 AstExpr::String(
                     StringExpr(text, QuoteKind::None),
                     self.toks_mut().span_from(start),
                 )
             }
             _ => {
-                self.whitespace()?;
-                self.parse_expression(None, None, None)?.node
+                self.whitespace(true)?;
+                self.parse_expression(None, true, None, None)?.node
             }
         };
 
@@ -1334,7 +1341,8 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
             }
 
             if self.scan_char('(') {
-                let arguments = self.parse_interpolated_declaration_value(true, true, true)?;
+                let arguments =
+                    self.parse_interpolated_declaration_value(true, true, true, true)?;
                 self.expect_char(')')?;
                 return Ok(AstSupportsCondition::Function {
                     name: identifier,
@@ -1358,15 +1366,15 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
         }
 
         self.expect_char('(')?;
-        self.whitespace()?;
+        self.whitespace(true)?;
 
         if self.scan_identifier("not", false)? {
-            self.whitespace()?;
+            self.whitespace(true)?;
             let condition = self.supports_condition_in_parens()?;
             self.expect_char(')')?;
             return Ok(AstSupportsCondition::Negation(Box::new(condition)));
         } else if self.toks_mut().next_char_is('(') {
-            let condition = self.parse_supports_condition()?;
+            let condition = self.parse_supports_condition(true)?;
             self.expect_char(')')?;
             return Ok(condition);
         }
@@ -1389,7 +1397,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
         let name_start = self.toks().cursor();
         let was_in_parens = self.flags().in_parens();
 
-        let expr = self.parse_expression(None, None, None);
+        let expr = self.parse_expression(None, true, None, None);
         let found_colon = self.expect_char(':');
         let name = match (expr, found_colon) {
             (Ok(val), Ok(..)) => val.node,
@@ -1412,7 +1420,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
                 let mut contents = Interpolation::new();
                 contents.add_interpolation(identifier);
                 contents.add_interpolation(
-                    self.parse_interpolated_declaration_value(true, true, false)?,
+                    self.parse_interpolated_declaration_value(true, true, false, true)?,
                 );
 
                 if self.toks_mut().next_char_is(':') {
@@ -1431,16 +1439,25 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
         Ok(declaration)
     }
 
-    fn parse_supports_condition(&mut self) -> SassResult<AstSupportsCondition> {
+    /// Consumes a `@supports` condition.
+    ///
+    /// `in_parentheses` says the condition sits inside a pair of parentheses,
+    /// where the indented syntax treats a newline as whitespace rather than as
+    /// the end of the statement.
+    fn parse_supports_condition(
+        &mut self,
+        // default=false
+        in_parentheses: bool,
+    ) -> SassResult<AstSupportsCondition> {
         if self.scan_identifier("not", false)? {
-            self.whitespace()?;
+            self.whitespace(in_parentheses)?;
             return Ok(AstSupportsCondition::Negation(Box::new(
                 self.supports_condition_in_parens()?,
             )));
         }
 
         let mut condition = self.supports_condition_in_parens()?;
-        self.whitespace()?;
+        self.whitespace(in_parentheses)?;
 
         let mut operator: Option<String> = None;
 
@@ -1454,22 +1471,24 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
                 operator = Some("and".to_owned());
             }
 
-            self.whitespace()?;
+            self.whitespace(in_parentheses)?;
             let right = self.supports_condition_in_parens()?;
             condition = AstSupportsCondition::Operation {
                 left: Box::new(condition),
                 operator: operator.clone(),
                 right: Box::new(right),
             };
-            self.whitespace()?;
+            self.whitespace(in_parentheses)?;
         }
 
         Ok(condition)
     }
 
     fn parse_supports_rule(&mut self) -> SassResult<AstStmt> {
-        let condition = self.parse_supports_condition()?;
-        self.whitespace()?;
+        self.whitespace(false)?;
+
+        let condition = self.parse_supports_condition(false)?;
+        self.whitespace(false)?;
         let children = self.with_children(Self::parse_statement)?;
 
         Ok(AstStmt::Supports(AstSupportsRule {
@@ -1480,7 +1499,8 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
     }
 
     fn parse_warn_rule(&mut self) -> SassResult<AstStmt> {
-        let value = self.parse_expression(None, None, None)?;
+        self.whitespace(true)?;
+        let value = self.parse_expression(None, false, None, None)?;
         self.expect_statement_separator(Some("@warn rule"))?;
         Ok(AstStmt::Warn(AstWarn {
             value: value.node,
@@ -1492,10 +1512,12 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
         &mut self,
         child: fn(&mut Self) -> SassResult<AstStmt>,
     ) -> SassResult<AstStmt> {
+        self.whitespace(true)?;
+
         let was_in_control_directive = self.flags().in_control_flow();
         self.flags_mut().set(ContextFlags::IN_CONTROL_FLOW, true);
 
-        let condition = self.parse_expression(None, None, None)?.node;
+        let condition = self.parse_expression(None, false, None, None)?.node;
 
         let body = self.with_children(child)?.node;
 
@@ -1505,14 +1527,16 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
         Ok(AstStmt::While(AstWhile { condition, body }))
     }
     fn parse_forward_rule(&mut self, start: usize) -> SassResult<AstStmt> {
+        self.whitespace(true)?;
+
         let url = PathBuf::from(self.parse_url_string()?);
-        self.whitespace()?;
+        self.whitespace(false)?;
 
         let prefix = if self.scan_identifier("as", false)? {
-            self.whitespace()?;
+            self.whitespace(true)?;
             let prefix = self.parse_identifier(true, false)?;
             self.expect_char('*')?;
-            self.whitespace()?;
+            self.whitespace(false)?;
             Some(prefix)
         } else {
             None
@@ -1536,7 +1560,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
         let config = self.parse_configuration(true)?;
 
         // As in `@use`, a comment may sit between the configuration and the `;`.
-        self.whitespace()?;
+        self.whitespace(false)?;
         self.expect_statement_separator(Some("@forward rule"))?;
         let span = self.toks_mut().span_from(start);
 
@@ -1582,7 +1606,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
         let mut variables = HashSet::new();
 
         loop {
-            self.whitespace()?;
+            self.whitespace(true)?;
 
             // todo: withErrorMessage("Expected variable, mixin, or function name"
             if self.toks_mut().next_char_is('$') {
@@ -1591,7 +1615,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
                 identifiers.insert(Identifier::from(self.parse_identifier(true, false)?));
             }
 
-            self.whitespace()?;
+            self.whitespace(false)?;
 
             if !self.scan_char(',') {
                 break;
@@ -1613,7 +1637,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
         url_span: Span,
     ) -> SassResult<Option<String>> {
         if self.scan_identifier("as", false)? {
-            self.whitespace()?;
+            self.whitespace(true)?;
             return Ok(if self.scan_char('*') {
                 None
             } else {
@@ -1673,18 +1697,17 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
 
         let mut variable_names = HashSet::new();
         let mut configuration = Vec::new();
-        self.whitespace()?;
+        self.whitespace(true)?;
         self.expect_char('(')?;
-        let parens = self.enter_parens();
 
         loop {
-            self.whitespace()?;
+            self.whitespace(true)?;
             let var_start = self.toks().cursor();
             let name = Identifier::from(self.parse_variable_name()?);
             let name_span = self.toks_mut().span_from(var_start);
-            self.whitespace()?;
+            self.whitespace(true)?;
             self.expect_char(':')?;
-            self.whitespace()?;
+            self.whitespace(true)?;
             let expr = self.parse_expression_until_comma(false)?;
 
             let mut is_guarded = false;
@@ -1693,7 +1716,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
                 let flag = self.parse_identifier(false, false)?;
                 if flag == "default" {
                     is_guarded = true;
-                    self.whitespace()?;
+                    self.whitespace(true)?;
                 } else {
                     return Err(
                         ("Invalid flag name.", self.toks_mut().span_from(flag_start)).into(),
@@ -1719,33 +1742,34 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
             if !self.scan_char(',') {
                 break;
             }
-            self.whitespace()?;
+            self.whitespace(true)?;
             if !self.looking_at_expression() {
                 break;
             }
         }
 
         self.expect_char(')')?;
-        self.restore_parens(parens);
 
         Ok(Some(configuration))
     }
 
     fn parse_use_rule(&mut self, start: usize) -> SassResult<AstStmt> {
+        self.whitespace(true)?;
+
         let url_start = self.toks().cursor();
         let url = self.parse_url_string()?;
         let url_span = self.toks().span_from(url_start);
-        self.whitespace()?;
+        self.whitespace(false)?;
 
         let path = PathBuf::from(url);
 
         let namespace = self.use_namespace(path.as_ref(), start, url_span)?;
-        self.whitespace()?;
+        self.whitespace(false)?;
         let configuration = self.parse_configuration(false)?;
 
         // A comment may sit between the configuration and the `;`, and only the
         // comment-aware `whitespace` skips it.
-        self.whitespace()?;
+        self.whitespace(false)?;
         self.expect_statement_separator(Some("@use rule"))?;
 
         let span = self.toks_mut().span_from(start);
@@ -1776,7 +1800,6 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
 
         self.expect_char('@')?;
         let name = self.parse_interpolated_identifier()?;
-        self.whitespace()?;
 
         // We want to set [_isUseAllowed] to `false` *unless* we're parsing
         // `@charset`, `@forward`, or `@use`. To avoid double-comparing the rule
@@ -1853,7 +1876,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
                 self.flags_mut().set(ContextFlags::IS_USE_ALLOWED, false);
                 let start = self.toks().cursor();
                 self.toks_mut().next();
-                self.whitespace()?;
+                self.whitespace(false)?;
                 self.parse_mixin_rule(start)
             }
             Some(Token { kind: '}', .. }) => {
@@ -1911,7 +1934,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
             // hacks.
             let mut name_buffer = Interpolation::new();
             name_buffer.add_char(self.toks_mut().next().unwrap().kind);
-            name_buffer.add_string(self.raw_text(Self::whitespace));
+            name_buffer.add_string(self.raw_text(|parser| parser.whitespace(false)));
             name_buffer.add_interpolation(self.parse_interpolated_identifier()?);
             name_buffer
         } else if !self.is_plain_css() {
@@ -1925,11 +1948,12 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
             self.parse_interpolated_identifier()?
         };
 
-        self.whitespace()?;
+        self.whitespace(false)?;
         self.expect_char(':')?;
 
         if parse_custom_properties && name.initial_plain().starts_with("--") {
-            let interpolation = self.parse_interpolated_declaration_value(false, false, true)?;
+            let interpolation =
+                self.parse_interpolated_declaration_value(false, false, true, false)?;
             let value_span = self.toks_mut().span_from(start);
             let value = AstExpr::String(StringExpr(interpolation, QuoteKind::None), value_span)
                 .span(value_span);
@@ -1943,7 +1967,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
             }));
         }
 
-        self.whitespace()?;
+        self.whitespace(false)?;
 
         if self.looking_at_children()? {
             if self.is_plain_css() {
@@ -1973,7 +1997,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
             }));
         }
 
-        let value = self.parse_expression(None, None, None)?;
+        let value = self.parse_expression(None, false, None, None)?;
         if self.looking_at_children()? {
             if self.is_plain_css() {
                 return Err((
@@ -2016,8 +2040,8 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
     fn parse_single_interpolation(&mut self) -> SassResult<Interpolation> {
         self.expect_char('#')?;
         self.expect_char('{')?;
-        self.whitespace()?;
-        let contents = self.parse_expression(None, None, None)?;
+        self.whitespace(true)?;
+        let contents = self.parse_expression(None, true, None, None)?;
         self.expect_char('}')?;
 
         if self.is_plain_css() {
@@ -2170,6 +2194,8 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
         allow_empty: bool,
         // default=true
         allow_colon: bool,
+        // default=false
+        consume_newlines: bool,
     ) -> SassResult<Interpolation> {
         let mut buffer = Interpolation::new();
 
@@ -2230,7 +2256,10 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
                     }
                 }
                 '\n' | '\r' => {
-                    if self.is_indented() && !self.newlines_are_whitespace() {
+                    // Outside brackets a newline ends the statement in the
+                    // indented syntax, unless the caller is at a position where
+                    // a statement cannot end.
+                    if self.is_indented() && !consume_newlines && brackets.is_empty() {
                         break;
                     }
                     if !matches!(
@@ -2334,6 +2363,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
                     Some(Token { kind: ',', .. })
                 ))
             }),
+            true,
             false,
             single_equals,
         )
@@ -2347,8 +2377,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
         let start = self.toks().cursor();
 
         self.expect_char('(')?;
-        let parens = self.enter_parens();
-        self.whitespace()?;
+        self.whitespace(true)?;
 
         let mut positional = Vec::new();
         let mut named = BTreeMap::new();
@@ -2358,7 +2387,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
 
         while self.looking_at_expression() {
             let expression = self.parse_expression_until_comma(!for_mixin)?;
-            self.whitespace()?;
+            self.whitespace(true)?;
 
             if expression.node.is_variable() && self.scan_char(':') {
                 let name = match expression.node {
@@ -2366,7 +2395,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
                     _ => unreachable!(),
                 };
 
-                self.whitespace()?;
+                self.whitespace(true)?;
                 if named.contains_key(&name.node) {
                     return Err(("Duplicate argument.", name.span).into());
                 }
@@ -2383,12 +2412,12 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
                     rest = Some(expression.node);
                 } else {
                     keyword_rest = Some(expression.node);
-                    self.whitespace()?;
+                    self.whitespace(true)?;
 
                     // As with parameters, a keyword rest argument ends the list
                     // but may still be followed by a trailing comma.
                     if self.scan_char(',') {
-                        self.whitespace()?;
+                        self.whitespace(true)?;
                     }
 
                     break;
@@ -2403,11 +2432,11 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
                 positional.push(expression.node);
             }
 
-            self.whitespace()?;
+            self.whitespace(true)?;
             if !self.scan_char(',') {
                 break;
             }
-            self.whitespace()?;
+            self.whitespace(true)?;
 
             if allow_empty_second_arg
                 && positional.len() == 1
@@ -2424,7 +2453,6 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
         }
 
         self.expect_char(')')?;
-        self.restore_parens(parens);
 
         Ok(ArgumentInvocation {
             positional,
@@ -2435,15 +2463,22 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
         })
     }
 
+    /// Consumes an expression.
+    ///
+    /// `consume_newlines` says whether a newline is whitespace inside the
+    /// expression; see [`BaseParser::whitespace_without_comments`].
     fn parse_expression(
         &mut self,
         parse_until: Option<Predicate<'_, Self>>,
+        // default=false
+        consume_newlines: bool,
         inside_bracketed_list: Option<bool>,
         single_equals: Option<bool>,
     ) -> SassResult<Spanned<AstExpr>> {
         ValueParser::parse_expression(
             self,
             parse_until,
+            consume_newlines,
             inside_bracketed_list.unwrap_or(false),
             single_equals.unwrap_or(false),
         )
@@ -2469,7 +2504,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
         {
             starts_with_punctuation = true;
             name_buffer.add_char(self.toks_mut().next().unwrap().kind);
-            name_buffer.add_string(self.raw_text(Self::whitespace));
+            name_buffer.add_string(self.raw_text(|parser| parser.whitespace(false)));
         }
 
         if !self.looking_at_interpolated_identifier() {
@@ -2496,7 +2531,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
         }
 
         let mut mid_buffer = String::new();
-        mid_buffer.push_str(&self.raw_text(Self::whitespace));
+        mid_buffer.push_str(&self.raw_text(|parser| parser.whitespace(false)));
 
         if !self.scan_char(':') {
             if !mid_buffer.is_empty() {
@@ -2520,7 +2555,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
             let value = if self.at_end_of_statement() {
                 Interpolation::new()
             } else {
-                self.parse_interpolated_declaration_value(false, false, true)?
+                self.parse_interpolated_declaration_value(false, false, true, false)?
             };
             let value_span = self.toks_mut().span_from(value_start);
             self.expect_statement_separator(Some(if is_custom_property {
@@ -2551,7 +2586,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
             return Ok(DeclarationOrBuffer::Buffer(name_buffer));
         }
 
-        let post_colon_whitespace = self.raw_text(Self::whitespace);
+        let post_colon_whitespace = self.raw_text(|parser| parser.whitespace(false));
         if self.looking_at_children()? {
             self.assert_declaration_children_allowed()?;
             let body = self.with_children(Self::parse_declaration_child)?.node;
@@ -2571,7 +2606,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
         let before_decl = self.toks().cursor();
 
         let mut calculate_value = || {
-            let value = self.parse_expression(None, None, None)?;
+            let value = self.parse_expression(None, false, None, None)?;
 
             if self.looking_at_children()? {
                 if could_be_selector {
@@ -2653,9 +2688,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
 
     fn parse_plain_at_rule_name(&mut self) -> SassResult<String> {
         self.expect_char('@')?;
-        let name = self.parse_identifier(false, false)?;
-        self.whitespace()?;
-        Ok(name)
+        self.parse_identifier(false, false)
     }
 
     fn parse_declaration_at_rule(&mut self, start: usize) -> SassResult<AstStmt> {
@@ -2751,7 +2784,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
 
         while let Some(tok) = self.toks_mut().next() {
             if tok.kind == '\n' {
-                self.whitespace_without_comments();
+                self.whitespace_without_comments(false);
                 if self.next_matches("//") {
                     self.toks_mut().next();
                     self.toks_mut().next();
@@ -2772,7 +2805,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
                 .into());
         }
 
-        self.whitespace_without_comments();
+        self.whitespace_without_comments(false);
 
         Ok(AstStmt::SilentComment(AstSilentComment {
             text: buffer,
@@ -2824,11 +2857,11 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
                 .into());
         }
 
-        self.whitespace()?;
+        self.whitespace(true)?;
         self.expect_char(':')?;
-        self.whitespace()?;
+        self.whitespace(true)?;
 
-        let value = self.parse_expression(None, None, None)?.node;
+        let value = self.parse_expression(None, false, None, None)?.node;
 
         let mut is_guarded = false;
         let mut is_global = false;
@@ -2857,7 +2890,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
                 }
             }
 
-            self.whitespace()?;
+            self.whitespace(false)?;
         }
 
         self.expect_statement_separator(Some("variable declaration"))?;
@@ -3022,6 +3055,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
                     _ => false,
                 })
             }),
+            true,
             None,
             None,
         )?;
@@ -3031,9 +3065,9 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
     fn parse_media_query_list(&mut self) -> SassResult<Interpolation> {
         let mut buf = Interpolation::new();
         loop {
-            self.whitespace()?;
+            self.whitespace(false)?;
             self.parse_media_query(&mut buf)?;
-            self.whitespace()?;
+            self.whitespace(false)?;
             if !self.scan_char(',') {
                 break;
             }
@@ -3046,33 +3080,33 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
     fn parse_media_in_parens(&mut self, buf: &mut Interpolation) -> SassResult<()> {
         self.expect_char_with_message('(', "media condition in parentheses")?;
         buf.add_char('(');
-        self.whitespace()?;
+        self.whitespace(true)?;
 
         if matches!(self.toks().peek(), Some(Token { kind: '(', .. })) {
             self.parse_media_in_parens(buf)?;
-            self.whitespace()?;
+            self.whitespace(true)?;
 
             if self.scan_identifier("and", false)? {
                 buf.add_string(" and ".to_owned());
-                self.expect_whitespace()?;
+                self.expect_whitespace(true)?;
                 self.parse_media_logic_sequence(buf, "and")?;
             } else if self.scan_identifier("or", false)? {
                 buf.add_string(" or ".to_owned());
-                self.expect_whitespace()?;
+                self.expect_whitespace(true)?;
                 self.parse_media_logic_sequence(buf, "or")?;
             }
         } else if self.scan_identifier("not", false)? {
             buf.add_string("not ".to_owned());
-            self.expect_whitespace()?;
+            self.expect_whitespace(true)?;
             self.parse_media_or_interpolation(buf)?;
         } else {
             buf.add_expr(self.expression_until_comparison()?);
 
             if self.scan_char(':') {
-                self.whitespace()?;
+                self.whitespace(true)?;
                 buf.add_char(':');
                 buf.add_char(' ');
-                buf.add_expr(self.parse_expression(None, None, None)?);
+                buf.add_expr(self.parse_expression(None, true, None, None)?);
             } else {
                 let next = self.toks().peek();
                 if matches!(
@@ -3092,7 +3126,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
 
                     buf.add_char(' ');
 
-                    self.whitespace()?;
+                    self.whitespace(true)?;
 
                     buf.add_expr(self.expression_until_comparison()?);
 
@@ -3106,7 +3140,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
 
                         buf.add_char(' ');
 
-                        self.whitespace()?;
+                        self.whitespace(true)?;
                         buf.add_expr(self.expression_until_comparison()?);
                     }
                 }
@@ -3114,7 +3148,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
         }
 
         self.expect_char(')')?;
-        self.whitespace()?;
+        self.whitespace(false)?;
         buf.add_char(')');
 
         Ok(())
@@ -3127,13 +3161,13 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
     ) -> SassResult<()> {
         loop {
             self.parse_media_or_interpolation(buf)?;
-            self.whitespace()?;
+            self.whitespace(false)?;
 
             if !self.scan_identifier(operator, false)? {
                 return Ok(());
             }
 
-            self.expect_whitespace()?;
+            self.expect_whitespace(false)?;
 
             buf.add_char(' ');
             buf.add_string(operator.to_owned());
@@ -3154,15 +3188,15 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
     fn parse_media_query(&mut self, buf: &mut Interpolation) -> SassResult<()> {
         if matches!(self.toks().peek(), Some(Token { kind: '(', .. })) {
             self.parse_media_in_parens(buf)?;
-            self.whitespace()?;
+            self.whitespace(false)?;
 
             if self.scan_identifier("and", false)? {
                 buf.add_string(" and ".to_owned());
-                self.expect_whitespace()?;
+                self.expect_whitespace(false)?;
                 self.parse_media_logic_sequence(buf, "and")?;
             } else if self.scan_identifier("or", false)? {
                 buf.add_string(" or ".to_owned());
-                self.expect_whitespace()?;
+                self.expect_whitespace(false)?;
                 self.parse_media_logic_sequence(buf, "or")?;
             }
 
@@ -3173,7 +3207,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
 
         if ident1.as_plain().unwrap_or("").eq_ignore_ascii_case("not") {
             // For example, "@media not (...) {"
-            self.expect_whitespace()?;
+            self.expect_whitespace(false)?;
             if !self.looking_at_interpolated_identifier() {
                 buf.add_string("not ".to_owned());
                 self.parse_media_or_interpolation(buf)?;
@@ -3181,7 +3215,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
             }
         }
 
-        self.whitespace()?;
+        self.whitespace(false)?;
         buf.add_interpolation(ident1);
         if !self.looking_at_interpolated_identifier() {
             // For example, "@media screen {".
@@ -3193,16 +3227,16 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
         let ident2 = self.parse_interpolated_identifier()?;
 
         if ident2.as_plain().unwrap_or("").eq_ignore_ascii_case("and") {
-            self.expect_whitespace()?;
+            self.expect_whitespace(false)?;
             // For example, "@media screen and ..."
             buf.add_string(" and ".to_owned());
         } else {
-            self.whitespace()?;
+            self.whitespace(false)?;
             buf.add_interpolation(ident2);
 
             if self.scan_identifier("and", false)? {
                 // For example, "@media only screen and ..."
-                self.expect_whitespace()?;
+                self.expect_whitespace(false)?;
                 buf.add_string(" and ".to_owned());
             } else {
                 // For example, "@media only screen {"
@@ -3215,7 +3249,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
 
         if self.scan_identifier("not", false)? {
             // For example, "@media screen and not (...) {"
-            self.expect_whitespace()?;
+            self.expect_whitespace(false)?;
             buf.add_string("not ".to_owned());
             self.parse_media_or_interpolation(buf)?;
             return Ok(());
