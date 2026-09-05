@@ -55,8 +55,8 @@ accent-sass input.scss
 
 ## Status
 
-13,560 of 14,218 sass-spec tests pass against the pinned spec revision
-(measured 2026-09-04). CI compiles Bulma, Pico, Foundation and USWDS with both
+13,813 of 14,218 sass-spec tests pass against the pinned spec revision
+(measured 2026-09-05). CI compiles Bulma, Pico, Foundation and USWDS with both
 engines on every commit and fails on any colour-value difference; that corpus
 currently shows none.
 

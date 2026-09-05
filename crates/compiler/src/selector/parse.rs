@@ -92,7 +92,7 @@ impl SelectorParser {
     fn parse_selector_list(&mut self) -> SassResult<SelectorList> {
         let mut components = vec![self.parse_complex_selector(false)?];
 
-        self.whitespace()?;
+        self.whitespace(false)?;
 
         let mut line_break = false;
 
@@ -115,7 +115,7 @@ impl SelectorParser {
     }
 
     fn eat_whitespace(&mut self) -> DevouredWhitespace {
-        let text = self.raw_text(Self::whitespace);
+        let text = self.raw_text(|parser| parser.whitespace(false));
 
         if text.contains('\n') {
             DevouredWhitespace::Newline
@@ -134,7 +134,7 @@ impl SelectorParser {
         let mut components = Vec::new();
 
         loop {
-            self.whitespace()?;
+            self.whitespace(false)?;
 
             // todo: can we do while let Some(..) = self.toks.peek() ?
             match self.toks.peek() {
@@ -301,7 +301,7 @@ impl SelectorParser {
             }
         };
 
-        self.whitespace()?;
+        self.whitespace(false)?;
 
         let unvendored = unvendor(&name);
 
@@ -312,7 +312,7 @@ impl SelectorParser {
             // todo: lowercase?
             if SELECTOR_PSEUDO_ELEMENTS.contains(&unvendored) {
                 selector = Some(Box::new(self.parse_selector_list()?));
-                self.whitespace()?;
+                self.whitespace(false)?;
             } else {
                 argument = Some(self.declaration_value(true)?.into_boxed_str());
             }
@@ -320,11 +320,11 @@ impl SelectorParser {
             self.expect_char(')')?;
         } else if SELECTOR_PSEUDO_CLASSES.contains(&unvendored) {
             selector = Some(Box::new(self.parse_selector_list()?));
-            self.whitespace()?;
+            self.whitespace(false)?;
             self.expect_char(')')?;
         } else if unvendored == "nth-child" || unvendored == "nth-last-child" {
             let mut this_arg = self.parse_a_n_plus_b()?;
-            self.whitespace()?;
+            self.whitespace(false)?;
 
             let last_was_whitespace = matches!(
                 self.toks.peek_n_backwards(1),
@@ -336,7 +336,7 @@ impl SelectorParser {
             if last_was_whitespace && !matches!(self.toks.peek(), Some(Token { kind: ')', .. })) {
                 self.expect_identifier("of", false)?;
                 this_arg.push_str(" of");
-                self.whitespace()?;
+                self.whitespace(false)?;
                 selector = Some(Box::new(self.parse_selector_list()?));
             }
 
@@ -486,7 +486,7 @@ impl SelectorParser {
                     buf.push(t.kind);
                     self.toks.next();
                 }
-                self.whitespace()?;
+                self.whitespace(false)?;
                 if !self.scan_ident_char('n', false)? {
                     return Ok(buf);
                 }
@@ -497,14 +497,14 @@ impl SelectorParser {
 
         buf.push('n');
 
-        self.whitespace()?;
+        self.whitespace(false)?;
 
         if let Some(t @ Token { kind: '+', .. }) | Some(t @ Token { kind: '-', .. }) =
             self.toks.peek()
         {
             buf.push(t.kind);
             self.toks.next();
-            self.whitespace()?;
+            self.whitespace(false)?;
             match self.toks.peek() {
                 Some(t) if !t.kind.is_ascii_digit() => {
                     return Err(("Expected a number.", self.span).into());

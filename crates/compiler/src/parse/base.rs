@@ -9,28 +9,14 @@ pub(crate) trait BaseParser {
     fn toks(&self) -> &Lexer;
     fn toks_mut(&mut self) -> &mut Lexer;
 
-    /// Records that parsing has moved inside a pair of parentheses.
+    /// Consumes whitespace, but not comments.
     ///
-    /// Only the indented syntax cares: a newline ends a statement there, except
-    /// inside parentheses, where the syntax behaves like SCSS. Returns the
-    /// previous depth so a caller that may abandon the parse can restore it.
-    fn enter_parens(&mut self) -> usize {
-        0
-    }
-
-    /// Restores the depth returned by [`BaseParser::enter_parens`].
-    fn restore_parens(&mut self, _depth: usize) {}
-
-    /// Whether a newline currently counts as whitespace rather than as the end
-    /// of a statement.
-    ///
-    /// Only the indented syntax ever answers `false`, and only outside
-    /// parentheses; every other syntax treats a newline as whitespace always.
-    fn newlines_are_whitespace(&self) -> bool {
-        true
-    }
-
-    fn whitespace_without_comments(&mut self) {
+    /// `consume_newlines` says whether a newline counts as whitespace here. It
+    /// only means anything in the indented syntax, where a newline otherwise
+    /// ends the statement, so pass `true` only at a position where a statement
+    /// cannot end. Every other syntax treats a newline as whitespace always and
+    /// ignores the flag.
+    fn whitespace_without_comments(&mut self, _consume_newlines: bool) {
         while matches!(
             self.toks().peek(),
             Some(Token {
@@ -42,9 +28,12 @@ pub(crate) trait BaseParser {
         }
     }
 
-    fn whitespace(&mut self) -> SassResult<()> {
+    /// Consumes whitespace, including any comments.
+    ///
+    /// See [`BaseParser::whitespace_without_comments`] for `consume_newlines`.
+    fn whitespace(&mut self, consume_newlines: bool) -> SassResult<()> {
         loop {
-            self.whitespace_without_comments();
+            self.whitespace_without_comments(consume_newlines);
 
             if !self.scan_comment()? {
                 break;
@@ -137,7 +126,8 @@ pub(crate) trait BaseParser {
         true
     }
 
-    fn expect_whitespace(&mut self) -> SassResult<()> {
+    /// Like [`BaseParser::whitespace`], but errors if no whitespace is there.
+    fn expect_whitespace(&mut self, consume_newlines: bool) -> SassResult<()> {
         if !matches!(
             self.toks().peek(),
             Some(Token {
@@ -149,7 +139,7 @@ pub(crate) trait BaseParser {
             return Err(("Expected whitespace.", self.toks().current_span()).into());
         }
 
-        self.whitespace()?;
+        self.whitespace(consume_newlines)?;
 
         Ok(())
     }
@@ -551,7 +541,7 @@ pub(crate) trait BaseParser {
             return Ok(None);
         }
 
-        self.whitespace()?;
+        self.whitespace(false)?;
 
         // Match Ruby Sass's behavior: parse a raw URL() if possible, and if not
         // backtrack and re-parse as a function expression.
@@ -573,7 +563,7 @@ pub(crate) trait BaseParser {
                     return Ok(Some(buffer));
                 }
                 ' ' | '\t' | '\n' | '\r' => {
-                    self.whitespace_without_comments();
+                    self.whitespace_without_comments(false);
 
                     if !self.toks().next_char_is(')') {
                         break;

@@ -39,6 +39,11 @@ pub(crate) struct ValueParser<'a, 'c, P: StylesheetParser<'a>> {
     start: usize,
     inside_bracketed_list: bool,
     single_equals: bool,
+    /// Whether a newline counts as whitespace inside this expression.
+    ///
+    /// Only the indented syntax cares; see
+    /// [`BaseParser::whitespace_without_comments`].
+    consume_newlines: bool,
     parse_until: Option<Predicate<'c, P>>,
     _a: PhantomData<&'a ()>,
 }
@@ -83,11 +88,18 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
     pub fn parse_expression(
         parser: &mut P,
         parse_until: Option<Predicate<'c, P>>,
+        consume_newlines: bool,
         inside_bracketed_list: bool,
         single_equals: bool,
     ) -> SassResult<Spanned<AstExpr>> {
         let start = parser.toks().cursor();
-        let mut value_parser = Self::new(parser, parse_until, inside_bracketed_list, single_equals);
+        let mut value_parser = Self::new(
+            parser,
+            parse_until,
+            consume_newlines,
+            inside_bracketed_list,
+            single_equals,
+        );
 
         if let Some(parse_until) = value_parser.parse_until
             && parse_until(parser)?
@@ -99,7 +111,7 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
             let bracket_start = parser.toks().cursor();
 
             parser.expect_char('[')?;
-            parser.whitespace()?;
+            parser.whitespace(true)?;
 
             if parser.scan_char(']') {
                 return Ok(AstExpr::List(ListExpr {
@@ -147,6 +159,7 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
     pub fn new(
         parser: &mut P,
         parse_until: Option<Predicate<'c, P>>,
+        consume_newlines: bool,
         inside_bracketed_list: bool,
         single_equals: bool,
     ) -> Self {
@@ -159,6 +172,7 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
             start: parser.toks().cursor(),
             single_expression: None,
             parse_until,
+            consume_newlines,
             inside_bracketed_list,
             single_equals,
             _a: PhantomData,
@@ -169,14 +183,18 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
     ///
     /// This function will cease parsing if the predicate returns true.
     pub(crate) fn parse_value(&mut self, parser: &mut P) -> SassResult<Spanned<AstExpr>> {
-        parser.whitespace()?;
+        // A bracketed list is inside brackets, so a newline is whitespace there
+        // whatever the caller asked for.
+        let consume_newlines = self.consume_newlines || self.inside_bracketed_list;
+
+        parser.whitespace(consume_newlines)?;
 
         let start = parser.toks().cursor();
 
         let was_in_parens = parser.flags().in_parens();
 
         loop {
-            parser.whitespace()?;
+            parser.whitespace(consume_newlines)?;
 
             if let Some(parse_until) = self.parse_until
                 && parse_until(parser)?
@@ -192,7 +210,7 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
                     self.add_single_expression(expr, parser)?;
                 }
                 Some(Token { kind: '[', .. }) => {
-                    let expr = parser.parse_expression(None, Some(true), None)?;
+                    let expr = parser.parse_expression(None, false, Some(true), None)?;
                     self.add_single_expression(expr, parser)?;
                 }
                 Some(Token { kind: '$', .. }) => {
@@ -535,7 +553,9 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
         match first {
             Some(Token { kind: '(', .. }) => self.parse_paren_expr(parser),
             Some(Token { kind: '/', .. }) => self.parse_unary_operation(parser),
-            Some(Token { kind: '[', .. }) => Self::parse_expression(parser, None, true, false),
+            Some(Token { kind: '[', .. }) => {
+                Self::parse_expression(parser, None, false, true, false)
+            }
             Some(Token { kind: '$', .. }) => Self::parse_variable(parser),
             Some(Token { kind: '&', .. }) => Self::parse_selector(parser),
             Some(Token { kind: '"', .. }) | Some(Token { kind: '\'', .. }) => Ok(parser
@@ -701,7 +721,7 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
             None => return Err(("Expected expression.", op.span).into()),
         }
 
-        parser.whitespace()?;
+        parser.whitespace(true)?;
 
         self.single_expression = Some(self.parse_single_expression(parser)?);
 
@@ -742,14 +762,14 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
         let mut pairs = vec![(first, parser.parse_expression_until_comma(false)?.node)];
 
         while parser.scan_char(',') {
-            parser.whitespace()?;
+            parser.whitespace(true)?;
             if !parser.looking_at_expression() {
                 break;
             }
 
             let key = parser.parse_expression_until_comma(false)?;
             parser.expect_char(':')?;
-            parser.whitespace()?;
+            parser.whitespace(true)?;
             let value = parser.parse_expression_until_comma(false)?;
             pairs.push((key, value.node));
         }
@@ -773,7 +793,7 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
         parser.flags_mut().set(ContextFlags::IN_PARENS, true);
 
         parser.expect_char('(')?;
-        parser.whitespace()?;
+        parser.whitespace(true)?;
         if !parser.looking_at_expression() {
             parser.expect_char(')')?;
             parser
@@ -789,7 +809,7 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
 
         let first = parser.parse_expression_until_comma(false)?;
         if parser.scan_char(':') {
-            parser.whitespace()?;
+            parser.whitespace(true)?;
             parser
                 .flags_mut()
                 .set(ContextFlags::IN_PARENS, was_in_parentheses);
@@ -804,7 +824,7 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
             return Ok(AstExpr::Paren(Arc::new(first.node)).span(first.span));
         }
 
-        parser.whitespace()?;
+        parser.whitespace(true)?;
 
         let mut expressions = vec![first];
 
@@ -816,7 +836,7 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
             if !parser.scan_char(',') {
                 break;
             }
-            parser.whitespace()?;
+            parser.whitespace(true)?;
         }
 
         parser.expect_char(')')?;
@@ -993,7 +1013,7 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
             return Err(("Operators aren't allowed in plain CSS.", op_span).into());
         }
 
-        parser.whitespace()?;
+        parser.whitespace(true)?;
 
         let operand = self.parse_single_expression(parser)?;
 
@@ -1185,7 +1205,7 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
     fn parse_important_expr(parser: &mut P) -> SassResult<Spanned<AstExpr>> {
         let start = parser.toks().cursor();
         parser.expect_char('!')?;
-        parser.whitespace()?;
+        parser.whitespace(true)?;
         parser.expect_identifier("important", false)?;
 
         let span = parser.toks_mut().span_from(start);
@@ -1224,7 +1244,7 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
                 let span = call_args.span;
                 return Ok(AstExpr::If(Arc::new(Ternary(call_args))).span(span));
             } else if plain == "not" {
-                parser.whitespace()?;
+                parser.whitespace(true)?;
 
                 let value = self.parse_single_expression(parser)?;
 
@@ -1491,7 +1511,7 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
             _ => return Ok(None),
         }
 
-        let mut contents = parser.parse_interpolated_declaration_value(false, true, true)?;
+        let mut contents = parser.parse_interpolated_declaration_value(false, true, true, false)?;
         // An interpolated calc() reaches this raw-string fallback, but Dart
         // Sass serializes it without the source's leading/trailing whitespace
         // inside the parentheses (`calc( x )` becomes `calc(x)`).
@@ -1583,7 +1603,7 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
         Ok(
             if ValueParser::contains_calculation_interpolation(parser)? {
                 let mut contents =
-                    parser.parse_interpolated_declaration_value(false, false, true)?;
+                    parser.parse_interpolated_declaration_value(false, false, true, false)?;
                 // Dart Sass serializes an interpolated calculation without the
                 // source's leading/trailing whitespace inside the parentheses
                 // (`calc( x )` becomes `calc(x)`).
@@ -1625,12 +1645,12 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
                 let value = match ValueParser::try_parse_calculation_interpolation(parser, start)? {
                     Some(v) => v,
                     None => {
-                        parser.whitespace()?;
+                        parser.whitespace(true)?;
                         ValueParser::parse_calculation_sum(parser)?.node
                     }
                 };
 
-                parser.whitespace()?;
+                parser.whitespace(true)?;
                 parser.expect_char(')')?;
 
                 Ok(AstExpr::Paren(Arc::new(value)).span(parser.toks_mut().span_from(start)))
@@ -1712,14 +1732,14 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
         let mut product = ValueParser::parse_calculation_value(parser)?;
 
         loop {
-            parser.whitespace()?;
+            parser.whitespace(true)?;
             match parser.toks().peek() {
                 Some(Token {
                     kind: op @ ('*' | '/'),
                     ..
                 }) => {
                     parser.toks_mut().next();
-                    parser.whitespace()?;
+                    parser.whitespace(true)?;
 
                     let rhs = ValueParser::parse_calculation_value(parser)?;
 
@@ -1773,7 +1793,7 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
                     }
 
                     parser.toks_mut().next();
-                    parser.whitespace()?;
+                    parser.whitespace(true)?;
 
                     let rhs = ValueParser::parse_calculation_product(parser)?;
 
@@ -1896,7 +1916,7 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
                     }
 
                     let before_colon = parser.toks().cursor();
-                    parser.whitespace_without_comments();
+                    parser.whitespace_without_comments(true);
 
                     if parser.toks().next_char_is(':') {
                         parser.toks_mut().next();
@@ -1923,36 +1943,34 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
     /// Parses `if(<condition>: <value>; ...)`.
     pub(crate) fn parse_css_if(parser: &mut P, start: usize) -> SassResult<Spanned<AstExpr>> {
         parser.expect_char('(')?;
-        let parens = parser.enter_parens();
 
         let mut branches = Vec::new();
 
         loop {
-            parser.whitespace()?;
+            parser.whitespace(true)?;
 
             if !branches.is_empty() && parser.toks().next_char_is(')') {
                 break;
             }
 
             let condition = ValueParser::parse_css_if_condition(parser, true)?;
-            parser.whitespace()?;
+            parser.whitespace(true)?;
             parser.expect_char(':')?;
-            parser.whitespace()?;
+            parser.whitespace(true)?;
 
             let value = ValueParser::parse_css_if_value(parser)?;
 
             branches.push(CssIfBranch { condition, value });
 
-            parser.whitespace()?;
+            parser.whitespace(true)?;
 
             if !parser.scan_char(';') {
                 break;
             }
         }
 
-        parser.whitespace()?;
+        parser.whitespace(true)?;
         parser.expect_char(')')?;
-        parser.restore_parens(parens);
 
         let span = parser.toks_mut().span_from(start);
 
@@ -1973,6 +1991,7 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
                     })
                 ))
             }),
+            true,
             false,
             false,
         )?
@@ -1991,7 +2010,7 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
         }
 
         if ValueParser::scan_css_if_keyword(parser, "not")? {
-            parser.whitespace()?;
+            parser.whitespace(true)?;
 
             // `not` takes a single term, not a chain: `not a and b` is a syntax
             // error rather than `(not a) and b` or `not (a and b)`.
@@ -2005,7 +2024,7 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
 
         loop {
             let before = parser.toks().cursor();
-            parser.whitespace()?;
+            parser.whitespace(true)?;
 
             let next = if ValueParser::scan_css_if_keyword(parser, "and")? {
                 "and"
@@ -2022,7 +2041,7 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
                 Some(..) => return Err((r#"expected ":"."#, parser.toks().current_span()).into()),
             }
 
-            parser.whitespace()?;
+            parser.whitespace(true)?;
             tests.push(ValueParser::parse_css_if_test(parser)?);
         }
 
@@ -2111,7 +2130,7 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
 
         loop {
             let before = parser.toks().cursor();
-            parser.whitespace()?;
+            parser.whitespace(true)?;
 
             match parser.toks().peek() {
                 None
@@ -2241,9 +2260,9 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
 
         if parser.toks().next_char_is('(') {
             parser.toks_mut().next();
-            parser.whitespace()?;
+            parser.whitespace(true)?;
             let condition = ValueParser::parse_css_if_condition(parser, false)?;
-            parser.whitespace()?;
+            parser.whitespace(true)?;
             parser.expect_char(')')?;
             return Ok(CssIfAtom::Paren(condition));
         }
@@ -2260,14 +2279,15 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
         if let Some(plain) = name.as_plain() {
             if plain.eq_ignore_ascii_case("sass") {
                 parser.expect_char('(')?;
-                parser.whitespace()?;
+                parser.whitespace(true)?;
                 let expr = ValueParser::parse_expression(
                     parser,
                     Some(&|parser| Ok(parser.toks().next_char_is(')'))),
+                    true,
                     false,
                     false,
                 )?;
-                parser.whitespace()?;
+                parser.whitespace(true)?;
                 parser.expect_char(')')?;
 
                 // A `sass()` condition is settled at compile time, which a
@@ -2391,23 +2411,23 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
             return Ok(vec![interpolation]);
         }
 
-        parser.whitespace()?;
+        parser.whitespace(true)?;
 
         let mut arguments = Vec::new();
 
         if !parser.toks().next_char_is(')') {
             arguments.push(ValueParser::parse_calculation_sum(parser)?.node);
-            parser.whitespace()?;
+            parser.whitespace(true)?;
 
             while parser.scan_char(',') {
-                parser.whitespace()?;
+                parser.whitespace(true)?;
 
                 if parser.toks().next_char_is(')') {
                     break;
                 }
 
                 arguments.push(ValueParser::parse_calculation_sum(parser)?.node);
-                parser.whitespace()?;
+                parser.whitespace(true)?;
             }
         }
 

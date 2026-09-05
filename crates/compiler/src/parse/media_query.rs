@@ -24,9 +24,9 @@ impl MediaQueryParser {
     pub fn parse(&mut self) -> SassResult<Vec<MediaQuery>> {
         let mut queries = Vec::new();
         loop {
-            self.whitespace()?;
+            self.whitespace(false)?;
             queries.push(self.parse_media_query()?);
-            self.whitespace()?;
+            self.whitespace(false)?;
 
             if !self.scan_char(',') {
                 break;
@@ -43,15 +43,15 @@ impl MediaQueryParser {
     fn parse_media_query(&mut self) -> SassResult<MediaQuery> {
         if self.toks.next_char_is('(') {
             let mut conditions = vec![self.parse_media_in_parens()?];
-            self.whitespace()?;
+            self.whitespace(false)?;
 
             let mut conjunction = true;
 
             if self.scan_identifier("and", false)? {
-                self.expect_whitespace()?;
+                self.expect_whitespace(false)?;
                 conditions.append(&mut self.parse_media_logic_sequence("and")?);
             } else if self.scan_identifier("or", false)? {
-                self.expect_whitespace()?;
+                self.expect_whitespace(false)?;
                 conjunction = false;
                 conditions.append(&mut self.parse_media_logic_sequence("or")?);
             }
@@ -64,7 +64,7 @@ impl MediaQueryParser {
         let identifier1 = self.parse_identifier(false, false)?;
 
         if identifier1.eq_ignore_ascii_case("not") {
-            self.expect_whitespace()?;
+            self.expect_whitespace(false)?;
             if !self.looking_at_identifier() {
                 return Ok(MediaQuery::condition(
                     vec![format!("(not {})", self.parse_media_in_parens()?)],
@@ -73,7 +73,7 @@ impl MediaQueryParser {
             }
         }
 
-        self.whitespace()?;
+        self.whitespace(false)?;
 
         if !self.looking_at_identifier() {
             return Ok(MediaQuery::media_type(Some(identifier1), None, None));
@@ -82,15 +82,15 @@ impl MediaQueryParser {
         let identifier2 = self.parse_identifier(false, false)?;
 
         if identifier2.eq_ignore_ascii_case("and") {
-            self.expect_whitespace()?;
+            self.expect_whitespace(false)?;
             media_type = Some(identifier1);
         } else {
-            self.whitespace()?;
+            self.whitespace(false)?;
             modifier = Some(identifier1);
             media_type = Some(identifier2);
             if self.scan_identifier("and", false)? {
                 // For example, "@media only screen and ..."
-                self.expect_whitespace()?;
+                self.expect_whitespace(false)?;
             } else {
                 // For example, "@media only screen {"
                 return Ok(MediaQuery::media_type(media_type, modifier, None));
@@ -102,7 +102,7 @@ impl MediaQueryParser {
 
         if self.scan_identifier("not", false)? {
             // For example, "@media screen and not (...) {"
-            self.expect_whitespace()?;
+            self.expect_whitespace(false)?;
             return Ok(MediaQuery::media_type(
                 media_type,
                 modifier,
@@ -128,11 +128,11 @@ impl MediaQueryParser {
         let mut result = Vec::new();
         loop {
             result.push(self.parse_media_in_parens()?);
-            self.whitespace()?;
+            self.whitespace(false)?;
             if !self.scan_identifier(operator, false)? {
                 return Ok(result);
             }
-            self.expect_whitespace()?;
+            self.expect_whitespace(false)?;
         }
     }
 }

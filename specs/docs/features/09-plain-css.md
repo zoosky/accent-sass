@@ -86,7 +86,10 @@ other twelve were the indented syntax, and they split again:
   newline in it is whitespace the way it is in an argument list. The
   fork already models that with `enter_parens`; the import-modifier path
   did not use it, and neither did the newline case in
-  `parse_interpolated_declaration_value`.
+  `parse_interpolated_declaration_value`. (Item
+  [10](10-indented-newlines.md) later replaced `enter_parens` with
+  dart-sass's `consumeNewlines` parameter, which is where that behaviour
+  lives now.)
 - One, `supports/calc/sass`, was not about `supports()` at all: it was
   the trailing `;` in `@import "a.css" supports(calc(1));`. The indented
   syntax tolerates one, and `@import` was not calling

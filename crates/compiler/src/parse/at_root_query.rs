@@ -25,22 +25,22 @@ impl AtRootQueryParser {
 
     pub fn parse(&mut self) -> SassResult<AtRootQuery> {
         self.expect_char('(')?;
-        self.whitespace()?;
+        self.whitespace(false)?;
         let include = self.scan_identifier("with", false)?;
 
         if !include {
             self.expect_identifier("without", false)?;
         }
 
-        self.whitespace()?;
+        self.whitespace(false)?;
         self.expect_char(':')?;
-        self.whitespace()?;
+        self.whitespace(false)?;
 
         let mut names = HashSet::new();
 
         loop {
             names.insert(self.parse_identifier(false, false)?.to_ascii_lowercase());
-            self.whitespace()?;
+            self.whitespace(false)?;
 
             if !self.looking_at_identifier() {
                 break;
