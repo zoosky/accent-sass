@@ -100,11 +100,159 @@ pub(crate) struct ExtensionStore {
     span: Span,
 }
 
+/// The extensions one store contributes to another, captured by value.
+///
+/// A downstream module's extensions apply to the modules it loaded. Capturing
+/// them as a snapshot lets the module graph walk feed one store into another
+/// without borrowing two stores at once.
+#[derive(Debug, Clone)]
+pub(crate) struct ExtensionSnapshot {
+    extensions: HashMap<SimpleSelector, IndexMap<ComplexSelector, Extension>>,
+    source_specificity: HashMap<SimpleSelector, i32>,
+}
+
 impl ExtensionStore {
     /// An `Extender` that contains no extensions and can have no extensions added.
     // TODO: empty extender
     #[allow(dead_code)]
     const EMPTY: () = ();
+
+    /// Whether this store has no extensions.
+    pub(crate) fn is_empty(&self) -> bool {
+        self.extensions.is_empty()
+    }
+
+    /// Captures this store's extensions for applying to an upstream store.
+    pub(crate) fn snapshot(&self) -> ExtensionSnapshot {
+        ExtensionSnapshot {
+            extensions: self.extensions.clone(),
+            source_specificity: self.source_specificity.clone(),
+        }
+    }
+
+    /// The simple selectors present in the selectors this store handles,
+    /// including ones added by extensions.
+    pub(crate) fn simple_selectors(&self) -> HashSet<SimpleSelector> {
+        self.selectors.keys().cloned().collect()
+    }
+
+    /// The mandatory extensions in this store whose target satisfies
+    /// `predicate`, paired with the target itself.
+    ///
+    /// Merged extensions read as optional; un-merging them recovers the
+    /// mandatory sides, so an `@extend` merged with another still counts
+    /// when checking that it found its target.
+    pub(crate) fn extensions_where_target(
+        &self,
+        predicate: impl Fn(&SimpleSelector) -> bool,
+    ) -> Vec<(SimpleSelector, Extension)> {
+        let mut result = Vec::new();
+
+        for (target, sources) in &self.extensions {
+            if !predicate(target) {
+                continue;
+            }
+
+            for extension in sources.values() {
+                for extension in extension.unmerge() {
+                    if !extension.is_optional {
+                        result.push((target.clone(), extension));
+                    }
+                }
+            }
+        }
+
+        result
+    }
+
+    /// Extends this store with all the extensions in `snapshots`.
+    ///
+    /// The extensions extend every selector already in this store, but not
+    /// each other -- extension loops cannot exist across module boundaries.
+    /// Ported from Dart Sass 1.103.1 `ExtensionStore.addExtensions`.
+    ///
+    /// Returns an error when two extensions of the same target from
+    /// incompatible media queries meet.
+    pub(crate) fn add_extensions(&mut self, snapshots: Vec<ExtensionSnapshot>) -> SassResult<()> {
+        let mut extensions_to_extend: Vec<Extension> = Vec::new();
+        let mut selectors_to_extend = SelectorHashSet::new();
+        let mut has_selectors_to_extend = false;
+        let mut new_extensions: HashMap<SimpleSelector, IndexMap<ComplexSelector, Extension>> =
+            HashMap::new();
+
+        for snapshot in snapshots {
+            if snapshot.extensions.is_empty() {
+                continue;
+            }
+
+            self.source_specificity.extend(snapshot.source_specificity);
+
+            for (target, new_sources) in snapshot.extensions {
+                // Private selectors can't be extended across module
+                // boundaries.
+                if let SimpleSelector::Placeholder(name) = &target
+                    && (name.starts_with('-') || name.starts_with('_'))
+                {
+                    continue;
+                }
+
+                // Find existing extensions and selectors to extend.
+                let extensions_for_target = self.extensions_by_extender.get(&target).cloned();
+                if let Some(extensions_for_target) = &extensions_for_target {
+                    extensions_to_extend.extend(extensions_for_target.iter().cloned());
+                }
+
+                let selectors_for_target = self.selectors.get(&target).cloned();
+                let has_interest =
+                    extensions_for_target.is_some() || selectors_for_target.is_some();
+                if let Some(selectors_for_target) = selectors_for_target {
+                    has_selectors_to_extend = true;
+                    for selector in selectors_for_target {
+                        selectors_to_extend.insert(selector);
+                    }
+                }
+
+                // Add the new sources to this store's extensions.
+                if let Some(existing_sources) = self.extensions.get_mut(&target) {
+                    for (extender, extension) in new_sources {
+                        let merged = match existing_sources.get(&extender) {
+                            Some(existing) => MergedExtension::merge(existing.clone(), extension)?,
+                            None => extension,
+                        };
+
+                        existing_sources.insert(extender.clone(), merged.clone());
+
+                        if has_interest {
+                            new_extensions
+                                .entry(target.clone())
+                                .or_insert_with(IndexMap::new)
+                                .insert(extender, merged);
+                        }
+                    }
+                } else {
+                    self.extensions.insert(target.clone(), new_sources.clone());
+
+                    if has_interest {
+                        new_extensions.insert(target, new_sources);
+                    }
+                }
+            }
+        }
+
+        if !new_extensions.is_empty() {
+            if !extensions_to_extend.is_empty() {
+                // The return value only matters for extension loops, which
+                // cannot exist across module boundaries.
+                self.extend_existing_extensions(extensions_to_extend, &new_extensions);
+            }
+
+            if has_selectors_to_extend {
+                self.extend_existing_selectors(selectors_to_extend, &new_extensions);
+            }
+        }
+
+        Ok(())
+    }
 
     pub fn extend(
         selector: SelectorList,
@@ -890,6 +1038,34 @@ impl ExtensionStore {
         extended_selector
     }
 
+    /// Every simple selector in `complex`, including ones nested inside
+    /// pseudo selectors.
+    fn simple_selectors_of(complex: &ComplexSelector) -> Vec<SimpleSelector> {
+        fn visit(complex: &ComplexSelector, out: &mut Vec<SimpleSelector>) {
+            for component in &complex.components {
+                if let ComplexSelectorComponent::Compound(compound) = component {
+                    for simple in &compound.components {
+                        out.push(simple.clone());
+
+                        if let SimpleSelector::Pseudo(Pseudo {
+                            selector: Some(inner),
+                            ..
+                        }) = simple
+                        {
+                            for inner_complex in &inner.components {
+                                visit(inner_complex, out);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        let mut out = Vec::new();
+        visit(complex, &mut out);
+        out
+    }
+
     /// Registers the `SimpleSelector`s in `list` to point to `selector` in
     /// `self.selectors`.
     fn register_selector(&mut self, list: SelectorList, selector: &ExtendedSelector) {
@@ -966,27 +1142,27 @@ impl ExtensionStore {
                 // If there's already an extend from `extender` to `target`, we don't need
                 // to re-run the extension. We may need to mark the extension as
                 // mandatory, though.
-                let mut new_val = MergedExtension::merge(existing_state.clone(), state).unwrap();
-                sources.get_mut(&complex).replace(&mut new_val);
+                let new_val = MergedExtension::merge(existing_state.clone(), state).unwrap();
+                sources.insert(complex.clone(), new_val);
                 continue;
             }
 
             sources.insert(complex.clone(), state.clone());
 
-            for component in complex.components.clone() {
-                if let ComplexSelectorComponent::Compound(component) = component {
-                    for simple in component.components {
-                        self.extensions_by_extender
-                            .entry(simple.clone())
-                            .or_insert_with(Vec::new)
-                            .push(state.clone());
-                        // Only source specificity for the original selector is relevant.
-                        // Selectors generated by `@extend` don't get new specificity.
-                        self.source_specificity
-                            .entry(simple.clone())
-                            .or_insert_with(|| complex.max_specificity());
-                    }
-                }
+            // Index the extension under every simple selector in its
+            // extender, including ones nested inside pseudo selectors like
+            // `:is(...)` -- an extension of a selector that appears there
+            // must rewrite this extender too.
+            for simple in Self::simple_selectors_of(&complex) {
+                self.extensions_by_extender
+                    .entry(simple.clone())
+                    .or_insert_with(Vec::new)
+                    .push(state.clone());
+                // Only source specificity for the original selector is relevant.
+                // Selectors generated by `@extend` don't get new specificity.
+                self.source_specificity
+                    .entry(simple)
+                    .or_insert_with(|| complex.max_specificity());
             }
 
             if selectors.is_some() || existing_extensions.is_some() {
@@ -1070,26 +1246,20 @@ impl ExtensionStore {
 
             let contains_extension = selectors.first() == Some(&extension.extender);
 
-            let mut first = false;
-            for complex in selectors {
-                // If the output contains the original complex selector, there's no
-                // need to recreate it.
-                if contains_extension && first {
-                    first = false;
-                    continue;
-                }
+            // If the output contains the original complex selector, there's no
+            // need to recreate it.
+            let skip = usize::from(contains_extension);
 
+            for complex in selectors.into_iter().skip(skip) {
                 let with_extender = extension.clone().with_extender(complex.clone());
                 let existing_extension = sources.get(&complex);
                 if let Some(existing_extension) = existing_extension.cloned() {
-                    sources.get_mut(&complex).replace(
-                        &mut MergedExtension::merge(existing_extension.clone(), with_extender)
-                            .unwrap(),
+                    sources.insert(
+                        complex.clone(),
+                        MergedExtension::merge(existing_extension, with_extender).unwrap(),
                     );
                 } else {
-                    sources
-                        .get_mut(&complex)
-                        .replace(&mut with_extender.clone());
+                    sources.insert(complex.clone(), with_extender.clone());
 
                     for component in complex.components.clone() {
                         if let ComplexSelectorComponent::Compound(component) = component {
@@ -1111,13 +1281,17 @@ impl ExtensionStore {
                     }
                 }
             }
-            // If `selectors` doesn't contain `extension.extender`, for example if it
-            // was replaced due to :not() expansion, we must get rid of the old
-            // version.
-            if !contains_extension {
-                // todo: evaluate whether we could get away with swap_remove
-                sources.shift_remove(&extension.extender);
-            }
+            // The original extension stays alongside the rewritten ones --
+            // Dart Sass keeps both, which is what leaves `:is(a)` next to
+            // `:is(a, b)` in the output when an extension is chained into a
+            // selector pseudo.
+            //
+            // `sources` is a clone -- `extend_complex` needs `&mut self` while
+            // the map is read -- so the rewritten set has to be written back,
+            // or extending an existing extension is silently lost (the shape
+            // of sass/dart-sass#1297).
+            self.extensions
+                .insert(extension.target.clone().unwrap(), sources);
         }
         additional_extensions
     }
@@ -1175,14 +1349,12 @@ fn map_add_all_2<K1: Hash + Eq, K2: Hash + Eq, V>(
     destination: &mut HashMap<K1, IndexMap<K2, V>>,
     source: HashMap<K1, IndexMap<K2, V>>,
 ) {
-    for (key, mut inner) in source {
-        if destination.contains_key(&key) {
-            destination
-                .get_mut(&key)
-                .get_or_insert(&mut IndexMap::new())
-                .extend(inner);
-        } else {
-            destination.get_mut(&key).replace(&mut inner);
+    for (key, inner) in source {
+        match destination.get_mut(&key) {
+            Some(existing) => existing.extend(inner),
+            None => {
+                destination.insert(key, inner);
+            }
         }
     }
 }
