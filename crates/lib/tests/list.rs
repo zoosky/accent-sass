@@ -634,4 +634,10 @@ test!(
     "a {\n  color: join(a, b, space, null);\n}\n",
     "a {\n  color: a b;\n}\n"
 );
-test!(zip_no_args, "a {\n  color: zip();\n}\n", "");
+// An empty list has no CSS representation, so serializing it is an error --
+// the same one dart-sass 1.103.1 raises. The declaration used to be dropped
+// silently instead.
+error!(
+    zip_no_args,
+    "a {\n  color: zip();\n}\n", "Error: () isn't a valid CSS value."
+);

@@ -1550,7 +1550,7 @@ impl<'a> Serializer<'a> {
         self.buffer.push(b':');
 
         // todo: _writeFoldedValue and _writeReindentedValue
-        if !style.declared_as_custom_property && !self.options.is_compressed() {
+        if style.parsed_as_sass_script && !self.options.is_compressed() {
             self.buffer.push(b' ');
         }
 

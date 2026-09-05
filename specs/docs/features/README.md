@@ -27,6 +27,12 @@ passing against 1,718 failures; items 01-06 closed the difference. CI reports
 13,558 on the same tree -- one or two tests depend on `random()` and move
 between runs.
 
+Since that measurement, #27 (CSS nesting passthrough) took the suite to 590
+failures and #29 (the CSS `@function` rule) to **563**. The ranking below is
+still stated against the 650 baseline, and the rows #27 and #29 touched are
+annotated where they changed; a rebuild of the whole table is worth doing once
+another large item lands.
+
 To reproduce:
 
 ```bash
@@ -63,16 +69,15 @@ deepest areas are 192 of them; the other 233 are a long tail of areas with
 fewer than eleven each.
 
 `spec/css/plain` used to lead this table with 51. It is now item
-[09](09-plain-css.md) and sits under "Open items" below with 24 left, so the
-unclaimed total is 374.
+[09](09-plain-css.md) and sits under "Open items" below with 16 left.
 
 | Area | Failures | Kind | Note |
 |---|---|---|---|
 | `spec/css/functions` | 24 | 20 different output | |
 | `spec/css/supports` | 21 | 15 rejects valid input | |
 | `spec/css/style_rule` | 17 | 9 rejects valid input | |
-| `spec/css/function` | 16 | 15 rejects valid input | |
-| `spec/directives/function` | 15 | 12 rejects valid input | |
+| `spec/css/function` | ~~16~~ 0 | | closed by #29 |
+| `spec/directives/function` | ~~15~~ 14 | 12 rejects valid input | see below |
 | `spec/values/lists` | 13 | 13 rejects valid input | |
 | `spec/core_functions/math` | 12 | 11 different output | |
 | `spec/directives/for` | 12 | 12 rejects valid input | |
@@ -80,9 +85,30 @@ unclaimed total is 374.
 
 The `css/*` rows together are about 90 failures and mostly one theme: input
 that dart-sass accepts and this compiler does not -- the same theme as item
-09. `spec/css/function` and `spec/directives/function` are the CSS `@function`
-rule, which is also what most of item 09's remainder is; those 31 and item
-09's 8 are one feature and are best done together.
+09.
+
+The original ranking read `spec/css/function` and `spec/directives/function`
+as one feature together with item 09's `@function` residue. That was half
+right. #29 closed all 16 of `spec/css/function` and item 09's 8 with the CSS
+`@function` rule, but it took only one test out of `spec/directives/function`.
+The other 14 are two unrelated defects, and are the next thing to pick up
+here.
+
+- **The [function-name proposal]** -- 11 failures. `calc`, `clamp` and a
+  vendor-prefixed `-a-and` are legal Sass function names now; `type` is
+  reserved for the plain-CSS function; and `unvendor(name) == "element"` is
+  the only prefix rule left. Two of the 11 are "accepts invalid input", so
+  they need the `type` check added rather than a check removed. `calc` and
+  `clamp` also need the evaluator to prefer a user-defined function over the
+  calculation of the same name.
+- **Indented-syntax whitespace** -- 3 failures. `@function` followed by a
+  newline and then `a()` splits an at-rule header across lines. That is
+  dart-sass's `consumeNewlines` parameter, which this fork does not have, so
+  it is a cross-cutting change rather than a `@function` one. `spec/directives/for`
+  and the indented half of item 09's `@import ... supports()` failures look
+  like the same gap.
+
+[function-name proposal]: https://github.com/sass/sass/tree/main/accepted/function-name.md
 
 ### Open items
 
@@ -90,7 +116,7 @@ rule, which is also what most of item 09's remainder is; those 31 and item
 |---|---|---|---|
 | [07-calculation-long-tail.md](07-calculation-long-tail.md) | What #12 left in the calculation suite: `%` and `mod()` with a signed zero against an infinite divisor, a rounding strategy arriving through interpolation, line noise inside an interpolated `calc()` | 3 | `spec/values/calculation` |
 | [08-calculation-warnings-and-error-wording.md](08-calculation-warnings-and-error-wording.md) | Deprecation warnings (none exist) and error wording in calculations | 57, invisible under the standard flags | `spec/values/calculation` |
-| [09-plain-css.md](09-plain-css.md) | Plain CSS. Nesting passthrough landed in #27 and closed 27 of the original 51; what is left is the CSS `@function` rule, whitespace in `@import ... supports(..)`, `if()` in plain CSS, and `//` in a plain CSS value | 24 | `spec/css/plain` |
+| [09-plain-css.md](09-plain-css.md) | Plain CSS. Nesting passthrough landed in #27 and closed 27 of the original 51, and the CSS `@function` rule in #29 closed 8 more; what is left is whitespace in `@import ... supports(..)`, `if()` in plain CSS, and `//` in a plain CSS value | 16 | `spec/css/plain` |
 
 Item 07's 3 failures are the same three counted in item 01's residue below,
 not additional ones -- 07 exists to describe what 01 deliberately left. Item

@@ -1270,6 +1270,7 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
                         name: Identifier::from(plain),
                         arguments: Arc::new(arguments),
                         span: parser.toks_mut().span_from(start),
+                        is_custom_function: plain.starts_with("--"),
                     })
                     .span(parser.toks_mut().span_from(start)))
                 } else {
@@ -1330,6 +1331,7 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
             name: Identifier::from(name),
             arguments: Arc::new(args),
             span,
+            is_custom_function: false,
         })
         .span(span))
     }
@@ -1675,9 +1677,10 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
         } else {
             Ok(AstExpr::FunctionCall(FunctionCallExpr {
                 namespace: None,
-                name: Identifier::from(ident),
+                name: Identifier::from(&ident),
                 arguments: Arc::new(parser.parse_argument_invocation(false, false)?),
                 span: parser.toks_mut().span_from(start),
+                is_custom_function: ident.starts_with("--"),
             })
             .span(parser.toks_mut().span_from(start)))
         }
