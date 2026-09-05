@@ -53,18 +53,22 @@ impl MergedExtension {
 
     fn into_extension(left: Extension, right: Extension) -> Extension {
         Extension {
-            extender: left.extender,
-            target: left.target,
+            extender: left.extender.clone(),
+            target: left.target.clone(),
             span: left.span,
-            media_context: match left.media_context {
+            media_context: match left.media_context.clone() {
                 Some(v) => Some(v),
-                None => right.media_context,
+                None => right.media_context.clone(),
             },
             specificity: left.specificity,
+            // The merged extension reads as optional so the pipeline treats
+            // it as resolved; the sides it merged stay reachable through
+            // `Extension::unmerge`, which is how a mandatory side still
+            // counts when checking that every `@extend` found its target.
             is_optional: true,
             is_original: false,
-            left: None,
-            right: None,
+            left: Some(Box::new(left)),
+            right: Some(Box::new(right)),
         }
     }
 }

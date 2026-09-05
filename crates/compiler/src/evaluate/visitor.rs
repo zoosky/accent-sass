@@ -1,6 +1,6 @@
 use std::{
     cell::{Cell, RefCell},
-    collections::{BTreeMap, BTreeSet, HashSet},
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     ffi::OsStr,
     fmt,
     iter::FromIterator,
@@ -11,7 +11,7 @@ use std::{
 };
 
 use codemap::{CodeMap, Span, Spanned};
-use indexmap::IndexSet;
+use indexmap::{IndexMap, IndexSet};
 
 use crate::{
     ContextFlags, InputSyntax, Options,
@@ -34,8 +34,8 @@ use crate::{
         StylesheetParser,
     },
     selector::{
-        ComplexSelectorComponent, ExtendRule, ExtendedSelector, ExtensionStore, SelectorList,
-        SelectorParser,
+        ComplexSelector, ComplexSelectorComponent, ExtendRule, ExtendedSelector, ExtensionSnapshot,
+        ExtensionStore, SelectorList, SelectorParser, SimpleSelector,
     },
     utils::{to_sentence, trim_ascii},
     value::{
@@ -163,6 +163,11 @@ pub struct Visitor<'a> {
     /// later load can tell "the same `with` clause reaching the module along
     /// another path" (legal) from "a second `with` clause" (an error).
     module_configurations: BTreeMap<PathBuf, Rc<RefCell<Configuration>>>,
+    /// The modules the currently-executing context has loaded. Swapped per
+    /// module execution, so each module records its own upstream list; what
+    /// remains at the end is the root document's, the starting point for
+    /// `apply_module_extensions`.
+    current_upstream: Vec<Arc<RefCell<Module>>>,
     /// The CSS each cached module emitted when it first executed, recorded
     /// with hermetic selectors (resolved without any enclosing style rule),
     /// so an `@import` or `meta.load-css` of an already-loaded module can
@@ -224,6 +229,7 @@ impl<'a> Visitor<'a> {
             import_nodes: Vec::new(),
             modules: BTreeMap::new(),
             module_configurations: BTreeMap::new(),
+            current_upstream: Vec::new(),
             module_css: BTreeMap::new(),
             in_import_context: false,
             active_modules: BTreeSet::new(),
@@ -254,14 +260,177 @@ impl<'a> Visitor<'a> {
         Ok(())
     }
 
-    pub(crate) fn finish(mut self) -> Vec<CssStmt> {
+    pub(crate) fn finish(mut self) -> SassResult<Vec<CssStmt>> {
+        self.apply_module_extensions()?;
+
         let mut finished_tree = self.css_tree.finish();
         if self.import_nodes.is_empty() {
-            finished_tree
+            Ok(finished_tree)
         } else {
             self.import_nodes.append(&mut finished_tree);
-            self.import_nodes
+            Ok(self.import_nodes)
         }
+    }
+
+    /// Applies each module's extensions to the modules it loaded, and errors
+    /// on a mandatory `@extend` no reachable module satisfies.
+    ///
+    /// Ported from Dart Sass 1.103.1 `_extendModules`: modules are walked in
+    /// reverse topological order -- the root document first, every module
+    /// before the modules it loaded -- so by the time a module is processed,
+    /// every store downstream of it has already contributed its extensions.
+    /// An extension therefore reaches the extending module's own CSS and its
+    /// upstream closure, never a sibling. Selector handles are shared into
+    /// the single CSS tree, so extending them here is reflected when the
+    /// tree is serialized.
+    fn apply_module_extensions(&mut self) -> SassResult<()> {
+        let sorted = self.sorted_modules();
+
+        // Extensions not yet satisfied by any module, keyed by target and
+        // extender, in the order they were found so the first one reports.
+        let mut unsatisfied: IndexMap<(SimpleSelector, ComplexSelector), (SimpleSelector, Span)> =
+            IndexMap::new();
+
+        // The snapshots of every store directly downstream of a module,
+        // keyed by the module's pointer identity.
+        let mut downstream: HashMap<*const RefCell<Module>, Vec<ExtensionSnapshot>> =
+            HashMap::new();
+
+        // The root document is the most-downstream "module": its store is the
+        // visitor's own and its upstream list is what load_module collected
+        // at the top level.
+        {
+            let original_selectors = self.extender.simple_selectors();
+
+            for (target, extension) in self
+                .extender
+                .extensions_where_target(|target| !original_selectors.contains(target))
+            {
+                unsatisfied
+                    .entry((target.clone(), extension.extender.clone()))
+                    .or_insert((target, extension.span));
+            }
+
+            if !self.extender.is_empty() {
+                let snapshot = self.extender.snapshot();
+
+                for upstream in &self.current_upstream {
+                    downstream
+                        .entry(Arc::as_ptr(upstream))
+                        .or_default()
+                        .push(snapshot.clone());
+                }
+            }
+
+            for (target, extension) in self
+                .extender
+                .extensions_where_target(|target| original_selectors.contains(target))
+            {
+                unsatisfied.shift_remove(&(target, extension.extender));
+            }
+        }
+
+        for module in sorted {
+            let mut module_ref = module.borrow_mut();
+
+            let (store, upstream) = match &mut *module_ref {
+                Module::Environment {
+                    extension_store,
+                    upstream,
+                    ..
+                } => (extension_store, upstream),
+                _ => continue,
+            };
+
+            // Snapshot the selectors before downstream extensions add more,
+            // so a selector added by a sibling extension does not count as
+            // satisfying an extension.
+            let original_selectors = store.simple_selectors();
+
+            // This module's own extensions start out unsatisfied; downstream
+            // ones were recorded when their module was processed.
+            for (target, extension) in
+                store.extensions_where_target(|target| !original_selectors.contains(target))
+            {
+                unsatisfied
+                    .entry((target.clone(), extension.extender.clone()))
+                    .or_insert((target, extension.span));
+            }
+
+            if let Some(snapshots) = downstream.remove(&Arc::as_ptr(&module)) {
+                store.add_extensions(snapshots)?;
+            }
+
+            if store.is_empty() {
+                continue;
+            }
+
+            let snapshot = store.snapshot();
+
+            for upstream in upstream.iter() {
+                downstream
+                    .entry(Arc::as_ptr(upstream))
+                    .or_default()
+                    .push(snapshot.clone());
+            }
+
+            // Anything this module's store now satisfies -- its own
+            // extensions and newly added downstream ones alike -- comes off
+            // the list.
+            for (target, extension) in
+                store.extensions_where_target(|target| original_selectors.contains(target))
+            {
+                unsatisfied.shift_remove(&(target, extension.extender));
+            }
+        }
+
+        if let Some(((_, _), (target, span))) = unsatisfied.first() {
+            return Err((
+                format!(
+                    "The target selector was not found.\nUse \"@extend {} !optional\" to avoid this error.",
+                    target
+                ),
+                *span,
+            )
+                .into());
+        }
+
+        Ok(())
+    }
+
+    /// The modules reachable from the root document, in reverse topological
+    /// order: every module comes before the modules it loaded.
+    fn sorted_modules(&self) -> Vec<Arc<RefCell<Module>>> {
+        fn visit(
+            module: &Arc<RefCell<Module>>,
+            seen: &mut HashSet<*const RefCell<Module>>,
+            post_order: &mut Vec<Arc<RefCell<Module>>>,
+        ) {
+            if !seen.insert(Arc::as_ptr(module)) {
+                return;
+            }
+
+            if let Module::Environment { upstream, .. } = &*module.borrow() {
+                for upstream in upstream {
+                    visit(upstream, seen, post_order);
+                }
+            }
+
+            post_order.push(Arc::clone(module));
+        }
+
+        let mut seen = HashSet::new();
+        let mut post_order = Vec::new();
+
+        for module in &self.current_upstream {
+            visit(module, &mut seen, &mut post_order);
+        }
+
+        // Post-order puts every module after its upstreams; reversed, every
+        // module comes before them.
+        post_order.reverse();
+
+        post_order
     }
 
     fn visit_return_rule(&mut self, ret: AstReturn) -> SassResult<Option<Value>> {
@@ -689,21 +858,27 @@ impl<'a> Visitor<'a> {
         }
 
         let env = Environment::new();
-        // The loaded module's style rules and `@extend`s share the visitor's
-        // extension store instead of getting their own: accent-sass emits all CSS
-        // into one tree, so a per-module store silently dropped any extension
-        // that crosses a `@use`/`@forward` boundary (extending a placeholder
-        // defined in another file emitted nothing). Sharing the store matches
-        // Dart Sass's output for upstream and downstream extensions alike; the
-        // difference is that an extension here can also reach CSS from sibling
-        // modules the extending module never loaded, which Dart Sass scopes
-        // away (connorskees/grass#104 is the upstream issue for a full
-        // per-module implementation).
-        let extension_store = ExtensionStore::new(self.empty_span);
+        // A module loaded by `@use` or `@forward` gets its own extension
+        // store: its style rules register there, and so do its `@extend`s, so
+        // `apply_module_extensions` can scope extensions to a module's
+        // upstream closure the way Dart Sass does (connorskees/grass#104). A
+        // module loaded in an import context instead shares the enclosing
+        // context's store -- `@import` means "as if written here", and Dart
+        // Sass likewise re-registers the injected CSS in the importer.
+        let swapped_state = if self.in_import_context {
+            None
+        } else {
+            let module_store = ExtensionStore::new(self.empty_span);
+
+            Some((
+                mem::replace(&mut self.extender, module_store),
+                mem::take(&mut self.current_upstream),
+            ))
+        };
 
         let css_start = self.css_tree.stmt_count();
 
-        self.with_environment::<SassResult<()>, _>(env.new_closure(), |visitor| {
+        let execution = self.with_environment::<SassResult<()>, _>(env.new_closure(), |visitor| {
             let old_parent = visitor.parent;
             // In an import context the module's CSS belongs where the
             // `@import` or `@include meta.load-css(..)` is written, so the
@@ -771,9 +946,22 @@ impl<'a> Visitor<'a> {
             }
 
             Ok(())
-        })?;
+        });
 
-        let module = env.to_module(extension_store);
+        // Restore the enclosing store and upstream list before any error can
+        // propagate; the module keeps the store its rules registered in and
+        // the modules it loaded.
+        let (module_store, module_upstream) = match swapped_state {
+            Some((old_extender, old_upstream)) => (
+                mem::replace(&mut self.extender, old_extender),
+                mem::replace(&mut self.current_upstream, old_upstream),
+            ),
+            None => (ExtensionStore::new(self.empty_span), Vec::new()),
+        };
+
+        execution?;
+
+        let module = env.to_module(module_store, module_upstream);
 
         // Record what the module emitted -- including CSS from modules it
         // loaded in turn, matching how Dart Sass combines a module's CSS with
@@ -1021,6 +1209,16 @@ impl<'a> Visitor<'a> {
         let module = self.execute(stylesheet.clone(), configuration, names_in_errors)?;
 
         self.active_modules.remove(&canonical_url);
+
+        // Record the load as a module-graph edge -- for a cache hit too, since
+        // this context's extensions reach the module either way.
+        if !self
+            .current_upstream
+            .iter()
+            .any(|upstream| Arc::ptr_eq(upstream, &module))
+        {
+            self.current_upstream.push(Arc::clone(&module));
+        }
 
         callback(self, module, stylesheet)?;
 

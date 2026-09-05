@@ -32,10 +32,10 @@ pub(crate) struct Extension {
     /// The span in which `extender` was defined.
     pub span: Span,
 
-    #[allow(dead_code)]
+    /// The two extensions this one was merged from, when it is the result of
+    /// `MergedExtension::merge` on two extensions that must both stay
+    /// resolvable. `None` on ordinary extensions.
     pub left: Option<Box<Extension>>,
-
-    #[allow(dead_code)]
     pub right: Option<Box<Extension>>,
 }
 
@@ -77,5 +77,18 @@ impl Extension {
     pub fn with_extender(mut self, extender: ComplexSelector) -> Self {
         self.extender = extender;
         self
+    }
+
+    /// The plain extensions this one stands for: itself, or -- for a merged
+    /// extension -- the sides it was merged from, recursively.
+    pub fn unmerge(&self) -> Vec<Extension> {
+        match (&self.left, &self.right) {
+            (Some(left), Some(right)) => {
+                let mut result = left.unmerge();
+                result.extend(right.unmerge());
+                result
+            }
+            _ => vec![self.clone()],
+        }
     }
 }

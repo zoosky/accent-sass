@@ -278,11 +278,13 @@ impl ModuleScope {
 pub(crate) enum Module {
     Environment {
         scope: ModuleScope,
-        #[allow(dead_code)]
-        upstream: Vec<Module>,
-        #[allow(dead_code)]
+        /// The modules this module loaded, in load order. Walked at the end
+        /// of compilation so a downstream module's extensions apply to the
+        /// modules it loaded and no further.
+        upstream: Vec<Arc<RefCell<Module>>>,
+        /// The selectors this module's CSS registered and the extensions its
+        /// `@extend` rules declared.
         extension_store: ExtensionStore,
-        #[allow(dead_code)]
         env: Environment,
     },
     Builtin {
@@ -403,7 +405,11 @@ impl Module {
         }
     }
 
-    pub fn new_env(env: Environment, extension_store: ExtensionStore) -> Self {
+    pub fn new_env(
+        env: Environment,
+        extension_store: ExtensionStore,
+        upstream: Vec<Arc<RefCell<Module>>>,
+    ) -> Self {
         let variables = {
             let variables = (*env.forwarded_modules).borrow();
             let variables = variables
@@ -439,7 +445,7 @@ impl Module {
 
         Module::Environment {
             scope,
-            upstream: Vec::new(),
+            upstream,
             extension_store,
             env,
         }
