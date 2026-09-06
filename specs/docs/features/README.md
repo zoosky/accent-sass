@@ -32,6 +32,14 @@ parameter) to 397. #34, which scoped `@extend` to a module's upstream closure,
 took it to 375; it belongs to no item here, having come off the branch left
 after #18. One or two tests depend on `random()` and move between runs.
 
+Every count on this page comes from a macOS run. The advisory `sass-spec` CI
+job runs the same flags on a Linux runner and reports two more failures: 399
+on `659dce0` against 397 locally, 377 on `be69f6a` against 375. The offset
+held across both commits and the 22-failure delta is identical on either
+platform, so the ranking is unaffected, but the two tests behind it are
+unidentified -- the job keeps only the last 40 lines of its output, which is
+not enough to name them. Expect CI to read two higher than this page.
+
 To reproduce:
 
 ```bash
