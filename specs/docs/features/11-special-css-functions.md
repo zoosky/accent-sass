@@ -1,9 +1,9 @@
 # Special CSS functions
 
 Unlocks the 22 sass-spec tests under `spec/css/functions`, the deepest area
-no document claimed, the 6 under `spec/css/percent` (**section 5 has
-landed**), and 35 under `spec/core_functions/color` that need two of the
-sections below together.
+no document claimed, the 6 under `spec/css/percent`, and 35 under
+`spec/core_functions/color`. **Sections 4 and 5 have landed**, taking the 35
+and 2 of the 22; sections 1 to 3 are the 20 that remain.
 Measured 2026-09-06 against master (`1c3608e`), the pinned sass-spec revision
 `4a9eea66`, and dart-sass 1.103.1 run as `npx -y sass@1.103.1`:
 
@@ -33,7 +33,7 @@ leaves all 35 failing.
 | 1 | A silent comment is copied into the output | 8 | -- |
 | 2 | A quoted string is re-quoted | 8 | -- |
 | 3 | `type()` is not a special function | 4 | -- |
-| 4 | `attr()` and `if()` are not special variable strings | 2 | 35, with 5 |
+| 4 | `attr()` and `if()` are not special variable strings -- **landed** | 2 | 35 |
 | 5 | A bare `%` is not a value -- **landed**, #38 | 6 | 35, with 4 |
 
 Sections 1 and 2 reach further than the table says. Both defects live in
@@ -201,14 +201,19 @@ The two `type/punctuation` tests also need section 2; the body they pass is
 the same `""''` line. Landing this section alone moves them from an error to
 a wrong-output failure.
 
-## 4. `attr()` and `if()` are not special variable strings
+## 4. `attr()` and `if()` are not special variable strings -- landed
 
 `spec/css/functions/special_variable/{attr,if}`, and 35 fixtures under
 `spec/core_functions/color`
 
-The 2 tests here are `rgb(attr(c))` and `rgb(if(css(): c))`. The 35 colour
-fixtures need this section **and** section 5; see "What this section does not
-unlock" below before you plan around them.
+Landed once section 5 cleared the parse error in front of it. Adding the two
+prefixes to both predicates took the suite from 369 failures to 332: all 35
+colour fixtures and both tests here, with nothing newly failing and the
+"accepts invalid input" count unmoved at 29.
+
+The 2 tests here are `rgb(attr(c))` and `rgb(if(css(): c))`. The section
+below on what it does not unlock is kept because it records why the 35 sat
+behind section 5, which the diff does not show.
 
 ### Current behavior
 
@@ -268,26 +273,23 @@ Adding the two prefixes and rerunning `spec/core_functions/color` leaves all
 57 failures in place. The 35 need section 5 first, and then this section, so
 that the parsed `attr(c, %)` is accepted as a channel.
 
-### Implementation instructions
+### What the change was
 
-Add `attr(` and `if(` to both predicates. `is_var` carries a minimum-length
-guard derived from `"var(--_)"`; that guard is specific to custom properties
-and must not be applied to the new prefixes.
+`attr(` and `if(` added to both predicates. `is_var` carries a minimum-length
+guard derived from `"var(--_)"`, specific to custom properties, so the new
+prefixes return before it rather than through it.
 
 Two things to check rather than assume:
 
-- **`if(` is also a Sass function.** A Sass `if($cond, $a, $b)` is evaluated
-  long before these predicates see a value, so the prefix should only ever
-  match the CSS `if()` string that #13 introduced. Confirm with
-  `rgb(if(true, 1, 2))`, which must keep evaluating the `if()` to `1` and
-  then fail on the channel count. dart-sass 1.103.1 prints `$channels: The
-  rgb color space has 3 channels but 1 has 1`, so this one belongs in an
-  `error!`, not a `test!`.
+- **`if(` is also a Sass function.** Confirmed: `a {b: if(true, 1, 2)}` still
+  prints `1`, and `rgb(if(true, 1, 2))` fails with `$channels: The rgb color
+  space has 3 channels but 1 has 1` -- the same error dart-sass 1.103.1
+  gives, because the Sass `if()` evaluates to `1` long before a value is
+  inspected. Both are pinned in `crates/lib/tests/css-if.rs`.
 - **Strictness.** `is_special_function` is consulted from 17 places, most of
   them the colour builtins, so widening it makes the compiler more lenient
-  everywhere at once. The suite currently has 29 failures of the kind
-  "accepts invalid input". Run the whole suite, not just the two scoped
-  areas, and check that number has not risen.
+  everywhere at once. Checked on the whole suite: "accepts invalid input"
+  stayed at 29, so the 37 tests were not bought with leniency.
 
 ## 5. A bare `%` is not a value -- landed in #38
 
@@ -395,11 +397,12 @@ no spec test in the pinned revision covers it.
 - `spec/css/functions` passes under the roadmap's standard flags: 0
   failures, down from 22.
 - ~~`spec/css/percent` passes: 0 failures, down from 6.~~ Done.
-- With sections 4 and 5 both landed, `spec/core_functions/color` drops from
-  57 failures to 22, all 35 `attr` fixtures passing. Section 4 alone changes
-  nothing there; do not read an unchanged 57 as the section having failed.
+- ~~With sections 4 and 5 both landed, `spec/core_functions/color` drops from
+  57 failures to 22, all 35 `attr` fixtures passing.~~ Done: 22, and the 20
+  left in `spec/css/functions` are sections 1 to 3.
 - `spec/css/unknown_directive` drops by at least 3, from sections 1 and 2
   reaching `almost_any_value`.
-- The whole-suite count of "Expected test to fail but it did not" has not
-  risen above 29, so sections 4 and 5 did not buy their tests with leniency.
+- ~~The whole-suite count of "Expected test to fail but it did not" has not
+  risen above 29, so sections 4 and 5 did not buy their tests with
+  leniency.~~ Done: still 29.
 - The `frameworks` CI job still reports no colour-value differences.

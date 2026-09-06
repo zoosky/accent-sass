@@ -166,3 +166,29 @@ error!(
     empty_branch,
     "a {\n  b: if(css(1): c;; css(2): d);\n}\n", "Error: Expected identifier."
 );
+test!(
+    // The CSS `if()` is a special variable string, so a colour function
+    // keeps it unevaluated the way it keeps `var()`.
+    rgb_keeps_a_css_if,
+    "a {b: rgb(if(css(): c))}\n",
+    "a {\n  b: rgb(if(css(): c));\n}\n"
+);
+test!(
+    hsl_keeps_a_css_if,
+    "a {b: hsl(if(css(): c), 2%, 3%)}\n",
+    "a {\n  b: hsl(if(css(): c), 2%, 3%);\n}\n"
+);
+test!(
+    // The Sass `if()` is evaluated long before a value is inspected, so it
+    // must not be caught by the `if(` prefix the CSS form matches.
+    sass_if_still_evaluates,
+    "a {b: if(true, 1, 2)}\n",
+    "a {\n  b: 1;\n}\n"
+);
+error!(
+    // Proof of the same point: the Sass `if()` resolves to `1`, and rgb then
+    // rejects it on the channel count rather than passing it through.
+    sass_if_is_not_a_special_variable_string,
+    "a {b: rgb(if(true, 1, 2))}\n",
+    "Error: $channels: The rgb color space has 3 channels but 1 has 1."
+);

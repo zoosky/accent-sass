@@ -33,6 +33,14 @@ pub(crate) fn opposite_bracket(b: char) -> char {
     }
 }
 
+/// Reports whether `s` is a CSS function call that may stand where a number
+/// is expected, because only the browser can resolve its value.
+///
+/// `attr()` and the CSS `if()` join the arithmetic functions here: dart-sass
+/// 1.103.1 accepts `rgb(attr(c, %), 2, 3)` and `rgb(if(css(): c))` and prints
+/// them back unevaluated. A Sass `if($cond, $a, $b)` never reaches this
+/// predicate -- it is evaluated long before a value is inspected -- so only
+/// the CSS form matches.
 pub(crate) fn is_special_function(s: &str) -> bool {
     s.starts_with("calc(")
         || s.starts_with("var(")
@@ -40,6 +48,8 @@ pub(crate) fn is_special_function(s: &str) -> bool {
         || s.starts_with("min(")
         || s.starts_with("max(")
         || s.starts_with("clamp(")
+        || s.starts_with("attr(")
+        || s.starts_with("if(")
 }
 
 /// Trim ASCII whitespace from both sides of string.

@@ -782,3 +782,40 @@ error!(
     "a {\n  color: mix(red, blue, (1/0));\n}\n",
     "Error: $weight: Expected calc(infinity) to be within 0 and 100."
 );
+
+// `attr()` is a special variable string: only the browser can resolve it, so
+// a colour function keeps the call rather than reading a channel from it.
+// Every expectation was compared against dart-sass 1.103.1.
+test!(
+    rgb_attr_alone_stands_for_every_channel,
+    "a {b: rgb(attr(c))}\n",
+    "a {\n  b: rgb(attr(c));\n}\n"
+);
+test!(
+    rgb_attr_as_one_channel,
+    "a {b: rgb(attr(c), 1, 2)}\n",
+    "a {\n  b: rgb(attr(c), 1, 2);\n}\n"
+);
+test!(
+    // A unit argument is what every colour fixture in the spec passes, and
+    // it needs the bare `%` to parse before it reaches this check.
+    hsl_attr_with_a_unit_argument,
+    "a {b: hsl(attr(c, %), 2%, 3%, 0.4)}\n",
+    "a {\n  b: hsl(attr(c, %), 2%, 3%, 0.4);\n}\n"
+);
+test!(
+    // lab() keeps its space separator where rgb() switches to commas.
+    lab_attr_keeps_spaces,
+    "a {b: lab(attr(c) 2 3)}\n",
+    "a {\n  b: lab(attr(c) 2 3);\n}\n"
+);
+test!(
+    rgb_attr_with_a_slash_alpha,
+    "a {b: rgb(attr(c) 2 3 / 0.5)}\n",
+    "a {\n  b: rgb(attr(c), 2, 3, 0.5);\n}\n"
+);
+test!(
+    color_function_keeps_attr,
+    "a {b: color(srgb attr(c) 2 3)}\n",
+    "a {\n  b: color(srgb attr(c) 2 3);\n}\n"
+);

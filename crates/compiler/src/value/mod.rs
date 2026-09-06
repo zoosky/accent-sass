@@ -333,9 +333,21 @@ impl Value {
         }
     }
 
+    /// Reports whether this value is a CSS function call that may stand for
+    /// several arguments at once, as `rgb(var(--c))` does for three channels.
+    ///
+    /// `attr()` and the CSS `if()` belong here as well as in
+    /// [`Value::is_special_function`]: dart-sass 1.103.1 takes `rgb(attr(c))`
+    /// and `rgb(if(css(): c))` in the one-argument form. The length guard is
+    /// specific to `var()`, whose argument is a custom property and so cannot
+    /// be shorter than `--_`; the other two have no such floor.
     pub fn is_var(&self) -> bool {
         match self {
             Value::String(s, QuoteKind::None) => {
+                if s.starts_with("attr(") || s.starts_with("if(") {
+                    return true;
+                }
+
                 if s.len() < "var(--_)".len() {
                     return false;
                 }
