@@ -381,3 +381,24 @@ error!(
     "Error: Placeholder selectors aren't allowed in plain CSS.",
     accent_sass::Options::default().input_syntax(InputSyntax::Css)
 );
+test!(
+    // dart-sass takes a `%` in single-expression position in plain CSS.
+    bare_percent,
+    "a {b: %}",
+    "a {\n  b: %;\n}\n",
+    accent_sass::Options::default().input_syntax(InputSyntax::Css)
+);
+test!(
+    bare_percent_before_value,
+    "a {b: % c}",
+    "a {\n  b: % c;\n}\n",
+    accent_sass::Options::default().input_syntax(InputSyntax::Css)
+);
+error!(
+    // A `%` after an expression is the modulo operator, and plain CSS has no
+    // operators, so this stays an error rather than becoming a value.
+    bare_percent_after_value,
+    "a {b: c %}",
+    "Error: Operators aren't allowed in plain CSS.",
+    accent_sass::Options::default().input_syntax(InputSyntax::Css)
+);

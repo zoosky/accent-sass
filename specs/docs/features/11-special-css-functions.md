@@ -1,8 +1,9 @@
 # Special CSS functions
 
 Unlocks the 22 sass-spec tests under `spec/css/functions`, the deepest area
-no document claimed, the 6 under `spec/css/percent`, and 35 under
-`spec/core_functions/color` that need two of the sections below together.
+no document claimed, the 6 under `spec/css/percent` (**section 5 has
+landed**), and 35 under `spec/core_functions/color` that need two of the
+sections below together.
 Measured 2026-09-06 against master (`1c3608e`), the pinned sass-spec revision
 `4a9eea66`, and dart-sass 1.103.1 run as `npx -y sass@1.103.1`:
 
@@ -33,7 +34,7 @@ leaves all 35 failing.
 | 2 | A quoted string is re-quoted | 8 | -- |
 | 3 | `type()` is not a special function | 4 | -- |
 | 4 | `attr()` and `if()` are not special variable strings | 2 | 35, with 5 |
-| 5 | A bare `%` is not a value | 6 | 35, with 4 |
+| 5 | A bare `%` is not a value -- **landed**, #38 | 6 | 35, with 4 |
 
 Sections 1 and 2 reach further than the table says. Both defects live in
 functions that also parse unknown at-rule values, so they show up in
@@ -288,12 +289,26 @@ Two things to check rather than assume:
   "accepts invalid input". Run the whole suite, not just the two scoped
   areas, and check that number has not risen.
 
-## 5. A bare `%` is not a value
+## 5. A bare `%` is not a value -- landed in #38
 
 `spec/css/percent/{declaration,function}/{alone,before,after}`, and the gate
-on section 4's 35 colour fixtures
+on section 4's 35 colour fixtures.
 
-### Current behavior
+All 6 now pass; the suite went from 375 failures to 369 with no fixture
+regressing. The colour fixtures moved from a parse error to the channel
+check they were always meant to reach:
+
+```
+a {b: rgb(attr(c, %), 2, 3)}
+Error: $red: attr(c, %) is not a number.
+```
+
+That is section 4's remaining work, and nothing else stands in front of it.
+
+The rest of this section is kept as written, because the grammar it records
+is not obvious from the diff.
+
+### Current behavior (before the change)
 
 A `%` on its own is a parse error wherever a value is expected:
 
@@ -315,16 +330,44 @@ dart-sass parses a lone `%` as an unquoted string and prints it back, in a
 declaration value and as a function argument alike. It is not a number, and
 nothing arithmetic happens to it.
 
-### Implementation instructions
+### What the change was
 
-Accept `%` as an identifier-like token in value position, in the declaration
-parser and in the argument parser both -- the six fixtures split evenly
-across the two, so fixing one leaves three failing.
+`%` is a real value in dart-sass, not a raw-text fallback: `$x: %` binds it
+to a variable and `rgb(%)` reaches rgb's channel check. Two rules separate it
+from the modulo operator, and both were established against the binary rather
+than assumed:
 
-This is what unblocks section 4's colour fixtures, so run
-`spec/core_functions/color` after landing both. Landing this section alone
-leaves those 35 failing at the channel check instead of the parser, which is
-progress the tally will not show.
+- **A `%` is the operator only when an operand follows it.** `5 % 2` and
+  `5 %2` are modulo; `c %` and `1 %` are two-element lists, because nothing
+  that could be an operand follows. The lookahead skips whitespace and
+  comments, so `c % /* d */` is a list too, and it asks whether the next
+  token starts an expression rather than matching a list of terminators --
+  `1 %*2` reads the `%` as a value and then fails in evaluation with
+  `Undefined operation "% * 2"`, which is what dart-sass does.
+- **Plain CSS keeps the operator.** `a {b: c %}` in a `.css` file is
+  `Operators aren't allowed in plain CSS.` in both engines, while
+  `a {b: %}`, `% c` and `c(%)` compile, so the plain-CSS check belongs after
+  the single-expression case, not before it.
+- **A `%` value is rejected once the expression has consumed a comma.**
+  dart-sass takes `%, 2` and `1 %, 2` but rejects `1, %, 2` and `[1, %]`. It
+  accepts `(1, %)` and `c(1, %)` because parentheses and arguments parse each
+  element as its own expression, which resets that state.
+
+The comma rule reads like an implementation quirk rather than a design, but
+it is consistent across every shape tested, and matching it costs one
+condition. `looking_at_expression` also had to learn that `%` starts an
+expression, or `(%)` and `c(%)` would close their parens early.
+
+A `%` value also has to clear `allow_slash`, which `add_operator` does for a
+real operator. Without it `1/2 %` printed `1/2 %` where dart-sass prints
+`0.5 %` -- a slash list surviving where the division should have resolved.
+
+One difference remains, unrelated to the six fixtures: `min(%)` errors with
+`% is not a number` where dart-sass prints `min(%)`. `min()`, `max()` and
+`clamp()` parse as calculations, and dart-sass falls back to a plain CSS
+function when an argument is not a valid calculation value. That fallback is
+missing here, and it is a calculation defect rather than a percent one --
+no spec test in the pinned revision covers it.
 
 ## Testing
 
@@ -351,7 +394,7 @@ progress the tally will not show.
 
 - `spec/css/functions` passes under the roadmap's standard flags: 0
   failures, down from 22.
-- `spec/css/percent` passes: 0 failures, down from 6.
+- ~~`spec/css/percent` passes: 0 failures, down from 6.~~ Done.
 - With sections 4 and 5 both landed, `spec/core_functions/color` drops from
   57 failures to 22, all 35 `attr` fixtures passing. Section 4 alone changes
   nothing there; do not read an unchanged 57 as the section having failed.

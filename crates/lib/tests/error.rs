@@ -138,9 +138,12 @@ error!(
     tilde_in_value,
     "a {color: ~a;}", "Error: Expected expression."
 );
-error!(
+test!(
+    // dart-sass 1.103.1 prints `5-%` here: the `%` is a value, so this is a
+    // subtraction of two unquoted strings, not a parse error.
     subtract_rem,
-    "a {color: 5 - %;}", "Error: Expected expression."
+    "a {color: 5 - %;}",
+    "a {\n  color: 5-%;\n}\n"
 );
 error!(
     operator_eq,
