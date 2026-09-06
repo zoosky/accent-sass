@@ -35,7 +35,7 @@ parameter) to 397. #34, which scoped `@extend` to a module's upstream closure,
 took it to 375; it belongs to no item here, having come off the branch left
 after #18. Item 11 took it to 369 with section 5, a bare `%` parsing as a
 value (#38), and then to 332 with section 4, `attr()` and the CSS `if()`
-joining the special variable strings. One or two tests depend on `random()`
+joining the special variable strings (#39). One or two tests depend on `random()`
 and move between runs.
 
 Every count on this page comes from a macOS run. The advisory `sass-spec` CI

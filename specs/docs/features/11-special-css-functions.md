@@ -33,7 +33,7 @@ leaves all 35 failing.
 | 1 | A silent comment is copied into the output | 8 | -- |
 | 2 | A quoted string is re-quoted | 8 | -- |
 | 3 | `type()` is not a special function | 4 | -- |
-| 4 | `attr()` and `if()` are not special variable strings -- **landed** | 2 | 35 |
+| 4 | `attr()` and `if()` are not special variable strings -- **landed**, #39 | 2 | 35 |
 | 5 | A bare `%` is not a value -- **landed**, #38 | 6 | 35, with 4 |
 
 Sections 1 and 2 reach further than the table says. Both defects live in
@@ -201,7 +201,7 @@ The two `type/punctuation` tests also need section 2; the body they pass is
 the same `""''` line. Landing this section alone moves them from an error to
 a wrong-output failure.
 
-## 4. `attr()` and `if()` are not special variable strings -- landed
+## 4. `attr()` and `if()` are not special variable strings -- landed in #39
 
 `spec/css/functions/special_variable/{attr,if}`, and 35 fixtures under
 `spec/core_functions/color`
