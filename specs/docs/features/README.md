@@ -8,10 +8,10 @@ sass-spec tests each item unlocks.
 The original one was drawn up against 1,718 failures, when six large items
 accounted for most of them. Those six have landed, and so have items 09 and 10;
 the suite is at 375, which changed the shape of the problem rather than just its
-size. The documented items are now mostly *residue*, and **158 of the 375 -- 42%
+size. The documented items are now mostly *residue*, and **152 of the 375 -- 41%
 -- sit in areas no document covers at all.** No single area is deep any more:
 item 11 claimed the largest, and the deepest left unclaimed is 12 failures, with
-82 of the 158 in a tail of areas holding fewer than six each.
+82 of the 152 in a tail of areas holding fewer than six each.
 
 ## Measurement
 
@@ -71,7 +71,7 @@ error check.
 
 ### Unclaimed -- no document covers these
 
-158 failures, none tracked by any item. Ten areas hold six or more, 76 in
+152 failures, none tracked by any item. Nine areas hold six or more, 70 in
 all; the other 82 are a tail of 53 areas with fewer than six each.
 
 | Area | Failures | Kind |
@@ -82,7 +82,6 @@ all; the other 82 are a tail of 53 areas with fewer than six each.
 | `spec/core_functions/string` | 8 | 8 different output |
 | `spec/css/unknown_directive` | 7 | 7 different output |
 | `spec/css/custom_properties` | 6 | 6 different output |
-| `spec/css/percent` | 6 | 6 rejects valid input |
 | `spec/css/supports` | 6 | 6 different output |
 | `spec/directives/extend` | 6 | 6 different output |
 | `spec/non_conformant/scss` | 6 | 6 different output |
@@ -98,7 +97,8 @@ per failure than the last two items were. #34 then cleared 22, most of them
 in areas a document already claims: 13 under `spec/directives/use`, one each
 in `directives/forward`, `core_functions/meta` and
 `non_conformant/extend-tests`, and six in the unclaimed tail. Item 11 has
-since claimed `spec/css/functions`, which led this table at 22.
+since claimed `spec/css/functions`, which led this table at 22, and
+`spec/css/percent`, whose 6 gate 35 of item 01's colour residue.
 
 ### Open items
 
@@ -106,11 +106,12 @@ since claimed `spec/css/functions`, which led this table at 22.
 |---|---|---|---|
 | [07-calculation-long-tail.md](07-calculation-long-tail.md) | What #12 left in the calculation suite: `%` and `mod()` with a signed zero against an infinite divisor, a rounding strategy arriving through interpolation, line noise inside an interpolated `calc()` | 3 | `spec/values/calculation` |
 | [08-calculation-warnings-and-error-wording.md](08-calculation-warnings-and-error-wording.md) | Deprecation warnings (none exist) and error wording in calculations | 57, invisible under the standard flags | `spec/values/calculation` |
-| [11-special-css-functions.md](11-special-css-functions.md) | Four defects in the functions whose arguments are read as text: a silent comment copied through, a quoted string re-quoted, `type()` never taking the text path, and `attr()`/`if()` missing from the special variable strings | 22 here, 35 more in `core_functions/color` | `spec/css/functions`, `spec/core_functions/color` |
+| [11-special-css-functions.md](11-special-css-functions.md) | Five defects: a silent comment copied through, a quoted string re-quoted, `type()` never taking the text path, `attr()`/`if()` missing from the special variable strings, and a bare `%` not parsing as a value | 28, plus 35 in `core_functions/color` that need the last two together | `spec/css/functions`, `spec/css/percent`, `spec/core_functions/color` |
 
-Item 11's 22 are the `spec/css/functions` row that led the unclaimed table
-until it was written; its 35 colour failures are part of item 01's residue
-below, not additional ones. Item 07's 3 are likewise the same three counted
+Item 11's 28 are the `spec/css/functions` row that led the unclaimed table
+until it was written, plus `spec/css/percent`; its 35 colour failures are
+part of item 01's residue below, not additional ones, and need two of its
+sections landed together before any of them move. Item 07's 3 are likewise the same three counted
 under item 01 -- 07 exists to describe what 01 deliberately left. Item
 08's 57 are invisible under the standard flags, so they are outside the 375
 entirely and are not double-counted either; that figure was re-measured on
@@ -118,8 +119,8 @@ entirely and are not double-counted either; that figure was re-measured on
 
 ### Landed -- residue only
 
-The counts here and in the unclaimed table above sum to 375: 217 in areas a
-document claims, 158 in areas none does.
+The counts here and in the unclaimed table above sum to 375: 223 in areas a
+document claims, 152 in areas none does.
 
 These eight are done. The counts are what remains in the areas they touched,
 not open work, and they are listed so nobody mistakes a residue for a
@@ -138,9 +139,11 @@ priority.
 
 Item 06's residue fell from 29 to 15 through #34, which is not one of these
 documents. Residue is not automatically worth chasing either, but it is worth
-reading for causes: `core_functions/color`'s 57 turned out to be two defects,
-not fifty-seven failures. Item 11 takes 35 of them, and the remainder are
-mostly calculation keywords passed as a channel.
+reading for causes: `core_functions/color`'s 57 are three defects, not
+fifty-seven failures. Item 11 takes 35, 21 are last-digit double-precision
+differences under `to_space` and `to_gamut` (`59264689.52803929` against
+`...31`), and a single one is the `calc(infinity)`/`calc(NaN)` channel case
+this line used to attribute the whole residue to.
 
 ## Failure kinds
 

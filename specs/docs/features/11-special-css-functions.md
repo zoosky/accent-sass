@@ -1,10 +1,10 @@
 # Special CSS functions
 
 Unlocks the 22 sass-spec tests under `spec/css/functions`, the deepest area
-no document claimed, and 35 more under `spec/core_functions/color` that share
-one of the four causes below. Measured 2026-09-06 against master (`1c3608e`),
-the pinned sass-spec revision `4a9eea66`, and dart-sass 1.103.1 run as
-`npx -y sass@1.103.1`:
+no document claimed, the 6 under `spec/css/percent`, and 35 under
+`spec/core_functions/color` that need two of the sections below together.
+Measured 2026-09-06 against master (`1c3608e`), the pinned sass-spec revision
+`4a9eea66`, and dart-sass 1.103.1 run as `npx -y sass@1.103.1`:
 
 ```
 120 runs, 98 passing, 22 failures, 0 todo, 0 ignored, 0 errors
@@ -15,21 +15,29 @@ A *special function* is one whose arguments are not Sass expressions:
 vendor-prefixed `calc()`. Their contents are read as text and printed back
 nearly verbatim. Unprefixed `calc()` is not among them -- it parses as a real
 calculation, which is why `CALC(0)` prints `0` while `-a-calc(0)` prints
-itself. Every defect below is therefore text that should have been dropped,
-text that should have been preserved, or a function that never took the text
-path at all.
+itself. Sections 1 to 3 are that text going wrong: text that should have
+been dropped, text that should have been preserved, and a function that never
+took the text path at all. Sections 4 and 5 are the neighbouring question of
+which unevaluated strings a value position accepts, which is where the
+colour functions fail.
 
-The four are independent and can land separately, but section 2 has to
-precede section 3 for two of section 3's tests to pass. Section 4 is the one
-worth doing first: it is 37 tests, not 2, because the same predicate governs
-the colour functions.
+Sections 1 to 3 are independent, except that section 2 has to precede
+section 3 for two of section 3's tests to pass. Sections 4 and 5 are worth
+63 tests, but only together: the colour fixtures need the value to parse
+*and* the parsed value to be accepted as a channel, so either section alone
+leaves all 35 failing.
 
-| Section | Defect | Tests here | Elsewhere |
+| Section | Defect | Tests in the named area | Colour fixtures |
 |---|---|---:|---:|
 | 1 | A silent comment is copied into the output | 8 | -- |
 | 2 | A quoted string is re-quoted | 8 | -- |
 | 3 | `type()` is not a special function | 4 | -- |
-| 4 | `attr()` and `if()` are not special variable strings | 2 | 35 |
+| 4 | `attr()` and `if()` are not special variable strings | 2 | 35, with 5 |
+| 5 | A bare `%` is not a value | 6 | 35, with 4 |
+
+Sections 1 and 2 reach further than the table says. Both defects live in
+functions that also parse unknown at-rule values, so they show up in
+`spec/css/unknown_directive` too -- see the note at the end of section 2.
 
 ## 1. A silent comment inside a special function is copied through
 
@@ -126,9 +134,22 @@ Either thread the source's quote character through, or capture the string's
 raw text in this arm the way the loud-comment branch does.
 
 Both call sites that pass `false` are in `stylesheet.rs` (lines 2215 and
-2939). Change only the one inside `parse_interpolated_declaration_value`
-unless a spec run says otherwise; `crates/compiler/src/parse/css.rs:158`
-already passes `true` and is a different path.
+2939). `crates/compiler/src/parse/css.rs:158` already passes `true` and is a
+different path.
+
+Fix the second one, at line 2939, in the same change. It is `almost_any_value`,
+which parses unknown at-rule values, and it carries both this defect and
+section 1's:
+
+| input | accent-sass | dart-sass 1.103.1 |
+|---|---|---|
+| `@asdf 'foo bar baz';` | `@asdf "foo bar baz";` | `@asdf 'foo bar baz';` |
+| `@a b //` | `@a b //;` | `@a b;` |
+
+That is `spec/css/unknown_directive/value_interpolation` for the quoting and
+`comment/{children,no_children}/after_value/silent` for the comment -- three
+of that area's seven failures, from the same two fixes. The area is
+unclaimed, so nothing else covers them.
 
 ## 3. `type()` is not treated as a special function
 
@@ -184,6 +205,10 @@ a wrong-output failure.
 `spec/css/functions/special_variable/{attr,if}`, and 35 fixtures under
 `spec/core_functions/color`
 
+The 2 tests here are `rgb(attr(c))` and `rgb(if(css(): c))`. The 35 colour
+fixtures need this section **and** section 5; see "What this section does not
+unlock" below before you plan around them.
+
 ### Current behavior
 
 Two predicates decide whether an unevaluated string may stand where a number
@@ -195,16 +220,12 @@ is expected:
   alone, and governs the forms where one argument stands for several
   channels.
 
-Neither knows `attr(` or `if(`, so every colour function rejects them:
+Neither knows `attr(` or `if(`, so a colour function rejects them:
 
 ```
 a {b: rgb(attr(c))}
 Error: $channels: Expected red channel to be a number, was attr(c).
 ```
-
-All 35 colour fixtures fail this way -- every one is "Test case should
-succeed but it did not", not a wrong-output difference. They divide as 14
-under `rgb`, 14 under `hsl` and 7 under `lab`.
 
 ### Reference behavior
 
@@ -229,6 +250,23 @@ an implementation is expected to support every special variable string
 everywhere `var()` is accepted, and the file tests `rgb()` as the
 representative case.
 
+### What this section does not unlock
+
+**Not the 35 colour fixtures, on its own.** Every one of them passes a unit
+to `attr()` -- the string `attr(c, %)` appears 70 times across the `rgb`,
+`hsl` and `lab` files and no bare `attr(c)` appears at all -- and that fails
+before any predicate is consulted:
+
+```
+a {b: rgb(attr(c, %), 2, 3)}
+Error: expected ")".
+```
+
+The parse error is section 5: a bare `%` is not a value in this compiler.
+Adding the two prefixes and rerunning `spec/core_functions/color` leaves all
+57 failures in place. The 35 need section 5 first, and then this section, so
+that the parsed `attr(c, %)` is accepted as a channel.
+
 ### Implementation instructions
 
 Add `attr(` and `if(` to both predicates. `is_var` carries a minimum-length
@@ -239,24 +277,67 @@ Two things to check rather than assume:
 
 - **`if(` is also a Sass function.** A Sass `if($cond, $a, $b)` is evaluated
   long before these predicates see a value, so the prefix should only ever
-  match the CSS `if()` string that #13 introduced. Confirm with a test that
-  `rgb(if(true, 1, 2))` still evaluates rather than passing through.
+  match the CSS `if()` string that #13 introduced. Confirm with
+  `rgb(if(true, 1, 2))`, which must keep evaluating the `if()` to `1` and
+  then fail on the channel count. dart-sass 1.103.1 prints `$channels: The
+  rgb color space has 3 channels but 1 has 1`, so this one belongs in an
+  `error!`, not a `test!`.
 - **Strictness.** `is_special_function` is consulted from 17 places, most of
   them the colour builtins, so widening it makes the compiler more lenient
   everywhere at once. The suite currently has 29 failures of the kind
   "accepts invalid input". Run the whole suite, not just the two scoped
   areas, and check that number has not risen.
 
+## 5. A bare `%` is not a value
+
+`spec/css/percent/{declaration,function}/{alone,before,after}`, and the gate
+on section 4's 35 colour fixtures
+
+### Current behavior
+
+A `%` on its own is a parse error wherever a value is expected:
+
+| input | accent-sass | dart-sass 1.103.1 |
+|---|---|---|
+| `a {b: %}` | `Error: expected ")".` | `b: %;` |
+| `a {b: % c}` | error | `b: % c;` |
+| `a {b: c %}` | error | `b: c %;` |
+| `a {b: c(%)}` | error | `b: c(%);` |
+| `a {b: attr(c, %)}` | error | `b: attr(c, %);` |
+
+All six `spec/css/percent` fixtures are these shapes, three in a declaration
+and three inside a function call. All six are "Test case should succeed but
+it did not".
+
+### Reference behavior
+
+dart-sass parses a lone `%` as an unquoted string and prints it back, in a
+declaration value and as a function argument alike. It is not a number, and
+nothing arithmetic happens to it.
+
+### Implementation instructions
+
+Accept `%` as an identifier-like token in value position, in the declaration
+parser and in the argument parser both -- the six fixtures split evenly
+across the two, so fixing one leaves three failing.
+
+This is what unblocks section 4's colour fixtures, so run
+`spec/core_functions/color` after landing both. Landing this section alone
+leaves those 35 failing at the channel check instead of the parser, which is
+progress the tally will not show.
+
 ## Testing
 
-- Ground truth: `spec/css/functions/special/comment.hrx`,
+- Ground truth: `spec/css/percent.hrx`,
+  `spec/css/functions/special/comment.hrx`,
   `spec/css/functions/special/prefixed/{lowercase,uppercase}.hrx`,
   `spec/css/functions/special/unprefixed.hrx`,
   `spec/css/functions/special_variable.hrx`, and the `special_functions`
   files under `spec/core_functions/color/{rgb,hsl,lab}` at the pinned
   revision.
-- Scoped spec runs: `spec/css/functions` and `spec/core_functions/color`
-  (see [README.md](README.md)).
+- Scoped spec runs: `spec/css/functions`, `spec/css/percent`,
+  `spec/css/unknown_directive` and `spec/core_functions/color` (see
+  [README.md](README.md)).
 - Add regression tests to `crates/lib/tests/` with the `test!` and `error!`
   macros. Cover at least: a silent comment in each position from section 1,
   a single-quoted string inside a special function, `TYPE(0)` against
@@ -270,8 +351,12 @@ Two things to check rather than assume:
 
 - `spec/css/functions` passes under the roadmap's standard flags: 0
   failures, down from 22.
-- `spec/core_functions/color` drops from 57 failures to 22, all 35 `attr`
-  fixtures passing.
+- `spec/css/percent` passes: 0 failures, down from 6.
+- With sections 4 and 5 both landed, `spec/core_functions/color` drops from
+  57 failures to 22, all 35 `attr` fixtures passing. Section 4 alone changes
+  nothing there; do not read an unchanged 57 as the section having failed.
+- `spec/css/unknown_directive` drops by at least 3, from sections 1 and 2
+  reaching `almost_any_value`.
 - The whole-suite count of "Expected test to fail but it did not" has not
-  risen above 29, so section 4 did not buy its tests with leniency.
+  risen above 29, so sections 4 and 5 did not buy their tests with leniency.
 - The `frameworks` CI job still reports no colour-value differences.
