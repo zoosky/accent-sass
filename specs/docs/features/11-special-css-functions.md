@@ -339,17 +339,28 @@ than assumed:
 
 - **A `%` is the operator only when an operand follows it.** `5 % 2` and
   `5 %2` are modulo; `c %` and `1 %` are two-element lists, because nothing
-  follows the `%` but the end of the value. The terminators that end it are
-  `}`, `;`, `)`, `]`, `,` and end of input.
+  that could be an operand follows. The lookahead skips whitespace and
+  comments, so `c % /* d */` is a list too, and it asks whether the next
+  token starts an expression rather than matching a list of terminators --
+  `1 %*2` reads the `%` as a value and then fails in evaluation with
+  `Undefined operation "% * 2"`, which is what dart-sass does.
+- **Plain CSS keeps the operator.** `a {b: c %}` in a `.css` file is
+  `Operators aren't allowed in plain CSS.` in both engines, while
+  `a {b: %}`, `% c` and `c(%)` compile, so the plain-CSS check belongs after
+  the single-expression case, not before it.
 - **A `%` value is rejected once the expression has consumed a comma.**
   dart-sass takes `%, 2` and `1 %, 2` but rejects `1, %, 2` and `[1, %]`. It
   accepts `(1, %)` and `c(1, %)` because parentheses and arguments parse each
   element as its own expression, which resets that state.
 
-The second rule reads like an implementation quirk rather than a design, but
+The comma rule reads like an implementation quirk rather than a design, but
 it is consistent across every shape tested, and matching it costs one
 condition. `looking_at_expression` also had to learn that `%` starts an
 expression, or `(%)` and `c(%)` would close their parens early.
+
+A `%` value also has to clear `allow_slash`, which `add_operator` does for a
+real operator. Without it `1/2 %` printed `1/2 %` where dart-sass prints
+`0.5 %` -- a slash list surviving where the division should have resolved.
 
 One difference remains, unrelated to the six fixtures: `min(%)` errors with
 `% is not a number` where dart-sass prints `min(%)`. `min()`, `max()` and

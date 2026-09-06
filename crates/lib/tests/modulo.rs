@@ -275,3 +275,40 @@ error!(
     bare_percent_after_a_comma_in_brackets,
     "a {b: [1, %]}\n", "Error: Expected expression."
 );
+test!(
+    // The `%` value ends the slash-separated list, so the `/` is division.
+    // Without that, `1/2` stayed a slash list and printed verbatim.
+    bare_percent_after_a_slash_list,
+    "a {b: 1/2 %}\n",
+    "a {\n  b: 0.5 %;\n}\n"
+);
+test!(
+    bare_percent_after_a_slash_list_in_parens,
+    "a {b: (1/2 %)}\n",
+    "a {\n  b: 0.5 %;\n}\n"
+);
+test!(
+    // A comment between the `%` and the end of the value does not make the
+    // `%` an operator.
+    bare_percent_before_a_loud_comment,
+    "a {b: c % /* d */}\n",
+    "a {\n  b: c %;\n}\n"
+);
+test!(
+    bare_percent_before_a_silent_comment,
+    "a {b: c %// d\n}\n",
+    "a {\n  b: c %;\n}\n"
+);
+test!(
+    // `!default` ends the value, so the `%` before it is a value; only
+    // `!important` and `!=` continue the expression.
+    bare_percent_before_bang_default,
+    "$x: c % !default;\na {b: $x}\n",
+    "a {\n  b: c %;\n}\n"
+);
+error!(
+    // An operand follows the `%`, so it stays the operator and fails in
+    // evaluation the way dart-sass does.
+    percent_is_operator_before_a_star,
+    "a {b: 1 %*2}\n", "Error: Undefined operation \"% * 2\"."
+);

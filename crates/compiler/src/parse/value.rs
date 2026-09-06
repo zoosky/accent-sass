@@ -9,7 +9,7 @@ use crate::{
     common::{BinaryOp, Brackets, Identifier, ListSeparator, QuoteKind, UnaryOp, unvendor},
     error::SassResult,
     unit::Unit,
-    utils::{as_hex, opposite_bracket},
+    utils::{as_hex, is_name_start, opposite_bracket},
     value::{CalculationName, Number},
 };
 
@@ -384,6 +384,11 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
                 Some(Token { kind: '%', .. }) => {
                     if self.percent_is_value(parser) {
                         let expr = Self::parse_percent_value(parser)?;
+                        // A `%` value ends any slash-separated list being
+                        // built, the way `add_operator` would for a real
+                        // operator: `1/2 %` is division, not `1/2` kept as a
+                        // slash list.
+                        self.allow_slash = false;
                         self.add_single_expression(expr, parser)?;
                     } else {
                         parser.toks_mut().next();
@@ -1231,23 +1236,84 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
             return true;
         }
 
-        // The operand, if there is one, may be separated from the `%` by
-        // whitespace: `5 % 2` and `5 %2` are both modulo.
-        let mut offset = 1;
-        while let Some(Token { kind, .. }) = parser.toks().peek_n(offset) {
-            if !kind.is_ascii_whitespace() {
-                break;
-            }
-            offset += 1;
+        // In plain CSS an operator is an error, so a `%` after an expression
+        // has to stay one and be reported. dart-sass still takes a `%` in
+        // single-expression position there, which the check above allows.
+        if parser.is_plain_css() {
+            return false;
         }
 
-        matches!(
-            parser.toks().peek_n(offset),
-            Some(Token {
-                kind: '}' | ';' | ')' | ']' | ',',
-                ..
-            }) | None
-        )
+        !Self::expression_follows_percent(parser)
+    }
+
+    /// Reports whether an operand follows the `%` at the cursor, skipping the
+    /// whitespace and comments that may separate them.
+    fn expression_follows_percent(parser: &mut P) -> bool {
+        let mut offset = 1;
+
+        loop {
+            match parser.toks().peek_n(offset) {
+                Some(Token { kind, .. }) if kind.is_ascii_whitespace() => offset += 1,
+                Some(Token { kind: '/', .. }) => match parser.toks().peek_n(offset + 1) {
+                    Some(Token { kind: '*', .. }) => {
+                        offset += 2;
+                        loop {
+                            match parser.toks().peek_n(offset) {
+                                // An unterminated comment is a later error,
+                                // not this predicate's to report.
+                                None => return false,
+                                Some(Token { kind: '*', .. })
+                                    if matches!(
+                                        parser.toks().peek_n(offset + 1),
+                                        Some(Token { kind: '/', .. })
+                                    ) =>
+                                {
+                                    offset += 2;
+                                    break;
+                                }
+                                Some(..) => offset += 1,
+                            }
+                        }
+                    }
+                    Some(Token { kind: '/', .. }) => {
+                        offset += 2;
+                        while let Some(Token { kind, .. }) = parser.toks().peek_n(offset) {
+                            if kind == '\n' {
+                                break;
+                            }
+                            offset += 1;
+                        }
+                    }
+                    // A lone slash starts an operand: dart-sass reads
+                    // `5 %/ 2` as modulo by `/2`.
+                    _ => return true,
+                },
+                _ => break,
+            }
+        }
+
+        let Some(Token { kind, .. }) = parser.toks().peek_n(offset) else {
+            return false;
+        };
+
+        match kind {
+            '.' => !matches!(
+                parser.toks().peek_n(offset + 1),
+                Some(Token { kind: '.', .. })
+            ),
+            // Only `!important` and `!=` continue an expression; `!default`
+            // and `!global` end the value, so the `%` before them is a value.
+            '!' => match parser.toks().peek_n(offset + 1) {
+                Some(Token {
+                    kind: 'i' | 'I' | '=',
+                    ..
+                })
+                | None => true,
+                Some(Token { kind, .. }) => kind.is_ascii_whitespace(),
+            },
+            '(' | '[' | '\'' | '"' | '#' | '+' | '-' | '\\' | '$' | '&' | '%' => true,
+            c => is_name_start(c) || c.is_ascii_digit(),
+        }
     }
 
     /// Parses a lone `%` as the unquoted string `%`.
