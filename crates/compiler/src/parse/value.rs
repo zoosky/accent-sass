@@ -382,14 +382,19 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
                     }
                 }
                 Some(Token { kind: '%', .. }) => {
-                    parser.toks_mut().next();
-                    self.add_operator(
-                        Spanned {
-                            node: BinaryOp::Rem,
-                            span: parser.toks().current_span(),
-                        },
-                        parser,
-                    )?;
+                    if self.percent_is_value(parser) {
+                        let expr = Self::parse_percent_value(parser)?;
+                        self.add_single_expression(expr, parser)?;
+                    } else {
+                        parser.toks_mut().next();
+                        self.add_operator(
+                            Spanned {
+                                node: BinaryOp::Rem,
+                                span: parser.toks().current_span(),
+                            },
+                            parser,
+                        )?;
+                    }
                 }
                 Some(Token {
                     kind: '0'..='9', ..
@@ -562,6 +567,7 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
                 .parse_interpolated_string()?
                 .map_node(|s| AstExpr::String(s, parser.toks_mut().span_from(start)))),
             Some(Token { kind: '#', .. }) => self.parse_hash(parser),
+            Some(Token { kind: '%', .. }) => Self::parse_percent_value(parser),
             Some(Token { kind: '+', .. }) => self.parse_plus_expr(parser),
             Some(Token { kind: '-', .. }) => self.parse_minus_expr(parser),
             Some(Token { kind: '!', .. }) => Self::parse_important_expr(parser),
@@ -1200,6 +1206,62 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
         }
 
         self.parse_unary_operation(parser)
+    }
+
+    /// Decides whether a `%` at the cursor is a value rather than the modulo
+    /// operator.
+    ///
+    /// dart-sass accepts a lone `%` as an unquoted string, so `a {b: %}` and
+    /// `a {b: c %}` are both valid, but it still reads `5 % 2` as modulo. Two
+    /// conditions separate them:
+    ///
+    /// - The `%` is the operator only when an operand follows it. A `%` with
+    ///   nothing after it but the end of the value joins the space-separated
+    ///   list instead, which is what makes `c %` and `1 %` parse.
+    /// - A `%` value is only accepted before this expression has consumed a
+    ///   comma. dart-sass rejects `1, %, 2` while accepting `%, 2`, and takes
+    ///   `(1, %)` because parentheses parse each element as its own
+    ///   expression. Both were verified against dart-sass 1.103.1.
+    fn percent_is_value(&self, parser: &mut P) -> bool {
+        if self.comma_expressions.is_some() {
+            return false;
+        }
+
+        if self.single_expression.is_none() {
+            return true;
+        }
+
+        // The operand, if there is one, may be separated from the `%` by
+        // whitespace: `5 % 2` and `5 %2` are both modulo.
+        let mut offset = 1;
+        while let Some(Token { kind, .. }) = parser.toks().peek_n(offset) {
+            if !kind.is_ascii_whitespace() {
+                break;
+            }
+            offset += 1;
+        }
+
+        matches!(
+            parser.toks().peek_n(offset),
+            Some(Token {
+                kind: '}' | ';' | ')' | ']' | ',',
+                ..
+            }) | None
+        )
+    }
+
+    /// Parses a lone `%` as the unquoted string `%`.
+    fn parse_percent_value(parser: &mut P) -> SassResult<Spanned<AstExpr>> {
+        let start = parser.toks().cursor();
+        parser.expect_char('%')?;
+
+        let span = parser.toks_mut().span_from(start);
+
+        Ok(AstExpr::String(
+            StringExpr(Interpolation::new_plain("%".to_owned()), QuoteKind::None),
+            span,
+        )
+        .span(span))
     }
 
     fn parse_important_expr(parser: &mut P) -> SassResult<Spanned<AstExpr>> {

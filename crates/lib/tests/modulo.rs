@@ -208,3 +208,70 @@ test!(
     "@use \"sass:math\";\na {\n  color: 0 % math.div(1, 0);\n}\n",
     "a {\n  color: calc(NaN);\n}\n"
 );
+
+// A lone `%` is an unquoted string value, not the modulo operator. Every
+// expectation below was checked against dart-sass 1.103.1.
+test!(bare_percent_alone, "a {b: %}\n", "a {\n  b: %;\n}\n");
+test!(
+    bare_percent_before_value,
+    "a {b: % c}\n",
+    "a {\n  b: % c;\n}\n"
+);
+test!(
+    // No operand follows the `%`, so it joins the space-separated list
+    // rather than becoming an operator.
+    bare_percent_after_value,
+    "a {b: c %}\n",
+    "a {\n  b: c %;\n}\n"
+);
+test!(
+    bare_percent_in_function_argument,
+    "a {b: c(%)}\n",
+    "a {\n  b: c(%);\n}\n"
+);
+test!(
+    // A `%` never joins the identifier next to it.
+    bare_percent_adjacent_to_identifier,
+    "a {b: a%}\n",
+    "a {\n  b: a %;\n}\n"
+);
+test!(bare_percent_twice, "a {b: %%}\n", "a {\n  b: % %;\n}\n");
+test!(
+    bare_percent_after_unary_minus,
+    "a {b: -%}\n",
+    "a {\n  b: -%;\n}\n"
+);
+test!(
+    // Whitespace before the operand is optional, so this is still modulo.
+    percent_is_still_modulo_without_trailing_space,
+    "a {b: 5 %2}\n",
+    "a {\n  b: 1;\n}\n"
+);
+test!(
+    // `5%` is a percentage, so this is a two-element list, not modulo.
+    percentage_number_beats_modulo,
+    "a {b: 5%2}\n",
+    "a {\n  b: 5% 2;\n}\n"
+);
+test!(
+    // dart-sass takes each parenthesized element as its own expression, so
+    // the `%` is first in its own parse and is accepted.
+    bare_percent_in_parenthesized_list,
+    "a {b: (1, %)}\n",
+    "a {\n  b: 1, %;\n}\n"
+);
+test!(
+    bare_percent_before_a_comma,
+    "a {b: 1 %, 2}\n",
+    "a {\n  b: 1 %, 2;\n}\n"
+);
+error!(
+    // dart-sass rejects a `%` value once the expression has consumed a
+    // comma, while accepting `%, 2`. Verified against 1.103.1.
+    bare_percent_after_a_comma,
+    "a {b: 1, %, 2}\n", "Error: Expected expression."
+);
+error!(
+    bare_percent_after_a_comma_in_brackets,
+    "a {b: [1, %]}\n", "Error: Expected expression."
+);
