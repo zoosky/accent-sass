@@ -1998,3 +1998,32 @@ fn extend_placeholder_across_module_boundary() {
             .expect(input)
     );
 }
+
+/// Two rules whose selectors normalize to the same identifier must both
+/// receive an extension, on every run.
+///
+/// `ExtendedSelector` is stored in a `HashSet` keyed by identity, so a rule
+/// that compares equal to one already registered must still be kept. When
+/// equality was value-based while the hash was pointer-based, a hash
+/// collision between the two made the set treat the second rule as a
+/// duplicate and drop it, and that rule silently lost its extension. It
+/// happened in well under one run in a hundred, so a single compile is not
+/// enough to catch a regression -- this compiles the same input many times,
+/// each with fresh allocations and hash seeds.
+#[test]
+fn escaped_selector_extends_deterministically() {
+    let input = "\
+.foo {escape: none}
+\\.foo {escape: slash dot}
+\\2E foo {escape: hex}
+
+.bar {@extend \\02e foo}
+";
+    let expected = ".foo {\n  escape: none;\n}\n\n\\.foo, .bar {\n  escape: slash dot;\n}\n\n\\.foo, .bar {\n  escape: hex;\n}\n";
+
+    for iteration in 0..2_000 {
+        let output = accent_sass::from_string(input.to_string(), &accent_sass::Options::default())
+            .expect(input);
+        assert_eq!(expected, &output, "diverged on iteration {iteration}");
+    }
+}
