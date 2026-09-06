@@ -2007,9 +2007,11 @@ fn extend_placeholder_across_module_boundary() {
 /// equality was value-based while the hash was pointer-based, a hash
 /// collision between the two made the set treat the second rule as a
 /// duplicate and drop it, and that rule silently lost its extension. It
-/// happened in well under one run in a hundred, so a single compile is not
-/// enough to catch a regression -- this compiles the same input many times,
-/// each with fresh allocations and hash seeds.
+/// happened in roughly one compile in 160 -- the mean first divergence over
+/// ten runs of this test against the unfixed code, matching 2 wrong outputs
+/// in 400 separate runs of the binary. A single compile is therefore no
+/// guard, so this one repeats, each iteration with fresh allocations and
+/// hash seeds.
 #[test]
 fn escaped_selector_extends_deterministically() {
     let input = "\
