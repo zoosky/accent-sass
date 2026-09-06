@@ -31,7 +31,7 @@ pull requests since then took it to 397: #27 (CSS nesting passthrough) to 590,
 (the function-name proposal) to 511, and #32 (the `consumeNewlines`
 parameter) to 397. #34, which scoped `@extend` to a module's upstream closure,
 took it to 375; it belongs to no item here, having come off the branch left
-after #18. Item 11's section 5, a bare `%` parsing as a value, took it to 369.
+after #18. Item 11's section 5, a bare `%` parsing as a value, took it to 369 in #38.
 One or two tests depend on `random()` and move between runs.
 
 Every count on this page comes from a macOS run. The advisory `sass-spec` CI

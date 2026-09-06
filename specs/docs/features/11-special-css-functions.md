@@ -34,7 +34,7 @@ leaves all 35 failing.
 | 2 | A quoted string is re-quoted | 8 | -- |
 | 3 | `type()` is not a special function | 4 | -- |
 | 4 | `attr()` and `if()` are not special variable strings | 2 | 35, with 5 |
-| 5 | A bare `%` is not a value -- **landed** | 6 | 35, with 4 |
+| 5 | A bare `%` is not a value -- **landed**, #38 | 6 | 35, with 4 |
 
 Sections 1 and 2 reach further than the table says. Both defects live in
 functions that also parse unknown at-rule values, so they show up in
@@ -289,7 +289,7 @@ Two things to check rather than assume:
   "accepts invalid input". Run the whole suite, not just the two scoped
   areas, and check that number has not risen.
 
-## 5. A bare `%` is not a value -- landed
+## 5. A bare `%` is not a value -- landed in #38
 
 `spec/css/percent/{declaration,function}/{alone,before,after}`, and the gate
 on section 4's 35 colour fixtures.
