@@ -12,23 +12,28 @@ use crate::selector::{Selector, SelectorList};
 #[derive(Debug, Clone)]
 pub(crate) struct ExtendedSelector(Rc<RefCell<SelectorList>>);
 
+/// Two `ExtendedSelector`s are the same only when they are the same rule.
+///
+/// Equality is by identity, not by value, because a stylesheet may hold
+/// several rules whose selectors are equal -- `\.foo` and `\2E foo`
+/// normalize to the same list -- and each has to receive its own `@extend`.
+/// It also has to agree with `Hash` below, which hashes the pointer.
 impl PartialEq for ExtendedSelector {
     fn eq(&self, other: &Self) -> bool {
-        self.0 == other.0
+        Rc::ptr_eq(&self.0, &other.0)
     }
 }
 
 impl Eq for ExtendedSelector {}
 
 impl Hash for ExtendedSelector {
-    // We hash the ptr here for efficiency.
-    // TODO: is this an issue? it probably is,
-    // but I haven't managed to find a test case
-    // that exhibits it.
+    /// Hashes the pointer, which is what `PartialEq` above compares.
+    ///
+    /// Hashing the value instead would be both slower and wrong: two rules
+    /// with equal selectors are different rules, and the `HashSet` in
+    /// `SelectorHashSet` has to keep them apart.
     fn hash<H: Hasher>(&self, state: &mut H) {
         ptr::hash(&*self.0, state);
-        // in case we need to hash the actual value:
-        // self.0.borrow().hash(state);
     }
 }
 
