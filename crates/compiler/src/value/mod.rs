@@ -338,12 +338,19 @@ impl Value {
     ///
     /// `attr()` and the CSS `if()` belong here as well as in
     /// [`Value::is_special_function`]: dart-sass 1.103.1 takes `rgb(attr(c))`
-    /// and `rgb(if(css(): c))` in the one-argument form. The length guard is
-    /// specific to `var()`, whose argument is a custom property and so cannot
-    /// be shorter than `--_`; the other two have no such floor.
+    /// and `rgb(if(css(): c))` in the one-argument form.
+    ///
+    /// Both floors are dart-sass's. Six characters is the general one, below
+    /// which a call cannot have a body and a closing paren; `var()` carries
+    /// the longer one because its argument is a custom property and so cannot
+    /// be shorter than `--_`.
     pub fn is_var(&self) -> bool {
         match self {
             Value::String(s, QuoteKind::None) => {
+                if s.len() < "if(ab)".len() {
+                    return false;
+                }
+
                 if s.starts_with("attr(") || s.starts_with("if(") {
                     return true;
                 }

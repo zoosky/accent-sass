@@ -291,6 +291,22 @@ Two things to check rather than assume:
   everywhere at once. Checked on the whole suite: "accepts invalid input"
   stayed at 29, so the 37 tests were not bought with leniency.
 
+### A case difference this section did not close
+
+dart-sass matches these names case-insensitively and this compiler does not.
+`a {b: rgb(ATTR(c))}` prints `rgb(ATTR(c))` in dart-sass 1.103.1 and errors
+here with `$channels: Expected red channel to be a number, was ATTR(c)`.
+
+The gap is older than item 11: `rgb(VAR(--x), 1, 2)` diverges the same way and
+did before any of this, while `CALC(` escapes it only because the calculation
+parser handles that name itself. #13's CSS `if()` parser has the same shape --
+`rgb(IF(css(): c))` fails with `expected ")"` where dart-sass prints the call
+back. Closing it means matching every name in both predicates without regard
+to case, and checking the strictness count again afterwards.
+
+No test in the pinned spec revision covers any of it, which is why it is
+recorded here rather than fixed alongside the rest of the section.
+
 ## 5. A bare `%` is not a value -- landed in #38
 
 `spec/css/percent/{declaration,function}/{alone,before,after}`, and the gate

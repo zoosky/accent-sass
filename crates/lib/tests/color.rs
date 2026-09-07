@@ -819,3 +819,34 @@ test!(
     "a {b: color(srgb attr(c) 2 3)}\n",
     "a {\n  b: color(srgb attr(c) 2 3);\n}\n"
 );
+
+// dart-sass will not treat a string shorter than six characters as a special
+// function: a call that short cannot have both a body and a closing paren.
+// Without the floor a truncated string serializes as though it were whole,
+// and the output is unbalanced CSS.
+error!(
+    truncated_attr_is_not_a_special_function,
+    "@use \"sass:string\";\na {b: rgb(string.unquote(\"attr(\") 1 2)}\n",
+    "Error: $channels: Expected red channel to be a number, was attr(."
+);
+test!(
+    six_character_attr_is_a_special_function,
+    "@use \"sass:string\";\na {b: rgb(string.unquote(\"attr()\") 1 2)}\n",
+    "a {\n  b: rgb(attr(), 1, 2);\n}\n"
+);
+error!(
+    truncated_css_if_is_not_a_special_function,
+    "@use \"sass:string\";\na {b: rgb(string.unquote(\"if(a)\"), 1, 2)}\n",
+    "Error: $red: if(a) is not a number."
+);
+test!(
+    six_character_css_if_is_a_special_function,
+    "@use \"sass:string\";\na {b: rgb(string.unquote(\"if(ab)\"), 1, 2)}\n",
+    "a {\n  b: rgb(if(ab), 1, 2);\n}\n"
+);
+error!(
+    // The floor applies to every name, not only the two added for item 11.
+    truncated_calc_is_not_a_special_function,
+    "@use \"sass:string\";\na {b: rgb(string.unquote(\"calc(\") 1 2)}\n",
+    "Error: $channels: Expected red channel to be a number, was calc(."
+);

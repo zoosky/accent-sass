@@ -41,7 +41,18 @@ pub(crate) fn opposite_bracket(b: char) -> char {
 /// them back unevaluated. A Sass `if($cond, $a, $b)` never reaches this
 /// predicate -- it is evaluated long before a value is inspected -- so only
 /// the CSS form matches.
+///
+/// The six-character floor is dart-sass's, and it applies to every name here
+/// rather than to any one of them: `if(ab)` and `attr()` are accepted while
+/// `if(a)`, `attr(` and `calc(` are not, because a call that short cannot
+/// have both a body and a closing paren. Without it a truncated string
+/// serializes as though it were a whole function and the output is
+/// unbalanced CSS.
 pub(crate) fn is_special_function(s: &str) -> bool {
+    if s.len() < "if(ab)".len() {
+        return false;
+    }
+
     s.starts_with("calc(")
         || s.starts_with("var(")
         || s.starts_with("env(")
