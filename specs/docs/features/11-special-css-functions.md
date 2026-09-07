@@ -1,9 +1,9 @@
 # Special CSS functions
 
-Unlocks the 22 sass-spec tests under `spec/css/functions`, the deepest area
+Unlocked the 22 sass-spec tests under `spec/css/functions`, the deepest area
 no document claimed, the 6 under `spec/css/percent`, and 35 under
-`spec/core_functions/color`. **Sections 1, 2, 4 and 5 have landed**, taking
-those 41 and 18 of the 22; section 3 is the 4 that remain.
+`spec/core_functions/color`. **All five sections have landed**, and all three
+areas are clear.
 
 Sections 1 and 2 reached much further than this document predicted: 34
 fixtures, not the 16 counted here, because the same two defects live in
@@ -38,7 +38,7 @@ leaves all 35 failing.
 |---|---|---:|---:|
 | 1 | A silent comment is copied into the output -- **landed** | 8 | -- |
 | 2 | A quoted string is re-quoted -- **landed** | 8 | -- |
-| 3 | `type()` is not a special function | 4 | -- |
+| 3 | `type()` is not a special function -- **landed** | 4 | -- |
 | 4 | `attr()` and `if()` are not special variable strings -- **landed**, #39 | 2 | 35 |
 | 5 | A bare `%` is not a value -- **landed**, #38 | 6 | 35, with 4 |
 
@@ -191,7 +191,7 @@ which dart-sass also rejects -- so it stays in the "accepts invalid input"
 column either way. No fixture in the pinned revision covers it, and closing it
 means balancing parens in `almost_any_value`.
 
-## 3. `type()` is not treated as a special function
+## 3. `type()` is not treated as a special function -- landed
 
 `spec/css/functions/special/unprefixed/lowercase/type/punctuation`,
 `spec/css/functions/special/unprefixed/uppercase/type/{punctuation,number,interpolation}`
@@ -228,17 +228,21 @@ existing arm matches on `unvendor(name)`, so adding `type` there would make
 `-a-type('x')` special too and print `-a-type('x')`, which is wrong. Match
 the unnormalized name instead.
 
-### Implementation instructions
+### What the change was
 
-Add a `type` case that matches the name before unvendoring, then reuse the
-`calc | element | expression` body -- scan `(`, read the contents with
-`parse_interpolated_declaration_value`, expect `)`. The lowercasing comes
-free: `try_parse_special_function` is already called with the lowercased
+`type` joined the `calc | element | expression` arm, with a guard that
+rejects it when the name is vendor-prefixed -- the arm matches on the
+unvendored name, and `-a-type(` is an ordinary function call. The lowercasing
+came free: `try_parse_special_function` is already called with the lowercased
 name (`value.rs:1278`).
 
-The two `type/punctuation` tests also need section 2; the body they pass is
-the same `""''` line. Landing this section alone moves them from an error to
-a wrong-output failure.
+Two shapes worth knowing, neither covered by the four fixtures and both
+matching dart-sass 1.103.1:
+
+- `type($x)` prints `type($x)`. The argument is text, so a variable is not
+  resolved, exactly as in `element()`.
+- `@function type()` is already a reserved name in both engines, so nothing
+  a stylesheet could define is shadowed by this.
 
 ## 4. `attr()` and `if()` are not special variable strings -- landed in #39
 

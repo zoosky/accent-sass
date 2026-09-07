@@ -8,8 +8,8 @@ sass-spec tests each item unlocks.
 then updated as item 11 landed.**
 The original one was drawn up against 1,718 failures, when six large items
 accounted for most of them. Those six have landed, and so have items 09 and 10;
-the suite is at 298, which changed the shape of the problem rather than just its
-size. The documented items are now mostly *residue*, and **134 of the 298 -- 45%
+the suite is at 294, which changed the shape of the problem rather than just its
+size. The documented items are now mostly *residue*, and **134 of the 294 -- 46%
 -- sit in areas no document covers at all.** No single area is deep any more:
 the deepest unclaimed one is 12 failures, and 83 of the 134 are a tail of areas
 holding fewer than six each. Item 11's sections 1 and 2 cut into that tail
@@ -22,7 +22,7 @@ The ranking comes from a full run of the pinned sass-spec revision
 (`be69f6a`) at 375 failures, and again as item 11 landed:
 
 ```
-14218 runs, 13912 passing, 298 failures, 8 todo, 0 ignored, 0 errors
+14218 runs, 13916 passing, 294 failures, 8 todo, 0 ignored, 0 errors
 ```
 
 The original ranking was taken on 2026-09-02 at 12,492 passing against 1,718
@@ -34,8 +34,9 @@ parameter) to 397. #34, which scoped `@extend` to a module's upstream closure,
 took it to 375; it belongs to no item here, having come off the branch left
 after #18. Item 11 took it to 369 with section 5, a bare `%` parsing as a
 value (#38), then to 332 with section 4, `attr()` and the CSS `if()` joining
-the special variable strings (#39), and then to 298 with sections 1 and 2, a
-silent comment dropped and a quoted string's quote character kept (#40). One or two tests depend on `random()`
+the special variable strings (#39), then to 298 with sections 1 and 2, a silent
+comment dropped and a quoted string's quote character kept (#40), and then to
+294 with section 3, `type()` taking the text path. One or two tests depend on `random()`
 and move between runs.
 
 Every count on this page comes from a macOS run. The advisory `sass-spec` CI
@@ -67,7 +68,7 @@ since 2026-09-03; [08](08-calculation-warnings-and-error-wording.md) records
 them). Every count on this page is *with* the flags, so each is a floor rather
 than the whole gap. Drop the flags when an item's acceptance criteria say so.
 
-## Where the remaining 298 are
+## Where the remaining 294 are
 
 Ranked by failures under the standard flags, deepest first. "Kind" is the
 dominant failure mode in that area, which says what the work is: *rejects
@@ -98,12 +99,12 @@ serialization or semantics difference, not a parser gap -- which is finer work
 per failure than the last two items were. #34 then cleared 22, most of them
 in areas a document already claims: 13 under `spec/directives/use`, one each
 in `directives/forward`, `core_functions/meta` and
-`non_conformant/extend-tests`, and six in the unclaimed tail. Item 11 has
-since claimed `spec/css/functions`, which led this table at 22, and `spec/css/percent`,
-whose 6 gated 35 of item 01's colour residue until section 5 cleared them. Its
-sections 1 and 2 then cleared `spec/css/supports` outright and cut
-`spec/css/unknown_directive` from 7 to 3 and `spec/css/moz_document` from 5 to
-1, none of which any document had claimed.
+`non_conformant/extend-tests`, and six in the unclaimed tail. Item 11 then took
+`spec/css/functions`, which led this table at 22, and `spec/css/percent`, whose
+6 gated 35 of item 01's colour residue. Its sections 1 and 2 also cleared
+`spec/css/supports` outright and cut `spec/css/unknown_directive` from 7 to 3
+and `spec/css/moz_document` from 5 to 1 -- areas no document had claimed, hit
+by one defect in a parser they share.
 
 ### Open items
 
@@ -111,22 +112,22 @@ sections 1 and 2 then cleared `spec/css/supports` outright and cut
 |---|---|---|---|
 | [07-calculation-long-tail.md](07-calculation-long-tail.md) | What #12 left in the calculation suite: `%` and `mod()` with a signed zero against an infinite divisor, a rounding strategy arriving through interpolation, line noise inside an interpolated `calc()` | 3 | `spec/values/calculation` |
 | [08-calculation-warnings-and-error-wording.md](08-calculation-warnings-and-error-wording.md) | Deprecation warnings (none exist) and error wording in calculations | 57, invisible under the standard flags | `spec/values/calculation` |
-| [11-special-css-functions.md](11-special-css-functions.md) | One left of five: `type()` never taking the text path. Sections 1, 2, 4 and 5 have landed, taking all 35 colour fixtures, 18 of this area's 22, and 18 more across five areas no document claimed | 4 | `spec/css/functions` |
 
-Item 11's 4 are what is left of the `spec/css/functions` row that led the
-unclaimed table until it was written. Its 35 colour failures were part of
-item 01's residue below, not additional ones, and have landed. Item 07's 3 are likewise the same three counted
-under item 01 -- 07 exists to describe what 01 deliberately left. Item
-08's 57 are invisible under the standard flags, so they are outside the 298
-entirely and are not double-counted either; that figure was re-measured on
-2026-09-06 with the flags dropped and is unchanged.
+Item 11 has landed in full and moved to the table below. Item 07's 3 are the
+same three counted under item 01 -- 07 exists to describe what 01 deliberately
+left. Item 08's 57 are invisible under the standard flags, so they are outside
+the 294 entirely and are not double-counted either; that figure was re-measured
+on 2026-09-06 with the flags dropped and is unchanged.
+
+Both open items are calculation work, so the roadmap's tracked queue is now one
+area deep. What is left of substance is the 134 nobody has read for causes.
 
 ### Landed -- residue only
 
-The counts here and in the unclaimed table above sum to 298: 164 in areas a
+The counts here and in the unclaimed table above sum to 294: 160 in areas a
 document claims, 134 in areas none does.
 
-These eight are done. The counts are what remains in the areas they touched,
+These nine are done. The counts are what remains in the areas they touched,
 not open work, and they are listed so nobody mistakes a residue for a
 priority.
 
@@ -140,6 +141,7 @@ priority.
 | [06-module-system.md](06-module-system.md) | #17, #18 | 15 | `directives/use` 8, `forward` 5, `import` 2 |
 | [09-plain-css.md](09-plain-css.md) | #27, #29, #30 | 0 | `spec/css/plain` is clear; `directives/import` has 2 left, counted under 06 |
 | [10-indented-newlines.md](10-indented-newlines.md) | #32 | 0 | cut across 26 areas; `directives/for`, `directives/function`, `values/lists`, `css/media` and `css/style_rule` are clear |
+| [11-special-css-functions.md](11-special-css-functions.md) | #38, #39, #40 | 0 | `css/functions`, `css/percent` and `css/supports` are clear; its 35 colour fixtures were part of item 01's residue |
 
 Item 06's residue fell from 29 to 15 through #34, which is not one of these
 documents. Residue is not automatically worth chasing either, but it is worth
@@ -151,14 +153,14 @@ the residue is now a rounding question, not a colour-API one.
 
 ## Failure kinds
 
-Across the whole suite the 298 failures split into (2026-09-07):
+Across the whole suite the 294 failures split into (2026-09-07):
 
-- 219 "Expected did not match output" — accent-sass produces different CSS.
-- 50 "Test case should succeed but it did not" — accent-sass rejects valid input.
+- 217 "Expected did not match output" — accent-sass produces different CSS.
+- 48 "Test case should succeed but it did not" — accent-sass rejects valid input.
 - 29 "Expected test to fail but it did not" — accent-sass accepts invalid input.
 
 The order flipped on 2026-09-05. On 2026-09-04 *rejects valid input* stood at
-304 and dominated; items 09 and 10 were both drawn from it, and it is now 50.
+304 and dominated; items 09 and 10 were both drawn from it, and it is now 48.
 What dominates now is different output, which is a serialization or semantics
 difference rather than a parser gap.
 

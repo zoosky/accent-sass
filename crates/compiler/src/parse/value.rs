@@ -1602,7 +1602,15 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
         let mut buffer;
 
         match normalized {
-            "calc" | "element" | "expression" => {
+            "calc" | "element" | "expression" | "type" => {
+                // `type()` is special only unprefixed. dart-sass normalizes
+                // `TYPE(` to `type(` but leaves `-a-type(` an ordinary
+                // function call, whose arguments are Sass expressions and
+                // whose quotes are normalized.
+                if normalized == "type" && name != "type" {
+                    return Ok(None);
+                }
+
                 if !parser.scan_char('(') {
                     return Ok(None);
                 }
