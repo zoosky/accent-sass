@@ -98,11 +98,14 @@ test!(
     "@foo {\n  a f {\n    b: c;\n  }\n}\n"
 );
 test!(
+    // The silent comment is dropped and takes the rest of the line with it,
+    // including the semicolon. Verified against dart-sass 1.103.1, which
+    // prints the same; the old expectation kept the comment.
     params_contain_silent_comment_and_semicolon,
     "a {
       @box-shadow: $btn-focus-box-shadow, // $btn-active-box-shadow;
     }",
-    "a {\n  @box-shadow : $btn-focus-box-shadow, // $btn-active-box-shadow;;\n}\n"
+    "a {\n  @box-shadow : $btn-focus-box-shadow,;\n}\n"
 );
 test!(contains_multiline_comment, "@foo /**/;\n", "@foo;\n");
 error!(
@@ -120,3 +123,24 @@ error!(
 );
 
 // todo: test scoping in rule
+test!(
+    // The same two fixes reach unknown at-rule values, which are parsed by
+    // `almost_any_value`. Verified against dart-sass 1.103.1.
+    value_keeps_single_quotes,
+    "@asdf 'foo bar baz';\n",
+    "@asdf 'foo bar baz';\n"
+);
+test!(value_drops_a_silent_comment, "@a b //c\n;\n", "@a b;\n");
+test!(value_keeps_a_loud_comment, "@a b /*c*/;\n", "@a b /*c*/;\n");
+test!(
+    // `url()` and `url-prefix()` hold a raw URL, so the `//` in a scheme is
+    // not a comment. This is what `@-moz-document` relies on.
+    url_prefix_keeps_a_scheme,
+    "@a url-prefix(http://x);\n",
+    "@a url-prefix(http://x);\n"
+);
+test!(
+    url_keeps_a_scheme,
+    "@a url(http://x);\n",
+    "@a url(http://x);\n"
+);

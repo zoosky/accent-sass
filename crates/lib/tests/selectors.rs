@@ -894,11 +894,13 @@ test!(
     "::foo(\"red\") {\n  color: ::foo(\"red\");\n}\n"
 );
 test!(
+    // dart-sass 1.103.1 keeps the source's quote character in a selector, so
+    // this stays single-quoted rather than being normalized.
     pseudo_element_single_quotes,
     r#"::foo('red') {
         color: &;
     }"#,
-    "::foo(\"red\") {\n  color: ::foo(\"red\");\n}\n"
+    "::foo('red') {\n  color: ::foo('red');\n}\n"
 );
 test!(
     pseudo_element_loud_comments,

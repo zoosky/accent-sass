@@ -151,6 +151,26 @@ impl StringExpr {
             InterpolationPart::String(text) => Some(text.as_str()),
         }));
 
+        self.quote_with(quote, is_static)
+    }
+
+    /// Serializes the string with the quote character the source used, rather
+    /// than the one [`Self::best_quote`] would pick.
+    ///
+    /// Inside a special function or an unknown at-rule value, dart-sass
+    /// prints the source's quotes back as they were: `-a-calc('x')` keeps its
+    /// single quotes where an ordinary value is normalized to `"x"`. The
+    /// contents are still parsed, so interpolation inside the string is
+    /// evaluated and any occurrence of the quote is escaped.
+    pub fn as_interpolation_with_quote(self, quote: char, is_static: bool) -> Interpolation {
+        if self.1 == QuoteKind::None {
+            return self.0;
+        }
+
+        self.quote_with(quote, is_static)
+    }
+
+    fn quote_with(self, quote: char, is_static: bool) -> Interpolation {
         let mut buffer = Interpolation::new();
         buffer.add_char(quote);
 

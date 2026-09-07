@@ -127,10 +127,12 @@ test!(
     "a {\n  color: element(#{1 + 2});\n}\n",
     "a {\n  color: element(3);\n}\n"
 );
-test!(
-    element_retains_silent_comment,
-    "a {\n  color: element(//);\n}\n",
-    "a {\n  color: element(//);\n}\n"
+// A silent comment runs to the end of the line, taking the closing paren with
+// it, so this is an error rather than a retained comment. dart-sass 1.103.1
+// gives the same message; the old expectation predated dropping the comment.
+error!(
+    element_silent_comment_eats_the_line,
+    "a {\n  color: element(//);\n}\n", "Error: expected \")\"."
 );
 test!(
     element_retains_multiline_comment,
@@ -172,10 +174,12 @@ test!(
     "a {\n  color: expression(#{1 + 2});\n}\n",
     "a {\n  color: expression(3);\n}\n"
 );
-test!(
-    expression_retains_silent_comment,
-    "a {\n  color: expression(//);\n}\n",
-    "a {\n  color: expression(//);\n}\n"
+// A silent comment runs to the end of the line, taking the closing paren with
+// it, so this is an error rather than a retained comment. dart-sass 1.103.1
+// gives the same message; the old expectation predated dropping the comment.
+error!(
+    expression_silent_comment_eats_the_line,
+    "a {\n  color: expression(//);\n}\n", "Error: expected \")\"."
 );
 test!(
     expression_retains_multiline_comment,
@@ -217,10 +221,12 @@ test!(
     "a {\n  color: progid:(#{1 + 2});\n}\n",
     "a {\n  color: progid:(3);\n}\n"
 );
-test!(
-    progid_retains_silent_comment,
-    "a {\n  color: progid:(//);\n}\n",
-    "a {\n  color: progid:(//);\n}\n"
+// A silent comment runs to the end of the line, taking the closing paren with
+// it, so this is an error rather than a retained comment. dart-sass 1.103.1
+// gives the same message; the old expectation predated dropping the comment.
+error!(
+    progid_silent_comment_eats_the_line,
+    "a {\n  color: progid:(//);\n}\n", "Error: expected \")\"."
 );
 test!(
     progid_retains_multiline_comment,
@@ -352,4 +358,90 @@ test!(
     interpolated_calc_nested_in_fn_trims_inner_whitespace,
     "a {\n  color: hsl(#{\"var(--h)\"}, 10%, calc(\n    #{\"var(--l)\"} + 1%\n  ));\n}\n",
     "a {\n  color: hsl(var(--h), 10%, calc(var(--l) + 1%));\n}\n"
+);
+
+// A silent comment inside a special function is dropped, and the newline that
+// ends it collapses to a single space. A quoted string keeps the quote
+// character the source used. Every expectation was compared against dart-sass
+// 1.103.1.
+test!(
+    silent_comment_after_open_paren,
+    "a {\n  b: -a-calc(//\n    c);\n}\n",
+    "a {\n  b: -a-calc( c);\n}\n"
+);
+test!(
+    // Two spaces: one from before the comment, one from the newline.
+    silent_comment_before_close_paren,
+    "a {\n  b: -a-calc(c //\n    );\n}\n",
+    "a {\n  b: -a-calc(c  );\n}\n"
+);
+test!(
+    silent_comment_between_values,
+    "a {b: -a-calc(a//c\nb)}\n",
+    "a {\n  b: -a-calc(a b);\n}\n"
+);
+test!(
+    // A loud comment is part of the value and stays.
+    loud_comment_is_kept,
+    "a {b: -a-calc(x /*c*/ y)}\n",
+    "a {\n  b: -a-calc(x /*c*/ y);\n}\n"
+);
+test!(
+    single_quotes_are_kept,
+    "a {b: -a-calc('x')}\n",
+    "a {\n  b: -a-calc('x');\n}\n"
+);
+test!(
+    escaped_quote_is_kept,
+    "a {b: -a-calc('a\\'b')}\n",
+    "a {\n  b: -a-calc('a\\'b');\n}\n"
+);
+test!(
+    // The contents are still parsed, so interpolation is evaluated.
+    interpolation_inside_a_kept_quote,
+    "a {b: -a-calc('a#{1 + 1}b')}\n",
+    "a {\n  b: -a-calc('a2b');\n}\n"
+);
+test!(
+    // An escaped `#{` stays escaped, because this text is re-parsed.
+    escaped_interpolation_stays_escaped,
+    "a {b: -a-calc('a\\#{b}c')}\n",
+    "a {\n  b: -a-calc('a\\#{b}c');\n}\n"
+);
+test!(
+    // Outside a special function the quote is still normalized.
+    unknown_function_still_normalizes_quotes,
+    "a {b: unknown('x')}\n",
+    "a {\n  b: unknown(\"x\");\n}\n"
+);
+test!(
+    // Whitespace inside a vendor-prefixed calc is kept; only the unprefixed
+    // interpolated form is trimmed, which is what `calc( #{x} )` covers.
+    prefixed_calc_keeps_its_whitespace,
+    "a {b: -a-calc( x )}\n",
+    "a {\n  b: -a-calc( x );\n}\n"
+);
+test!(
+    interpolated_calc_is_trimmed,
+    "a {b: calc( #{x} )}\n",
+    "a {\n  b: calc(x);\n}\n"
+);
+test!(
+    // A special function's contents take the same raw-URL path as an unknown
+    // at-rule's value, so a scheme's `//` survives there too. This is the
+    // regression the first cut of the silent-comment change introduced.
+    url_prefix_inside_a_special_function,
+    "a {b: element(url-prefix(http://x))}\n",
+    "a {\n  b: element(url-prefix(http://x));\n}\n"
+);
+test!(
+    url_inside_a_special_function,
+    "a {b: element(url(http://x))}\n",
+    "a {\n  b: element(url(http://x));\n}\n"
+);
+error!(
+    // The name is matched case-sensitively, so this is an ordinary function
+    // call whose `//` is a comment that eats the closing paren.
+    uppercase_url_is_not_a_raw_url,
+    "a {b: element(URL(http://x))}\n", "Error: expected \")\"."
 );
