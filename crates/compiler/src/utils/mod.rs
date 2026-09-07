@@ -33,13 +33,34 @@ pub(crate) fn opposite_bracket(b: char) -> char {
     }
 }
 
+/// Reports whether `s` is a CSS function call that may stand where a number
+/// is expected, because only the browser can resolve its value.
+///
+/// `attr()` and the CSS `if()` join the arithmetic functions here: dart-sass
+/// 1.103.1 accepts `rgb(attr(c, %), 2, 3)` and `rgb(if(css(): c))` and prints
+/// them back unevaluated. A Sass `if($cond, $a, $b)` never reaches this
+/// predicate -- it is evaluated long before a value is inspected -- so only
+/// the CSS form matches.
+///
+/// The six-character floor is dart-sass's, and it applies to every name here
+/// rather than to any one of them: `if(ab)` and `attr()` are accepted while
+/// `if(a)`, `attr(` and `calc(` are not, because a call that short cannot
+/// have both a body and a closing paren. Without it a truncated string
+/// serializes as though it were a whole function and the output is
+/// unbalanced CSS.
 pub(crate) fn is_special_function(s: &str) -> bool {
+    if s.len() < "if(ab)".len() {
+        return false;
+    }
+
     s.starts_with("calc(")
         || s.starts_with("var(")
         || s.starts_with("env(")
         || s.starts_with("min(")
         || s.starts_with("max(")
         || s.starts_with("clamp(")
+        || s.starts_with("attr(")
+        || s.starts_with("if(")
 }
 
 /// Trim ASCII whitespace from both sides of string.

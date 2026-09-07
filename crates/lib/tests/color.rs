@@ -782,3 +782,71 @@ error!(
     "a {\n  color: mix(red, blue, (1/0));\n}\n",
     "Error: $weight: Expected calc(infinity) to be within 0 and 100."
 );
+
+// `attr()` is a special variable string: only the browser can resolve it, so
+// a colour function keeps the call rather than reading a channel from it.
+// Every expectation was compared against dart-sass 1.103.1.
+test!(
+    rgb_attr_alone_stands_for_every_channel,
+    "a {b: rgb(attr(c))}\n",
+    "a {\n  b: rgb(attr(c));\n}\n"
+);
+test!(
+    rgb_attr_as_one_channel,
+    "a {b: rgb(attr(c), 1, 2)}\n",
+    "a {\n  b: rgb(attr(c), 1, 2);\n}\n"
+);
+test!(
+    // A unit argument is what every colour fixture in the spec passes, and
+    // it needs the bare `%` to parse before it reaches this check.
+    hsl_attr_with_a_unit_argument,
+    "a {b: hsl(attr(c, %), 2%, 3%, 0.4)}\n",
+    "a {\n  b: hsl(attr(c, %), 2%, 3%, 0.4);\n}\n"
+);
+test!(
+    // lab() keeps its space separator where rgb() switches to commas.
+    lab_attr_keeps_spaces,
+    "a {b: lab(attr(c) 2 3)}\n",
+    "a {\n  b: lab(attr(c) 2 3);\n}\n"
+);
+test!(
+    rgb_attr_with_a_slash_alpha,
+    "a {b: rgb(attr(c) 2 3 / 0.5)}\n",
+    "a {\n  b: rgb(attr(c), 2, 3, 0.5);\n}\n"
+);
+test!(
+    color_function_keeps_attr,
+    "a {b: color(srgb attr(c) 2 3)}\n",
+    "a {\n  b: color(srgb attr(c) 2 3);\n}\n"
+);
+
+// dart-sass will not treat a string shorter than six characters as a special
+// function: a call that short cannot have both a body and a closing paren.
+// Without the floor a truncated string serializes as though it were whole,
+// and the output is unbalanced CSS.
+error!(
+    truncated_attr_is_not_a_special_function,
+    "@use \"sass:string\";\na {b: rgb(string.unquote(\"attr(\") 1 2)}\n",
+    "Error: $channels: Expected red channel to be a number, was attr(."
+);
+test!(
+    six_character_attr_is_a_special_function,
+    "@use \"sass:string\";\na {b: rgb(string.unquote(\"attr()\") 1 2)}\n",
+    "a {\n  b: rgb(attr(), 1, 2);\n}\n"
+);
+error!(
+    truncated_css_if_is_not_a_special_function,
+    "@use \"sass:string\";\na {b: rgb(string.unquote(\"if(a)\"), 1, 2)}\n",
+    "Error: $red: if(a) is not a number."
+);
+test!(
+    six_character_css_if_is_a_special_function,
+    "@use \"sass:string\";\na {b: rgb(string.unquote(\"if(ab)\"), 1, 2)}\n",
+    "a {\n  b: rgb(if(ab), 1, 2);\n}\n"
+);
+error!(
+    // The floor applies to every name, not only the two added for item 11.
+    truncated_calc_is_not_a_special_function,
+    "@use \"sass:string\";\na {b: rgb(string.unquote(\"calc(\") 1 2)}\n",
+    "Error: $channels: Expected red channel to be a number, was calc(."
+);
