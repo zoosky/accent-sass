@@ -445,3 +445,49 @@ error!(
     uppercase_url_is_not_a_raw_url,
     "a {b: element(URL(http://x))}\n", "Error: expected \")\"."
 );
+
+// `type()` takes the same text path as `element()`: its arguments are not
+// Sass expressions. Only the unprefixed name is special. Every expectation
+// was compared against dart-sass 1.103.1.
+test!(
+    type_does_not_evaluate_its_argument,
+    "a {b: type(1 + 2)}\n",
+    "a {\n  b: type(1 + 2);\n}\n"
+);
+test!(
+    type_name_is_lowercased,
+    "a {b: TYPE(0)}\n",
+    "a {\n  b: type(0);\n}\n"
+);
+test!(
+    type_keeps_source_quotes,
+    "a {b: type('x')}\n",
+    "a {\n  b: type('x');\n}\n"
+);
+test!(
+    type_evaluates_interpolation,
+    "a {b: TYPE(#{0})}\n",
+    "a {\n  b: type(0);\n}\n"
+);
+test!(
+    type_takes_any_punctuation,
+    "a {b: type(@#$%^&*({[]})_-+=|\\\\:\"\"''<>,.?/)}\n",
+    "a {\n  b: type(@#$%^&*({[]})_-+=|\\\\:\"\"''<>,.?/);\n}\n"
+);
+test!(
+    type_may_be_empty,
+    "a {b: type()}\n",
+    "a {\n  b: type();\n}\n"
+);
+test!(
+    // A vendor prefix makes it an ordinary function call again, so the
+    // argument is a Sass expression and its quotes are normalized.
+    prefixed_type_is_not_special,
+    "a {b: -a-type('x')}\n",
+    "a {\n  b: -a-type(\"x\");\n}\n"
+);
+test!(
+    type_does_not_resolve_a_variable,
+    "$x: 1;\na {b: type($x)}\n",
+    "a {\n  b: type($x);\n}\n"
+);
