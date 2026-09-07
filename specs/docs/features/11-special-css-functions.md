@@ -38,7 +38,7 @@ leaves all 35 failing.
 |---|---|---:|---:|
 | 1 | A silent comment is copied into the output -- **landed** | 8 | -- |
 | 2 | A quoted string is re-quoted -- **landed** | 8 | -- |
-| 3 | `type()` is not a special function -- **landed** | 4 | -- |
+| 3 | `type()` is not a special function -- **landed**, #41 | 4 | -- |
 | 4 | `attr()` and `if()` are not special variable strings -- **landed**, #39 | 2 | 35 |
 | 5 | A bare `%` is not a value -- **landed**, #38 | 6 | 35, with 4 |
 
@@ -191,7 +191,7 @@ which dart-sass also rejects -- so it stays in the "accepts invalid input"
 column either way. No fixture in the pinned revision covers it, and closing it
 means balancing parens in `almost_any_value`.
 
-## 3. `type()` is not treated as a special function -- landed
+## 3. `type()` is not treated as a special function -- landed in #41
 
 `spec/css/functions/special/unprefixed/lowercase/type/punctuation`,
 `spec/css/functions/special/unprefixed/uppercase/type/{punctuation,number,interpolation}`

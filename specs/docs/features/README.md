@@ -36,7 +36,7 @@ after #18. Item 11 took it to 369 with section 5, a bare `%` parsing as a
 value (#38), then to 332 with section 4, `attr()` and the CSS `if()` joining
 the special variable strings (#39), then to 298 with sections 1 and 2, a silent
 comment dropped and a quoted string's quote character kept (#40), and then to
-294 with section 3, `type()` taking the text path. One or two tests depend on `random()`
+294 with section 3, `type()` taking the text path (#41). One or two tests depend on `random()`
 and move between runs.
 
 Every count on this page comes from a macOS run. The advisory `sass-spec` CI
@@ -141,7 +141,7 @@ priority.
 | [06-module-system.md](06-module-system.md) | #17, #18 | 15 | `directives/use` 8, `forward` 5, `import` 2 |
 | [09-plain-css.md](09-plain-css.md) | #27, #29, #30 | 0 | `spec/css/plain` is clear; `directives/import` has 2 left, counted under 06 |
 | [10-indented-newlines.md](10-indented-newlines.md) | #32 | 0 | cut across 26 areas; `directives/for`, `directives/function`, `values/lists`, `css/media` and `css/style_rule` are clear |
-| [11-special-css-functions.md](11-special-css-functions.md) | #38, #39, #40 | 0 | `css/functions`, `css/percent` and `css/supports` are clear; its 35 colour fixtures were part of item 01's residue |
+| [11-special-css-functions.md](11-special-css-functions.md) | #38, #39, #40, #41 | 0 | `css/functions`, `css/percent` and `css/supports` are clear; its 35 colour fixtures were part of item 01's residue |
 
 Item 06's residue fell from 29 to 15 through #34, which is not one of these
 documents. Residue is not automatically worth chasing either, but it is worth
