@@ -2,8 +2,14 @@
 
 Unlocks the 22 sass-spec tests under `spec/css/functions`, the deepest area
 no document claimed, the 6 under `spec/css/percent`, and 35 under
-`spec/core_functions/color`. **Sections 4 and 5 have landed**, taking the 35
-and 2 of the 22; sections 1 to 3 are the 20 that remain.
+`spec/core_functions/color`. **Sections 1, 2, 4 and 5 have landed**, taking
+those 41 and 18 of the 22; section 3 is the 4 that remain.
+
+Sections 1 and 2 reached much further than this document predicted: 34
+fixtures, not the 16 counted here, because the same two defects live in
+`almost_any_value` and so ran through `spec/css/supports`,
+`spec/css/unknown_directive`, `spec/css/moz_document` and three libsass
+issues as well.
 Measured 2026-09-06 against master (`1c3608e`), the pinned sass-spec revision
 `4a9eea66`, and dart-sass 1.103.1 run as `npx -y sass@1.103.1`:
 
@@ -30,17 +36,16 @@ leaves all 35 failing.
 
 | Section | Defect | Tests in the named area | Colour fixtures |
 |---|---|---:|---:|
-| 1 | A silent comment is copied into the output | 8 | -- |
-| 2 | A quoted string is re-quoted | 8 | -- |
+| 1 | A silent comment is copied into the output -- **landed** | 8 | -- |
+| 2 | A quoted string is re-quoted -- **landed** | 8 | -- |
 | 3 | `type()` is not a special function | 4 | -- |
 | 4 | `attr()` and `if()` are not special variable strings -- **landed**, #39 | 2 | 35 |
 | 5 | A bare `%` is not a value -- **landed**, #38 | 6 | 35, with 4 |
 
-Sections 1 and 2 reach further than the table says. Both defects live in
-functions that also parse unknown at-rule values, so they show up in
-`spec/css/unknown_directive` too -- see the note at the end of section 2.
+Sections 1 and 2 reached further than the table says, which the landing
+confirmed: 34 fixtures across six areas rather than the 16 counted here.
 
-## 1. A silent comment inside a special function is copied through
+## 1. A silent comment inside a special function is copied through -- landed
 
 `spec/css/functions/special/comment/{calc,element,expression,progid}/{after_open_paren,before_close_paren}/silent`
 
@@ -97,7 +102,7 @@ the statement, which the `consume_newlines` parameter governs; the eight
 failing tests are all `.scss`, so confirm no `.sass` test that passes today
 starts failing.
 
-## 2. A quoted string inside a special function is re-quoted
+## 2. A quoted string inside a special function is re-quoted -- landed
 
 `spec/css/functions/special/prefixed/{lowercase,uppercase}/{calc,element,expression,progid}/punctuation`
 
@@ -151,6 +156,38 @@ That is `spec/css/unknown_directive/value_interpolation` for the quoting and
 `comment/{children,no_children}/after_value/silent` for the comment -- three
 of that area's seven failures, from the same two fixes. The area is
 unclaimed, so nothing else covers them.
+
+### What sections 1 and 2 needed beyond the instructions above
+
+Four things the instructions did not anticipate, each established against
+dart-sass 1.103.1:
+
+- **A custom property keeps its `//`.** Its value is raw CSS, where `//` is
+  two slashes, so `--x: // ;` prints as written. dart-sass carries a
+  `silentComments` parameter for exactly this;
+  `parse_interpolated_declaration_value` now does too, and the custom-property
+  call sites pass `false`. Without it the change broke `--btn-font-family: //`.
+- **The quoted string has to be re-emitted as static text.** Passing
+  `is_static: true` keeps an escaped `\#{` escaped, because the text is
+  re-parsed. With `false` it came back as a live interpolation.
+- **`url()` and `url-prefix()` hold a raw URL**, so the `//` in `http://` is
+  not a comment. `almost_any_value` handled only `url`, which turned
+  `@-moz-document url-prefix(http://x)` into a truncated value once comments
+  started being dropped. dart-sass matches both names case-sensitively, so
+  `URL(` is an ordinary function call.
+- **The calc whitespace trim is for the unprefixed name only.** `-a-calc( x )`
+  keeps its spaces in dart-sass, while an interpolated `calc( #{x} )` is
+  trimmed. The trim was keyed on the unvendored name, which ate the space the
+  two silent-comment fixtures expect.
+
+### A divergence these sections did not close
+
+`@a domain(http://x);` prints `@a domain(http:;` here and errors with
+`expected ")"` in dart-sass, which tracks the unclosed paren. The shape is not
+new -- before the comment was dropped this printed `@a domain(http://x);`,
+which dart-sass also rejects -- so it stays in the "accepts invalid input"
+column either way. No fixture in the pinned revision covers it, and closing it
+means balancing parens in `almost_any_value`.
 
 ## 3. `type()` is not treated as a special function
 

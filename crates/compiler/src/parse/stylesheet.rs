@@ -765,7 +765,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
             return Ok(None);
         }
 
-        let value = self.parse_interpolated_declaration_value(true, true, true, true)?;
+        let value = self.parse_interpolated_declaration_value(true, true, true, true, true)?;
         self.expect_char(')')?;
 
         Ok(Some(AstSupportsCondition::Function { name, args: value }))
@@ -830,7 +830,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
                         }
                     } else {
                         let args =
-                            self.parse_interpolated_declaration_value(true, true, true, true);
+                            self.parse_interpolated_declaration_value(true, true, true, true, true);
 
                         buffer.add_char('(');
                         buffer.add_interpolation(args?);
@@ -1310,7 +1310,8 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
             AstExpr::String(StringExpr(text, QuoteKind::None), ..)
                 if text.initial_plain().starts_with("--") =>
             {
-                let text = self.parse_interpolated_declaration_value(false, false, true, false)?;
+                let text =
+                    self.parse_interpolated_declaration_value(false, false, true, false, true)?;
                 AstExpr::String(
                     StringExpr(text, QuoteKind::None),
                     self.toks_mut().span_from(start),
@@ -1342,7 +1343,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
 
             if self.scan_char('(') {
                 let arguments =
-                    self.parse_interpolated_declaration_value(true, true, true, true)?;
+                    self.parse_interpolated_declaration_value(true, true, true, true, true)?;
                 self.expect_char(')')?;
                 return Ok(AstSupportsCondition::Function {
                     name: identifier,
@@ -1420,7 +1421,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
                 let mut contents = Interpolation::new();
                 contents.add_interpolation(identifier);
                 contents.add_interpolation(
-                    self.parse_interpolated_declaration_value(true, true, false, true)?,
+                    self.parse_interpolated_declaration_value(true, true, false, true, true)?,
                 );
 
                 if self.toks_mut().next_char_is(':') {
@@ -1953,7 +1954,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
 
         if parse_custom_properties && name.initial_plain().starts_with("--") {
             let interpolation =
-                self.parse_interpolated_declaration_value(false, false, true, false)?;
+                self.parse_interpolated_declaration_value(false, false, true, false, false)?;
             let value_span = self.toks_mut().span_from(start);
             let value = AstExpr::String(StringExpr(interpolation, QuoteKind::None), value_span)
                 .span(value_span);
@@ -2196,6 +2197,12 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
         allow_colon: bool,
         // default=false
         consume_newlines: bool,
+        // default=true
+        //
+        // A custom property's value is raw CSS, where `//` is two slashes
+        // rather than a comment, so those call sites pass `false` and keep
+        // the text as written.
+        silent_comments: bool,
     ) -> SassResult<Interpolation> {
         let mut buffer = Interpolation::new();
 
@@ -2212,7 +2219,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
                     buffer.add_interpolation(
                         self.parse_interpolated_string()?
                             .node
-                            .as_interpolation(false),
+                            .as_interpolation_with_quote(tok.kind, true),
                     );
                     wrote_newline = false;
                 }
@@ -2220,6 +2227,15 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
                     if matches!(self.toks().peek_n(1), Some(Token { kind: '*', .. })) {
                         let comment = self.fallible_raw_text(Self::skip_loud_comment)?;
                         buffer.add_string(comment);
+                    } else if silent_comments
+                        && matches!(self.toks().peek_n(1), Some(Token { kind: '/', .. }))
+                        && self.skip_silent_comment()?
+                    {
+                        // dart-sass drops a silent comment and keeps the
+                        // newline that ends it, which the whitespace handling
+                        // below turns into a single space. `skip_silent_comment`
+                        // stops before that newline, and returns false in plain
+                        // CSS, where `//` inside a value is two slashes.
                     } else {
                         self.toks_mut().next();
                         buffer.add_char(tok.kind);
@@ -2555,7 +2571,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
             let value = if self.at_end_of_statement() {
                 Interpolation::new()
             } else {
-                self.parse_interpolated_declaration_value(false, false, true, false)?
+                self.parse_interpolated_declaration_value(false, false, true, false, false)?
             };
             let value_span = self.toks_mut().span_from(value_start);
             self.expect_statement_separator(Some(if is_custom_property {
@@ -2936,13 +2952,17 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
                     buffer.add_interpolation(
                         self.parse_interpolated_string()?
                             .node
-                            .as_interpolation(false),
+                            .as_interpolation_with_quote(tok.kind, true),
                     );
                 }
                 '/' => {
+                    // A loud comment is part of the value and is written back
+                    // verbatim; a silent one is not, so `@a b //c` keeps only
+                    // `@a b`. `scan_comment` consumes either.
+                    let is_loud = matches!(self.toks().peek_n(1), Some(Token { kind: '*', .. }));
                     let comment_start = self.toks().cursor();
                     if self.scan_comment()? {
-                        if !omit_comments {
+                        if is_loud && !omit_comments {
                             buffer.add_string(self.toks().raw_text(comment_start));
                         }
                     } else {
@@ -2968,13 +2988,31 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
                 '!' | ';' | '{' | '}' => break,
                 'u' | 'U' => {
                     let before_url = self.toks().cursor();
-                    if !self.scan_identifier("url", false)? {
+
+                    // `url()` and `url-prefix()` hold a raw URL, so a `//`
+                    // inside them is part of the URL rather than a silent
+                    // comment -- `@-moz-document url-prefix(http://x)` has to
+                    // survive. dart-sass matches both names case-sensitively
+                    // here, so `URL(` is an ordinary function call.
+                    let name = if self.scan_identifier("url-prefix", true)? {
+                        Some("url-prefix")
+                    } else {
+                        self.toks_mut().set_cursor(before_url);
+                        if self.scan_identifier("url", true)? {
+                            Some("url")
+                        } else {
+                            None
+                        }
+                    };
+
+                    let Some(name) = name else {
+                        self.toks_mut().set_cursor(before_url);
                         self.toks_mut().next();
                         buffer.add_char(tok.kind);
                         continue;
-                    }
+                    };
 
-                    match self.try_url_contents(None)? {
+                    match self.try_url_contents(Some(name))? {
                         Some(contents) => buffer.add_interpolation(contents),
                         None => {
                             self.toks_mut().set_cursor(before_url);

@@ -5,25 +5,24 @@ the gap between this project and dart-sass 1.103.1, ranked by the number of
 sass-spec tests each item unlocks.
 
 **The ranking below was rebuilt on 2026-09-05 and re-measured on 2026-09-06,
-then updated for item 11's sections 4 and 5.**
+then updated as item 11 landed.**
 The original one was drawn up against 1,718 failures, when six large items
 accounted for most of them. Those six have landed, and so have items 09 and 10;
-the suite is at 332, which changed the shape of the problem rather than just its
-size. The documented items are now mostly *residue*, and **152 of the 332 -- 46%
+the suite is at 298, which changed the shape of the problem rather than just its
+size. The documented items are now mostly *residue*, and **134 of the 298 -- 45%
 -- sit in areas no document covers at all.** No single area is deep any more:
-item 11 claimed the largest, and the deepest left unclaimed is 12 failures, with
-82 of the 152 in a tail of areas holding fewer than six each. Every item that
-lands raises that share, because the unclaimed areas are the ones nobody has
-read for causes.
+the deepest unclaimed one is 12 failures, and 83 of the 134 are a tail of areas
+holding fewer than six each. Item 11's sections 1 and 2 cut into that tail
+without setting out to: one defect in a shared parser reached six areas.
 
 ## Measurement
 
 The ranking comes from a full run of the pinned sass-spec revision
 (`4a9eea66`) against the release build. Re-measured 2026-09-06 on master
-(`be69f6a`) at 375 failures, and again after item 11's sections 4 and 5:
+(`be69f6a`) at 375 failures, and again as item 11 landed:
 
 ```
-14218 runs, 13878 passing, 332 failures, 8 todo, 0 ignored, 0 errors
+14218 runs, 13912 passing, 298 failures, 8 todo, 0 ignored, 0 errors
 ```
 
 The original ranking was taken on 2026-09-02 at 12,492 passing against 1,718
@@ -34,8 +33,9 @@ pull requests since then took it to 397: #27 (CSS nesting passthrough) to 590,
 parameter) to 397. #34, which scoped `@extend` to a module's upstream closure,
 took it to 375; it belongs to no item here, having come off the branch left
 after #18. Item 11 took it to 369 with section 5, a bare `%` parsing as a
-value (#38), and then to 332 with section 4, `attr()` and the CSS `if()`
-joining the special variable strings (#39). One or two tests depend on `random()`
+value (#38), then to 332 with section 4, `attr()` and the CSS `if()` joining
+the special variable strings (#39), and then to 298 with sections 1 and 2, a
+silent comment dropped and a quoted string's quote character kept. One or two tests depend on `random()`
 and move between runs.
 
 Every count on this page comes from a macOS run. The advisory `sass-spec` CI
@@ -67,7 +67,7 @@ since 2026-09-03; [08](08-calculation-warnings-and-error-wording.md) records
 them). Every count on this page is *with* the flags, so each is a floor rather
 than the whole gap. Drop the flags when an item's acceptance criteria say so.
 
-## Where the remaining 332 are
+## Where the remaining 298 are
 
 Ranked by failures under the standard flags, deepest first. "Kind" is the
 dominant failure mode in that area, which says what the work is: *rejects
@@ -77,8 +77,8 @@ error check.
 
 ### Unclaimed -- no document covers these
 
-152 failures, none tracked by any item. Nine areas hold six or more, 70 in
-all; the other 82 are a tail of 53 areas with fewer than six each.
+134 failures, none tracked by any item. Six areas hold six or more, 51 in
+all; the other 83 are a tail of 52 areas with fewer than six each.
 
 | Area | Failures | Kind |
 |---|---|---|
@@ -86,25 +86,24 @@ all; the other 82 are a tail of 53 areas with fewer than six each.
 | `spec/non_conformant/extend-tests` | 10 | 10 different output |
 | `spec/core_functions/list` | 9 | 6 different output |
 | `spec/core_functions/string` | 8 | 8 different output |
-| `spec/css/unknown_directive` | 7 | 7 different output |
 | `spec/css/custom_properties` | 6 | 6 different output |
-| `spec/css/supports` | 6 | 6 different output |
 | `spec/directives/extend` | 6 | 6 different output |
-| `spec/non_conformant/scss` | 6 | 6 different output |
 
 The shape has changed since the 2026-09-04 ranking. That one was led by areas
 where this compiler *rejected* input dart-sass accepts, and items 09 and 10
 were both cut out of it: `spec/css/plain`, `spec/css/function`,
 `spec/css/style_rule`, `spec/directives/function`, `spec/directives/for`,
-`spec/values/lists` and `spec/css/media` are now clear, and `spec/css/supports`
-went from 21 to 6. What is left is mostly *different output* -- a
+`spec/values/lists`, `spec/css/media` and `spec/css/supports` are now clear. What is left is mostly *different output* -- a
 serialization or semantics difference, not a parser gap -- which is finer work
 per failure than the last two items were. #34 then cleared 22, most of them
 in areas a document already claims: 13 under `spec/directives/use`, one each
 in `directives/forward`, `core_functions/meta` and
 `non_conformant/extend-tests`, and six in the unclaimed tail. Item 11 has
 since claimed `spec/css/functions`, which led this table at 22, and `spec/css/percent`,
-whose 6 gated 35 of item 01's colour residue until section 5 cleared them.
+whose 6 gated 35 of item 01's colour residue until section 5 cleared them. Its
+sections 1 and 2 then cleared `spec/css/supports` outright and cut
+`spec/css/unknown_directive` from 7 to 3 and `spec/css/moz_document` from 5 to
+1, none of which any document had claimed.
 
 ### Open items
 
@@ -112,20 +111,20 @@ whose 6 gated 35 of item 01's colour residue until section 5 cleared them.
 |---|---|---|---|
 | [07-calculation-long-tail.md](07-calculation-long-tail.md) | What #12 left in the calculation suite: `%` and `mod()` with a signed zero against an infinite divisor, a rounding strategy arriving through interpolation, line noise inside an interpolated `calc()` | 3 | `spec/values/calculation` |
 | [08-calculation-warnings-and-error-wording.md](08-calculation-warnings-and-error-wording.md) | Deprecation warnings (none exist) and error wording in calculations | 57, invisible under the standard flags | `spec/values/calculation` |
-| [11-special-css-functions.md](11-special-css-functions.md) | Three left of five: a silent comment copied through, a quoted string re-quoted, and `type()` never taking the text path. Sections 4 and 5 have landed, taking all 35 colour fixtures and 2 of this area's 22 | 20 | `spec/css/functions` |
+| [11-special-css-functions.md](11-special-css-functions.md) | One left of five: `type()` never taking the text path. Sections 1, 2, 4 and 5 have landed, taking all 35 colour fixtures, 18 of this area's 22, and 18 more across five areas no document claimed | 4 | `spec/css/functions` |
 
-Item 11's 20 are what is left of the `spec/css/functions` row that led the
+Item 11's 4 are what is left of the `spec/css/functions` row that led the
 unclaimed table until it was written. Its 35 colour failures were part of
 item 01's residue below, not additional ones, and have landed. Item 07's 3 are likewise the same three counted
 under item 01 -- 07 exists to describe what 01 deliberately left. Item
-08's 57 are invisible under the standard flags, so they are outside the 332
+08's 57 are invisible under the standard flags, so they are outside the 298
 entirely and are not double-counted either; that figure was re-measured on
 2026-09-06 with the flags dropped and is unchanged.
 
 ### Landed -- residue only
 
-The counts here and in the unclaimed table above sum to 332: 180 in areas a
-document claims, 152 in areas none does.
+The counts here and in the unclaimed table above sum to 298: 164 in areas a
+document claims, 134 in areas none does.
 
 These eight are done. The counts are what remains in the areas they touched,
 not open work, and they are listed so nobody mistakes a residue for a
@@ -152,14 +151,14 @@ the residue is now a rounding question, not a colour-API one.
 
 ## Failure kinds
 
-Across the whole suite the 332 failures split into (2026-09-06):
+Across the whole suite the 298 failures split into (2026-09-07):
 
-- 251 "Expected did not match output" — accent-sass produces different CSS.
-- 52 "Test case should succeed but it did not" — accent-sass rejects valid input.
+- 219 "Expected did not match output" — accent-sass produces different CSS.
+- 50 "Test case should succeed but it did not" — accent-sass rejects valid input.
 - 29 "Expected test to fail but it did not" — accent-sass accepts invalid input.
 
 The order flipped on 2026-09-05. On 2026-09-04 *rejects valid input* stood at
-304 and dominated; items 09 and 10 were both drawn from it, and it is now 52.
+304 and dominated; items 09 and 10 were both drawn from it, and it is now 50.
 What dominates now is different output, which is a serialization or semantics
 difference rather than a parser gap.
 

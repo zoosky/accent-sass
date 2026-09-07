@@ -1639,11 +1639,16 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
             _ => return Ok(None),
         }
 
-        let mut contents = parser.parse_interpolated_declaration_value(false, true, true, false)?;
+        let mut contents =
+            parser.parse_interpolated_declaration_value(false, true, true, false, true)?;
         // An interpolated calc() reaches this raw-string fallback, but Dart
         // Sass serializes it without the source's leading/trailing whitespace
-        // inside the parentheses (`calc( x )` becomes `calc(x)`).
-        if normalized == "calc" {
+        // inside the parentheses (`calc( #{x} )` becomes `calc(x)`).
+        //
+        // This is the unprefixed name only. A vendor-prefixed one is an
+        // ordinary special function, and dart-sass keeps its whitespace:
+        // `-a-calc( x )` prints as written, like `element( x )` does.
+        if name == "calc" {
             if let Some(InterpolationPart::String(first)) = contents.contents.first_mut() {
                 *first = first.trim_start().to_owned();
             }
@@ -1731,7 +1736,7 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
         Ok(
             if ValueParser::contains_calculation_interpolation(parser)? {
                 let mut contents =
-                    parser.parse_interpolated_declaration_value(false, false, true, false)?;
+                    parser.parse_interpolated_declaration_value(false, false, true, false, true)?;
                 // Dart Sass serializes an interpolated calculation without the
                 // source's leading/trailing whitespace inside the parentheses
                 // (`calc( x )` becomes `calc(x)`).
