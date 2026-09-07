@@ -2710,8 +2710,8 @@ impl<'a> Visitor<'a> {
             comment.span,
         );
 
-        // Route through `add_child` for the same reason a declaration does
-        // (see `visit_declaration`): a loud comment holds its place in source
+        // Route through `add_child` for the same reason a style declaration
+        // does (see `visit_style`): a loud comment holds its place in source
         // order, so a nested rule written between two of them splits the
         // enclosing rule rather than letting the second comment hoist back up
         // beside the first.
