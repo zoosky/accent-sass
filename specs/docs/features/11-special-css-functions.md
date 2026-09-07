@@ -171,10 +171,12 @@ dart-sass 1.103.1:
   `is_static: true` keeps an escaped `\#{` escaped, because the text is
   re-parsed. With `false` it came back as a live interpolation.
 - **`url()` and `url-prefix()` hold a raw URL**, so the `//` in `http://` is
-  not a comment. `almost_any_value` handled only `url`, which turned
+  not a comment. Both parsers handled only `url`, which turned
   `@-moz-document url-prefix(http://x)` into a truncated value once comments
-  started being dropped. dart-sass matches both names case-sensitively, so
-  `URL(` is an ordinary function call.
+  started being dropped, and `element(url-prefix(http://x))` into an error.
+  dart-sass matches both names case-sensitively, so `URL(` is an ordinary
+  function call whose `//` *is* a comment. The two branches are easy to fix
+  one at a time and then diverge: spec fixtures cover only the at-rule side.
 - **The calc whitespace trim is for the unprefixed name only.** `-a-calc( x )`
   keeps its spaces in dart-sass, while an interpolated `calc( #{x} )` is
   trimmed. The trim was keyed on the unvendored name, which ate the space the

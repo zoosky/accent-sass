@@ -2323,14 +2323,31 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
                 'u' | 'U' => {
                     let before_url = self.toks().cursor();
 
-                    if !self.scan_identifier("url", false)? {
+                    // `url()` and `url-prefix()` hold a raw URL, so the `//`
+                    // in a scheme is part of it rather than a silent comment.
+                    // dart-sass matches both names case-sensitively, so
+                    // `URL(` is an ordinary function call. `almost_any_value`
+                    // does the same.
+                    let name = if self.scan_identifier("url-prefix", true)? {
+                        Some("url-prefix")
+                    } else {
+                        self.toks_mut().set_cursor(before_url);
+                        if self.scan_identifier("url", true)? {
+                            Some("url")
+                        } else {
+                            None
+                        }
+                    };
+
+                    let Some(name) = name else {
+                        self.toks_mut().set_cursor(before_url);
                         buffer.add_char(tok.kind);
                         self.toks_mut().next();
                         wrote_newline = false;
                         continue;
-                    }
+                    };
 
-                    match self.try_url_contents(None)? {
+                    match self.try_url_contents(Some(name))? {
                         Some(contents) => {
                             buffer.add_interpolation(contents);
                         }

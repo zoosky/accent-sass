@@ -426,3 +426,22 @@ test!(
     "a {b: calc( #{x} )}\n",
     "a {\n  b: calc(x);\n}\n"
 );
+test!(
+    // A special function's contents take the same raw-URL path as an unknown
+    // at-rule's value, so a scheme's `//` survives there too. This is the
+    // regression the first cut of the silent-comment change introduced.
+    url_prefix_inside_a_special_function,
+    "a {b: element(url-prefix(http://x))}\n",
+    "a {\n  b: element(url-prefix(http://x));\n}\n"
+);
+test!(
+    url_inside_a_special_function,
+    "a {b: element(url(http://x))}\n",
+    "a {\n  b: element(url(http://x));\n}\n"
+);
+error!(
+    // The name is matched case-sensitively, so this is an ordinary function
+    // call whose `//` is a comment that eats the closing paren.
+    uppercase_url_is_not_a_raw_url,
+    "a {b: element(URL(http://x))}\n", "Error: expected \")\"."
+);
