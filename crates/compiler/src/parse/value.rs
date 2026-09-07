@@ -1784,8 +1784,10 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
     fn parse_calculation_value(parser: &mut P) -> SassResult<Spanned<AstExpr>> {
         match parser.toks().peek() {
             // A leading `-` starts an identifier in `-infinity` and `-webkit-x`
-            // but a number in `-1px`, so the identifier check comes first.
-            Some(Token { kind: '-', .. }) if parser.looking_at_identifier() => {
+            // but a number in `-1px`, so the identifier check comes first. An
+            // interpolation continues the identifier rather than ending it, so
+            // `-#{$x}` is a single operand and not a minus sign.
+            Some(Token { kind: '-', .. }) if parser.looking_at_interpolated_identifier() => {
                 ValueParser::parse_calculation_identifier(parser)
             }
             Some(Token {
@@ -1801,7 +1803,7 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
                     Some(v) => v,
                     None => {
                         parser.whitespace(true)?;
-                        ValueParser::parse_calculation_sum(parser)?.node
+                        ValueParser::parse_calculation_expression(parser)?.node
                     }
                 };
 
@@ -1810,21 +1812,7 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
 
                 Ok(AstExpr::Paren(Arc::new(value)).span(parser.toks_mut().span_from(start)))
             }
-            // An interpolation is opaque text, so it becomes an unquoted
-            // string operand rather than a name that could be a function call
-            // or a calc constant. Anything written next to it without
-            // whitespace belongs to the same operand: `#{$a}px` is one value,
-            // not a value followed by an identifier.
-            Some(Token { kind: '#', .. })
-                if matches!(parser.toks().peek_n(1), Some(Token { kind: '{', .. })) =>
-            {
-                let start = parser.toks().cursor();
-                let contents = parser.parse_interpolated_identifier()?;
-                let span = parser.toks_mut().span_from(start);
-
-                Ok(AstExpr::String(StringExpr(contents, QuoteKind::None), span).span(span))
-            }
-            _ if !parser.looking_at_identifier() => Err((
+            _ if !parser.looking_at_interpolated_identifier() => Err((
                 "Expected number, variable, function, or calculation.",
                 parser.toks().current_span(),
             )
@@ -1839,10 +1827,37 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
     /// namespaced expression when followed by `.`, one of the calc constants
     /// when it names one, and otherwise a bare unquoted string that is carried
     /// through to the output (`calc(1px + foo)`).
+    ///
+    /// The identifier may contain interpolations, which bind to it rather than
+    /// starting a new operand: `x#{$a}` is one value and serializes as `x1`.
+    /// Such an identifier is opaque text, so it names neither a constant nor a
+    /// function -- `calc(e#{""} + 1)` keeps `e` as a string instead of reading
+    /// it as Euler's number -- and using it as a namespace or a call is an
+    /// error, as it is in Dart Sass.
     fn parse_calculation_identifier(parser: &mut P) -> SassResult<Spanned<AstExpr>> {
         let start = parser.toks().cursor();
-        let ident = parser.parse_identifier(false, false)?;
+        let contents = parser.parse_interpolated_identifier()?;
         let ident_span = parser.toks_mut().span_from(start);
+
+        let ident = match contents.as_plain() {
+            Some(plain) => plain.to_owned(),
+            None => {
+                return match parser.toks().peek() {
+                    Some(Token { kind: '.', .. }) => {
+                        Err(("Interpolation isn't allowed in namespaces.", ident_span).into())
+                    }
+                    Some(Token { kind: '(', .. }) => Err((
+                        "This expression can't be used in a calculation.",
+                        ident_span,
+                    )
+                        .into()),
+                    _ => Ok(
+                        AstExpr::String(StringExpr(contents, QuoteKind::None), ident_span)
+                            .span(ident_span),
+                    ),
+                };
+            }
+        };
 
         if parser.scan_char('.') {
             return ValueParser::namespaced_expression(
@@ -1981,22 +1996,43 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
                     }))
                     .span(span);
                 }
+                _ => return Ok(sum),
+            }
+        }
+    }
+
+    /// Parses one calculation argument, the level at which values written next
+    /// to each other with only whitespace between them form a space-separated
+    /// list.
+    ///
+    /// Adjacency binds looser than any operator, so `calc(var(--c) 1 + 2px)`
+    /// is `var(--c)` next to `1 + 2px`, not `var(--c) 1` plus `2px`. Dart Sass
+    /// parses a calculation argument as an ordinary Sass expression, where a
+    /// space-separated list binds loosest of all, and this mirrors that. It is
+    /// also what keeps the serializer's parenthesization honest: an operand
+    /// that is a space-separated list then always came from a grouping the
+    /// source wrote -- parentheses, or a nested `calc()` -- which is exactly
+    /// when the output needs parentheses back.
+    fn parse_calculation_expression(parser: &mut P) -> SassResult<Spanned<AstExpr>> {
+        let mut expr = ValueParser::parse_calculation_sum(parser)?;
+
+        loop {
+            match parser.toks().peek() {
                 // Two values written next to each other with only whitespace
                 // between them are legal in a calculation when at least one is
-                // opaque, as in `calc(var(--c) 1)`. Only a variable or an
-                // identifier (which is how `var()` starts) can begin such a
-                // continuation; a bare number there is still the "missing math
-                // operator" error.
+                // opaque, as in `calc(var(--c) 1)`. Only a variable, a number
+                // or an identifier (which is how both `var()` and an
+                // interpolation start) can begin such a continuation.
                 Some(Token {
-                    kind: '$' | '(' | '#' | '.' | '0'..='9',
+                    kind: '$' | '(' | '.' | '0'..='9',
                     ..
                 }) => {
-                    sum = ValueParser::parse_calculation_adjacent(parser, sum)?;
+                    expr = ValueParser::parse_calculation_adjacent(parser, expr)?;
                 }
-                Some(..) if parser.looking_at_identifier() => {
-                    sum = ValueParser::parse_calculation_adjacent(parser, sum)?;
+                Some(..) if parser.looking_at_interpolated_identifier() => {
+                    expr = ValueParser::parse_calculation_adjacent(parser, expr)?;
                 }
-                _ => return Ok(sum),
+                _ => return Ok(expr),
             }
         }
     }
@@ -2007,7 +2043,7 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
         parser: &mut P,
         first: Spanned<AstExpr>,
     ) -> SassResult<Spanned<AstExpr>> {
-        let next = ValueParser::parse_calculation_product(parser)?;
+        let next = ValueParser::parse_calculation_sum(parser)?;
         let span = first.span.merge(next.span);
 
         let mut elems = match first.node {
@@ -2585,7 +2621,7 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
         let mut arguments = Vec::new();
 
         if !parser.toks().next_char_is(')') {
-            arguments.push(ValueParser::parse_calculation_sum(parser)?.node);
+            arguments.push(ValueParser::parse_calculation_expression(parser)?.node);
             parser.whitespace(true)?;
 
             while parser.scan_char(',') {
@@ -2595,7 +2631,7 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
                     break;
                 }
 
-                arguments.push(ValueParser::parse_calculation_sum(parser)?.node);
+                arguments.push(ValueParser::parse_calculation_expression(parser)?.node);
                 parser.whitespace(true)?;
             }
         }
