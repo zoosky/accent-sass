@@ -2199,9 +2199,15 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
         consume_newlines: bool,
         // default=true
         //
-        // A custom property's value is raw CSS, where `//` is two slashes
-        // rather than a comment, so those call sites pass `false` and keep
-        // the text as written.
+        // A custom property's *declared value* is raw CSS, where `//` is two
+        // slashes rather than a comment, so `--x: // ;` keeps them and those
+        // call sites pass `false`.
+        //
+        // This is not "every custom property": `@supports (--x: b //c)` is a
+        // condition rather than a declaration, and dart-sass drops the
+        // comment there, so that call site passes `true` even though its name
+        // starts with `--`. `supports_custom_property_drops_a_comment` in
+        // `crates/lib/tests/supports.rs` pins the difference.
         silent_comments: bool,
     ) -> SassResult<Interpolation> {
         let mut buffer = Interpolation::new();
