@@ -379,6 +379,10 @@ impl<'a> Serializer<'a> {
             CalculationArg::Operation { lhs, op, rhs } => {
                 let paren_left = match &**lhs {
                     CalculationArg::Operation { op: op2, .. } => op2.precedence() < op.precedence(),
+                    // Adjacency binds looser than any operator, so a
+                    // space-separated operand always needs grouping:
+                    // `calc((var(--c) 1) * 2)`.
+                    CalculationArg::Space(..) => true,
                     _ => false,
                 };
 
@@ -417,6 +421,7 @@ impl<'a> Serializer<'a> {
                     {
                         CalculationArg::parenthesize_calculation_rhs(*op, BinaryOp::Mul)
                     }
+                    CalculationArg::Space(..) => true,
                     _ => false,
                 };
 

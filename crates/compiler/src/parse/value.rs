@@ -1680,52 +1680,67 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
         ))
     }
 
+    /// Whether the whole argument is a single interpolation, as in `calc(#{$a})`.
+    ///
+    /// Dart Sass keeps such an argument as opaque text: the interpolated value
+    /// reaches the output verbatim, internal whitespace and all, and nothing
+    /// about it is simplified. An interpolation that merely appears *inside* a
+    /// larger expression -- `calc(#{$a} + 2px)` -- does not qualify. That
+    /// argument is parsed as an operation with the interpolation as one
+    /// operand, which is what lets the source's whitespace be re-serialized
+    /// and, when the calculation is nested inside another one, lets the
+    /// operation keep the parentheses its precedence requires.
+    ///
+    /// The scan looks past quoted strings and comments, so neither a `#{` that
+    /// is only text inside a string nor one inside a comment counts.
     fn contains_calculation_interpolation(parser: &mut P) -> SassResult<bool> {
-        let mut parens = 0;
-        let mut brackets = Vec::new();
-
         let start = parser.toks().cursor();
+        let found = ValueParser::scan_lone_calculation_interpolation(parser)?;
+        parser.toks_mut().set_cursor(start);
+        Ok(found)
+    }
+
+    /// The scan behind [`Self::contains_calculation_interpolation`], leaving
+    /// the cursor wherever it stopped for the caller to restore.
+    fn scan_lone_calculation_interpolation(parser: &mut P) -> SassResult<bool> {
+        parser.whitespace(true)?;
+
+        if !matches!(parser.toks().peek(), Some(Token { kind: '#', .. }))
+            || !matches!(parser.toks().peek_n(1), Some(Token { kind: '{', .. }))
+        {
+            return Ok(false);
+        }
+
+        parser.toks_mut().next();
+        parser.toks_mut().next();
+
+        let mut depth = 1_usize;
 
         while let Some(next) = parser.toks().peek() {
             match next.kind {
                 '\\' => {
                     parser.toks_mut().next();
-                    // todo: i wonder if this can be broken (not for us but dart-sass)
                     parser.toks_mut().next();
+                }
+                '\'' | '"' => {
+                    parser.parse_interpolated_string()?;
                 }
                 '/' => {
                     if !parser.scan_comment()? {
                         parser.toks_mut().next();
                     }
                 }
-                '\'' | '"' => {
-                    parser.parse_interpolated_string()?;
-                }
-                '#' => {
-                    if parens == 0
-                        && matches!(parser.toks().peek_n(1), Some(Token { kind: '{', .. }))
-                    {
-                        parser.toks_mut().set_cursor(start);
-                        return Ok(true);
-                    }
+                '{' => {
+                    depth += 1;
                     parser.toks_mut().next();
                 }
-                '(' | '{' | '[' => {
-                    if next.kind == '(' {
-                        parens += 1;
-                    }
-                    brackets.push(opposite_bracket(next.kind));
+                '}' => {
+                    depth -= 1;
                     parser.toks_mut().next();
-                }
-                ')' | '}' | ']' => {
-                    if next.kind == ')' {
-                        parens -= 1;
+                    if depth == 0 {
+                        parser.whitespace(true)?;
+                        return Ok(parser.toks().next_char_is(')'));
                     }
-                    if brackets.is_empty() || brackets.pop() != Some(next.kind) {
-                        parser.toks_mut().set_cursor(start);
-                        return Ok(false);
-                    }
-                    parser.toks_mut().next();
                 }
                 _ => {
                     parser.toks_mut().next();
@@ -1733,7 +1748,6 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
             }
         }
 
-        parser.toks_mut().set_cursor(start);
         Ok(false)
     }
 
@@ -1795,6 +1809,20 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
                 parser.expect_char(')')?;
 
                 Ok(AstExpr::Paren(Arc::new(value)).span(parser.toks_mut().span_from(start)))
+            }
+            // An interpolation is opaque text, so it becomes an unquoted
+            // string operand rather than a name that could be a function call
+            // or a calc constant. Anything written next to it without
+            // whitespace belongs to the same operand: `#{$a}px` is one value,
+            // not a value followed by an identifier.
+            Some(Token { kind: '#', .. })
+                if matches!(parser.toks().peek_n(1), Some(Token { kind: '{', .. })) =>
+            {
+                let start = parser.toks().cursor();
+                let contents = parser.parse_interpolated_identifier()?;
+                let span = parser.toks_mut().span_from(start);
+
+                Ok(AstExpr::String(StringExpr(contents, QuoteKind::None), span).span(span))
             }
             _ if !parser.looking_at_identifier() => Err((
                 "Expected number, variable, function, or calculation.",

@@ -1162,17 +1162,20 @@ pub(crate) fn round_with_step(strategy: RoundStrategy, number: f64, step: f64) -
 /// Whether inlining `text` into an enclosing calculation needs parentheses to
 /// keep it from binding to a neighbouring term.
 ///
-/// Dart Sass looks only at the first and last characters: leading or trailing
-/// whitespace, a bracket, or an operator all make the text ambiguous once the
-/// `calc()` around it is dropped.
+/// The text is opaque -- it came from an interpolation, so Sass never parsed
+/// it -- and dropping the `calc()` around it splices it straight into the
+/// enclosing expression. Anywhere in the text, whitespace separates terms and
+/// `*` or `/` bind tighter than a neighbouring `+` or `-`, so either can
+/// change what the result means. A `+` or `-` cannot: CSS reads one as an
+/// operator only with whitespace on both sides, which the whitespace check
+/// already covers. Nor can a comma, a bracket, or a parenthesis, none of
+/// which bind across the splice -- text that is already parenthesized needs
+/// no second pair. Matching Dart Sass 1.103.1, which parenthesizes
+/// `#{"1px/2"}` and `#{"a b"}` but leaves `#{"-1px"}`, `#{"a-"}`, `#{"1,2"}`,
+/// `#{"[a]"}` and `#{"(a)"}` alone.
 pub(crate) fn needs_parens(text: &str) -> bool {
-    let is_ambiguous =
-        |c: char| c.is_whitespace() || matches!(c, '(' | ')' | '[' | ']' | '+' | '-' | '*' | '/');
-
-    match (text.chars().next(), text.chars().next_back()) {
-        (Some(first), Some(last)) => is_ambiguous(first) || is_ambiguous(last),
-        _ => false,
-    }
+    text.chars()
+        .any(|c| c.is_whitespace() || matches!(c, '*' | '/'))
 }
 
 /// Whether `arg` contains any text Sass cannot resolve.
