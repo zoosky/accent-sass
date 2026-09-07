@@ -35,7 +35,7 @@ took it to 375; it belongs to no item here, having come off the branch left
 after #18. Item 11 took it to 369 with section 5, a bare `%` parsing as a
 value (#38), then to 332 with section 4, `attr()` and the CSS `if()` joining
 the special variable strings (#39), and then to 298 with sections 1 and 2, a
-silent comment dropped and a quoted string's quote character kept. One or two tests depend on `random()`
+silent comment dropped and a quoted string's quote character kept (#40). One or two tests depend on `random()`
 and move between runs.
 
 Every count on this page comes from a macOS run. The advisory `sass-spec` CI
