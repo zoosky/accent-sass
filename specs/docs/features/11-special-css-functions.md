@@ -182,14 +182,24 @@ dart-sass 1.103.1:
   trimmed. The trim was keyed on the unvendored name, which ate the space the
   two silent-comment fixtures expect.
 
-### A divergence these sections did not close
+### Two divergences these sections did not close
 
-`@a domain(http://x);` prints `@a domain(http:;` here and errors with
-`expected ")"` in dart-sass, which tracks the unclosed paren. The shape is not
-new -- before the comment was dropped this printed `@a domain(http://x);`,
-which dart-sass also rejects -- so it stays in the "accepts invalid input"
-column either way. No fixture in the pinned revision covers it, and closing it
-means balancing parens in `almost_any_value`.
+**An unclosed paren in an unknown at-rule.** `@a domain(http://x);` prints
+`@a domain(http:;` here and errors with `expected ")"` in dart-sass, which
+tracks the paren. The shape is not new -- `almost_any_value` has never
+balanced parens, and a build of `dc4d59b^1` prints
+`@a domain(http://x);;` for the same input -- so it sits in the "accepts
+invalid input" column before and after. What did change is that the output is
+now truncated rather than merely wrong: dropping the comment takes the rest of
+the line with it. Closing it means balancing parens in `almost_any_value`, and
+no fixture in the pinned revision covers the shape.
+
+**A newline in a custom property's value.** `e {--a: b //c\n d}` prints
+`--a: b //c d;` here and `--a: b //c\n  d;` in dart-sass, which keeps the
+value's raw text. This one predates the work entirely -- `dc4d59b^1` prints
+the same -- and is pinned by `silent_comment_with_following_line` in
+`crates/lib/tests/custom-property.rs` so that a change to it is visible.
+Again no fixture covers it.
 
 ## 3. `type()` is not treated as a special function
 

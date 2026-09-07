@@ -107,3 +107,17 @@ test!(
     }",
     "a {\n  --color:;\n}\n"
 );
+test!(
+    // The declared value keeps its slashes, which is the contrast the
+    // `supports_custom_property_drops_a_comment` test draws.
+    //
+    // The newline is where this deliberately differs from dart-sass 1.103.1,
+    // which preserves it (`--a: b //c\n  d;`) because a custom property's
+    // value is raw text. This compiler collapses it to a space. The
+    // difference predates the silent-comment work -- a build of `dc4d59b^1`
+    // prints the same -- and no fixture in the pinned spec revision covers
+    // it. The test records today's output so a change to it is visible.
+    silent_comment_with_following_line,
+    "e {--a: b //c\n d}\n",
+    "e {\n  --a: b //c d;\n}\n"
+);

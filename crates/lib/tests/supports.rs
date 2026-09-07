@@ -177,3 +177,12 @@ error!(
     }",
     "Error: Supports rules may not be used within nested declarations."
 );
+test!(
+    // A `@supports` condition is not a declared value, so a silent comment in
+    // it is a comment and is dropped -- unlike `a {--x: // ;}`, which keeps
+    // the slashes. Both verified against dart-sass 1.103.1. This pins the one
+    // custom-property call site that passes `silent_comments: true`.
+    supports_custom_property_drops_a_comment,
+    "@supports (--a: b //c\n d) {e {f: g}}\n",
+    "@supports (--a: b  d) {\n  e {\n    f: g;\n  }\n}\n"
+);
