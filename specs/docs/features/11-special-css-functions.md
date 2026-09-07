@@ -199,7 +199,12 @@ no fixture in the pinned revision covers the shape.
 value's raw text. This one predates the work entirely -- `dc4d59b^1` prints
 the same -- and is pinned by `silent_comment_with_following_line` in
 `crates/lib/tests/custom-property.rs` so that a change to it is visible.
-Again no fixture covers it.
+Unlike the first divergence, the pinned revision does cover this one:
+`spec/css/custom_properties/simple.hrx` expects the newline in
+`--single-line: // (\n    );` to survive, and
+`spec/css/custom_properties/indentation.hrx` is devoted to newlines and
+indentation in custom-property values. Both fail today, so the advisory
+`sass-spec` job already counts this divergence.
 
 ## 3. `type()` is not treated as a special function
 

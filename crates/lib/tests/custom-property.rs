@@ -115,8 +115,10 @@ test!(
     // which preserves it (`--a: b //c\n  d;`) because a custom property's
     // value is raw text. This compiler collapses it to a space. The
     // difference predates the silent-comment work -- a build of `dc4d59b^1`
-    // prints the same -- and no fixture in the pinned spec revision covers
-    // it. The test records today's output so a change to it is visible.
+    // prints the same. The pinned spec revision covers it in
+    // `spec/css/custom_properties/{simple,indentation}.hrx`, both of which
+    // fail; this test pins the shape locally so a change to it shows up in
+    // `cargo test` rather than only in the advisory spec tallies.
     silent_comment_with_following_line,
     "e {--a: b //c\n d}\n",
     "e {\n  --a: b //c d;\n}\n"
