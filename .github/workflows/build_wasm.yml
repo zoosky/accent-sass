@@ -3,7 +3,20 @@ name: 'Build WebAssembly'
 on:
   push:
     tags: [ '*' ]
-      
+
+  # The empty-artifact bug survived two releases because nothing ran this job
+  # until a tag was pushed, by which point the release was cut. The filter
+  # keeps it off pull requests that cannot change the module: docs, specs, and
+  # the test suite, which the wasm build does not compile.
+  pull_request:
+    paths:
+      - 'crates/**'
+      - '!crates/*/tests/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.github/workflows/build_wasm.yml'
+      - '.github/scripts/wasm-smoke.mjs'
+
   workflow_dispatch:
 
 jobs:
@@ -19,14 +32,29 @@ jobs:
         curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
         export PATH="$HOME/.cargo/bin:$PATH"
     
+    # `wasm-exports` is what defines the `from_string` binding, and it is not a
+    # default feature: without it wasm-bindgen exports nothing, every symbol is
+    # dead code, and the job uploads a 0.2 MB module with no compiler in it. The
+    # `commandline` default is dropped for the opposite reason -- clap has no
+    # place in a browser build -- while `random` is kept, since dropping it
+    # would quietly remove `math.random()`, `random()`, `string.unique-id()` and
+    # `unique-id()` from the wasm build alone.
     - name: 'Build WebAssembly'
       run: |
         rustup target add wasm32-unknown-unknown
         pushd ./crates/lib
-        wasm-pack build --release --target web --out-name index
+        wasm-pack build --release --target web --out-name index -- \
+          --no-default-features --features wasm-exports,random
         popd
         mkdir -p artifacts
         find crates/lib/pkg -type f \( -name "*.js" -o -name "*.d.ts" -o -name "*.wasm" \) -exec cp {} artifacts \;
+
+    # The old job was green for two releases while shipping nothing, so run the
+    # package rather than trusting that it built.
+    - name: 'Compile a stylesheet with the built package'
+      run: |
+        ls -la crates/lib/pkg
+        node .github/scripts/wasm-smoke.mjs
         
     - name: 'Upload Artifacts'
       uses: actions/upload-artifact@v4
