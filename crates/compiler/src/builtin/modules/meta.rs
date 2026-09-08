@@ -129,7 +129,9 @@ fn calc_args(mut args: ArgumentResult, visitor: &mut Visitor) -> SassResult<Valu
                 CalculationArg::String(s) | CalculationArg::Interpolation(s) => {
                     Value::String(s, QuoteKind::None)
                 }
-                CalculationArg::Operation { .. } | CalculationArg::Space(..) => Value::String(
+                CalculationArg::Operation { .. }
+                | CalculationArg::Space(..)
+                | CalculationArg::Paren(..) => Value::String(
                     serialize_calculation_arg(&arg, visitor.options, args.span())?,
                     QuoteKind::None,
                 ),
