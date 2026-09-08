@@ -72,8 +72,8 @@ cargo publish -p accent-sass
 Then tag:
 
 ```bash
-git tag -a v0.14.0 -m "v0.14.0"
-git push origin v0.14.0
+git tag -a v0.15.0 -m "v0.15.0"
+git push origin v0.15.0
 ```
 
 ## After

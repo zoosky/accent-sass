@@ -20,7 +20,7 @@ this crate. It is a general-purpose library, and does not depend on Accent.
 ## Install
 
 ```toml
-accent-sass = "0.14.0"
+accent-sass = "0.15.0"
 ```
 
 To track work that has not been released yet, pin a git revision instead:

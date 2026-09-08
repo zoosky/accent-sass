@@ -13,6 +13,17 @@ at `0.13.4` and below are upstream's and are kept for lineage.
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-09-08
+
+Twenty-two merged pull requests since `0.14.0`: plain CSS parity (nesting, the
+`@function` rule, `if()`), the special CSS functions, the indented syntax's
+newline rules, dart-sass's per-module `@extend` model, and the calculation
+work.
+
+Against the pinned sass-spec revision (`4a9eea66`) this takes the suite to
+13,926 of 14,218 passing, measured on macOS 2026-09-08; the Linux CI runner
+reports two fewer, an offset that is stable across commits.
+
 ### Added
 
 - the CSS `if()` function in plain CSS files. `if()` with CSS-style conditions
@@ -31,6 +42,19 @@ at `0.13.4` and below are upstream's and are kept for lineage.
   browser's job. The rule keeps its own selector and stays nested, `&` is
   written out unresolved, and at-rules stop bubbling out of a rule once nesting
   has been passed through
+- a bare `%` is a value. `a {b: %}` and `$x: %` were parse errors; dart-sass
+  takes a lone `%` as an unquoted string, and reads `%` as the modulo operator
+  only when an operand follows it. A `%` value is rejected once the expression
+  has consumed a comma, which is what dart-sass does
+- `attr()` and the CSS `if()` count as special variable strings, so the colour
+  functions leave them unevaluated instead of rejecting them: `rgb(attr(c))`
+  passes through the way `rgb(var(--c))` already did. Only the browser can
+  resolve either. Sass's own `if($cond, $a, $b)` is untouched, since it is
+  evaluated long before a value is inspected
+- `type()` takes the special-function text path, so its argument is text rather
+  than SassScript and reaches the output as written, and a bare `type(`
+  lowercases. `-a-type(` is not special, matching dart-sass: its argument stays
+  a Sass expression and its quotes are normalized
 
 ### Changed
 
@@ -52,6 +76,45 @@ at `0.13.4` and below are upstream's and are kept for lineage.
   change: `collapsible_if` began suggesting let chains, which need 1.88, at 23
   sites. All 23 are collapsed. No comment was displaced -- each sat above the
   outer `if`.
+- **Breaking: `@extend` is scoped to the extending module's upstream closure**,
+  porting dart-sass's per-module extension model. A module loaded by `@use` or
+  `@forward` gets its own extension store, and one loaded in an import context
+  shares the enclosing store, because `@import` means "as if written here". An
+  `@extend` no longer reaches CSS in a sibling module that never loaded it, and
+  a mandatory `@extend` whose target is out of scope now errors instead of
+  silently succeeding. Closes
+  [connorskees/grass#104](https://github.com/connorskees/grass/issues/104) for
+  this fork
+- **Breaking: a space-separated calculation is stricter.** Values written next
+  to each other are only meaningful when a neighbour is text the compiler
+  cannot resolve, and the check for that looked inside an operation rather than
+  at the operation itself. `calc(1 px + 2px)`, `calc(1 px * 2)`,
+  `calc(1 (px + 2px))`, `calc(1 var(--c) + 2px)`, `calc(var(--c) + 1px 2px)`
+  and `calc(1 min(var(--c), 2px))` compiled here and are "Missing math
+  operator." in dart-sass; they now error too. An operation is not text however
+  much text it holds, which is what separates the rejected `calc(1 px + 2px)`
+  from the legal `calc(#{$a} px + 2px)`
+- **Breaking: `CalculationArg` gains a `Paren` variant**, public through
+  `sass_value`, so an exhaustive match on it needs a new arm. Parentheses
+  around a space-separated group are now recorded rather than inferred from
+  position: `calc(1 (2 var(--c)) 3)` keeps them instead of flattening to
+  `calc(1 2 var(--c) 3)`, which this compiler itself rejects on the way back
+  in. Every pair the source wrote is kept, as dart-sass keeps them
+- a declaration written after a nested rule splits the parent rule instead of
+  being hoisted back up beside the earlier declarations, which is what
+  dart-sass does. Where both set the same property, that changes the cascade
+- a loud comment does the same: one written after a nested rule holds its place
+  in source order rather than hoisting up beside an earlier comment
+- an interpolation inside a calculation is one operand of the expression rather
+  than opaque text for the whole argument, unless it is the whole argument. The
+  source's whitespace is re-serialized (`calc(#{$a}  +  2px)` is
+  `calc(1px + 2px)`), and an inlined nested `calc()` keeps only the parentheses
+  its precedence needs. An interpolation written against an identifier belongs
+  to that identifier -- `calc(x#{$a})` is `calc(x1)` -- and such an identifier
+  is opaque text, so it names neither a calc constant nor a function
+- adjacency in a calculation binds looser than any operator, as it does in
+  dart-sass, so `calc(#{$a} px + 2px)` is `1` beside `px + 2px` rather than
+  `(1 px)` plus `2px`
 
 ### Fixed
 
@@ -93,6 +156,15 @@ at `0.13.4` and below are upstream's and are kept for lineage.
 - `selector.replace()` rejects a parent selector in any of its three arguments,
   matching `selector.extend()` and dart-sass. It previously accepted `&` and
   panicked while serializing the result
+- `@extend` is deterministic. `ExtendedSelector` hashed its pointer but
+  compared its value, so two rules with equal selectors could hash differently,
+  collide in a hash set, and leave one of them without its extension -- wrong
+  output in 2 of 400 runs of the same input
+- a silent comment inside a special function is dropped rather than copied into
+  the output, and a quoted string inside one keeps the source's quote character
+  (`-a-calc('x')` stays `'x'`, while `unknown('x')` is still normalized). A
+  custom property keeps its `//`, since its value is raw CSS where `//` is two
+  slashes, and `url()` and `url-prefix()` hold a raw URL for the same reason
 
 ## [0.14.0] - 2026-09-04
 

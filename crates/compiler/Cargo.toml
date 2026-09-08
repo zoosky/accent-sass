@@ -1,6 +1,6 @@
 [package]
 name = "accent_sass_compiler"
-version = "0.14.0"
+version = "0.15.0"
 edition = "2024"
 description = "Internal implementation of the accent-sass compiler"
 readme = "README.md"
