@@ -8,10 +8,15 @@ one of the platforms this project ships binaries for.
 **This item unlocks no sass-spec fixtures.** It is delivery work, ranked by
 who wants the artifact rather than by failure count.
 
-## What works today
+**Gaps 1 and 2 are closed** by `zoosky/accent-sass` #49. The artifact has been
+run, the CI job runs it on every push and pull request, and the path questions
+have answers taken from a runtime rather than from reading. Gap 3 is open.
 
-Measured 2026-09-08 on `bba5497`, aarch64 macOS. Both the library and the
-command-line binary compile for `wasm32-wasip1` with no source changes:
+## What works
+
+Measured 2026-09-08 and 2026-09-09 on `c3329ac`, aarch64 macOS, wasmtime
+28.0.0 and 48.0.1 (both, identical results). The library and the command-line binary compile for
+`wasm32-wasip1` with no source changes:
 
 ```bash
 rustup target add wasm32-wasip1
@@ -24,82 +29,142 @@ cargo build --release -p accent-sass --target wasm32-wasip1 --features commandli
 | stripped of debug info | 2.82 MB |
 | gzipped | 0.89 MB |
 
-That is the whole of the good news, and it is more than it sounds: `StdFs`
-works under WASI, so `@use` and `@import` resolve against preopened
+`StdFs` works under WASI, so `@use` and `@import` resolve against preopened
 directories with no bridge, no importer callback and no synchronous-read
 constraint. The browser package needs a filesystem written for it
 ([12](12-wasm-browser-package.md) gap 2); this one already has one.
 
-**Nothing here has been run.** No wasm runtime was available on the machine
-that measured the above, so "compiles" is verified and "works" is not. Closing
-that is gap 1, and it is the substance of this item.
+A compile under `wasmtime run --dir=.` produces output identical to the native
+build's, byte for byte, on every input tried.
 
-## 1. Nothing runs the WASI build
+## 1. Nothing ran the WASI build -- closed
 
-### Current behavior
+### What was wrong
 
-No CI job builds for `wasm32-wasip1`, so the target can break silently between
+No CI job built for `wasm32-wasip1`, so the target could break silently between
 releases. That is exactly how the browser package came to ship a module with
 no compiler in it for two releases (`zoosky/accent-sass` #47).
 
-### What it should do
+### What shipped
 
-A job that builds the CLI for `wasm32-wasip1` and runs the test suite through
-it under wasmtime. The value is in the second half: a build that compiles is
-weak evidence, and this project has a suite worth pointing at the artifact.
+A `wasi` job in `.github/workflows/tests.yml`: it installs a pinned wasmtime,
+builds the CLI for the target, and runs `.github/scripts/wasi-smoke.sh`, which
+compiles three stylesheets under the runtime and compares the output. **The job
+gates.** It is fast and deterministic, and the target has no other coverage at
+all -- nothing else in the workflow would notice a filesystem call that starts
+failing under WASI, because every one of them compiles either way.
 
-### Implementation instructions
+The third check is the one worth having. It compiles a stylesheet whose
+`@use` reaches outside every preopen, and asserts the compiler's own error:
 
-- Add a job to `.github/workflows/tests.yml`, or a workflow beside
-  `build_wasm.yml` if it wants a paths filter of its own.
-- Install a wasmtime release, build the CLI for the target, and compile a
-  fixture stylesheet with `wasmtime run --dir=. accent-sass.wasm input.scss`,
-  comparing the output.
-- Then point the spec runner at it. `npm run sass-spec -- --command` takes an
-  arbitrary command, so a wrapper script that invokes wasmtime works without
-  changing the runner. Expect the tallies to differ from the native run; treat
-  any difference as a finding, not as noise, and record the numbers here.
-- Decide whether the job gates or is advisory. Advisory to start is defensible,
-  the way `sass-spec` and `bootstrap` are; say which in the workflow.
+```
+Error: Can't find stylesheet to import.
+```
 
-## 2. Path semantics under preopened directories
+Not a panic, not a silent miss. That the sandbox denies the read *and says so*
+is the property the whole target is for, so it is pinned rather than assumed.
 
-### Current behavior
+## 2. Path semantics under preopened directories -- closed
 
-`StdFs::canonicalize` calls `std::fs::canonicalize`, and the `Fs` trait's
-default implementation returns the path unchanged. Under WASI, paths resolve
-against preopened directories rather than a root, and a `..` that escapes a
-preopen fails.
+Three questions, each answered by running it. wasmtime 28.0.0 and 48.0.1 agree.
 
-### What to check
+**A load path outside every preopen fails comprehensibly.** `@use
+"../shared/x"` under `--dir=site`, where the preopen does not cover
+`../shared`, gives `Can't find stylesheet to import.` with the source span --
+the same error a missing file gives natively. The sandbox is reported as a
+missing file, which is what it looks like from inside.
 
-- A load path outside every preopen must fail with a comprehensible error, not
-  a panic or a silent miss.
-- `@use "../shared/x"` from inside a preopen must behave the way the native
-  build does, or the difference must be recorded here.
-- Absolute paths in `--load-path` mean something different under WASI. Decide
-  and document how the CLI maps them.
+**`..` inside a preopen behaves as it does natively.** The same stylesheet
+under `--dir=.`, where the preopen covers both directories, resolves and
+compiles. The boundary is the preopen, not the `..`.
 
-None of this can be settled by reading; it needs the runtime from gap 1.
+**An absolute `--load-path` needs a preopen mapped onto it, and a short guest
+path.** A bare host path fails: the guest has no `/Users/...`, and adding
+`--dir=/` does not rescue it. What works is mapping the host directory onto a
+guest name and passing that name:
 
-## 3. Size and the profile
+```bash
+wasmtime run --dir=. --dir=/host/shared::/shared module.wasm --load-path=/shared input.scss
+```
+
+A deep guest alias -- repeating the host path after `::` -- failed where a
+short one worked, so keep the alias short. This is the rule any host embedding
+the CLI has to follow, and it is why the spec wrapper below rewrites the
+argument instead of passing it through.
+
+## 3. Size and the profile -- open
 
 2.82 MB stripped is the CLI including clap. A library-only WASI build for an
 embedder is smaller and is the more likely artifact for a plugin host. As with
 [12](12-wasm-browser-package.md) gap 4, use a separate release profile rather
 than changing the shared one, and measure rather than assume.
 
-## Testing
+## The spec suite under WASI
 
-The CI job is the test. Beyond it, the same fixtures the native suite uses
-serve here unchanged, because the artifact is the same compiler.
+Run once in full, 2026-09-09, against the pinned sass-spec revision
+`4a9eea66` and the same flags the roadmap uses everywhere else:
+
+```
+14218 runs, 13925 passing, 285 failures, 8 todo, 0 ignored, 0 errors
+```
+
+One more failure than the native build's 284, and the lists were diffed rather
+than the totals compared: **one fixture added, none removed.**
+
+The one is `spec/core_functions/color/to_space/oklch/lab/out_of_range/far`,
+which converts `oklch(10% 999999 0deg)` -- a chroma far outside any gamut --
+into lab, and lands on numbers around 7.7e16:
+
+| | first channel |
+|---|---|
+| fixture, and the native build | `76838084903189984` |
+| the WASI build | `76838084903190000` |
+| dart-sass 1.103.1 | `76838084903189980` |
+
+Last-digit floating-point, from a different `libm` compiled into the module
+than the host's. Note the third row: dart-sass does not match the fixture here
+either, so this input has no stable answer across implementations, let alone
+across targets. It is not worth chasing, and it is the *only* difference the
+whole suite finds between the two targets.
+
+### The trap in measuring this
+
+The first attempt reported 328 failures, and 44 of them were the harness, not
+the compiler. The wrapper preopened only the test's own directory, so a fixture
+starting `@use '../test-hue' as *` escaped the sandbox and failed with the
+error gap 2 describes -- correct sandbox behaviour, wrong conclusion. The tell
+was the shape of the diff: 44 added and none removed, which is what a harness
+fault looks like. Extracting one of them and running it directly gave output
+identical to the native build's.
+
+The wrapper now rewrites the entry point to a path under the mapped spec root,
+so a relative import resolves inside a preopen instead of escaping one. Anyone
+pointing a sandboxed compiler at a suite of relative imports will meet this;
+the fix is to give the sandbox the tree, not the leaf.
+
+
+`.github/scripts/wasi-sass.sh` presents the module to the spec runner as if it
+were a native binary, so the measurement can be re-taken:
+
+```bash
+WASMTIME=/path/to/wasmtime \
+WASM=target/wasm32-wasip1/release/accent-sass.wasm \
+npm run sass-spec -- --impl=dart-sass --command ../.github/scripts/wasi-sass.sh \
+  --trim-errors --ignore-warning-diffs --ignore-error-diffs
+```
+
+It is not in CI. A full run takes about twenty minutes against three for the
+native build, because each of the 14,218 tests pays wasmtime's startup: a
+single compile costs 0.085s under the runtime against 0.005s native, and the
+difference is module load rather than execution.
 
 ## Acceptance criteria
 
-- A CI job builds `wasm32-wasip1` and runs at least one real compile under
-  wasmtime, comparing output rather than checking an exit code.
-- The sass-spec suite has been run through the WASI artifact at least once and
-  its tallies recorded here next to the native ones, with any difference
-  explained.
-- The three path questions in gap 2 are answered in this document.
-- Whether the job gates is stated in the workflow.
+- [x] A CI job builds `wasm32-wasip1` and runs at least one real compile under
+      wasmtime, comparing output rather than checking an exit code.
+- [x] The sass-spec suite has been run through the WASI artifact and its
+      tallies recorded here next to the native ones, with any difference
+      explained.
+- [x] The three path questions in gap 2 are answered in this document.
+- [x] Whether the job gates is stated in the workflow.
+- [ ] Gap 3: a library-only profile, measured.

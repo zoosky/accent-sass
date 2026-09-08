@@ -139,8 +139,13 @@ finds it recorded rather than folklore.
 | Doc | What it is | State |
 |---|---|---|
 | [12-wasm-browser-package.md](12-wasm-browser-package.md) | `wasm32-unknown-unknown` for npm: options, a JS-supplied filesystem, structured errors, size | open |
-| [13-wasm-wasi.md](13-wasm-wasi.md) | `wasm32-wasip1`, and a CI job that runs the artifact rather than only building it | open |
+| [13-wasm-wasi.md](13-wasm-wasi.md) | `wasm32-wasip1`, and a CI job that runs the artifact rather than only building it | gaps 1 and 2 closed by #49; gap 3, a library-only profile, is open |
 | [14-wasm-component-model.md](14-wasm-component-model.md) | `wasm32-wasip2` and a WIT interface for Accent's plugin runtime | recorded, not queued -- build it only when one of its triggers fires |
+
+Item 13 has since been measured end to end: the WASI artifact runs, and the
+spec suite through it stands at 285 failures against the native build's 284 --
+one fixture, a last-digit floating-point difference on a colour far outside
+any gamut, where dart-sass does not match the fixture either.
 
 The pipeline behind item 12 shipped a module with no compiler in it for two
 releases: `wasm-exports` is not a default feature and the job never asked for
