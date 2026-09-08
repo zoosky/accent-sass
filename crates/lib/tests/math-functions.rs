@@ -279,6 +279,63 @@ test!(
     "a {\n  b: calc((var(--c) 1) * 2);\n}\n",
     "a {\n  b: calc((var(--c) 1) * 2);\n}\n"
 );
+// Parentheses around a space-separated list are preserved too, and for a
+// stronger reason: dropping them flattens the list into its neighbours, and
+// the flattened form is input this compiler rejects.
+test!(
+    calculation_parens_around_adjacency,
+    "a {\n  b: calc(1 (var(--c) 2));\n}\n",
+    "a {\n  b: calc(1 (var(--c) 2));\n}\n"
+);
+test!(
+    // Every pair the source wrote is kept, however redundant, as dart-sass
+    // keeps them.
+    calculation_nested_parens_around_adjacency,
+    "a {\n  b: calc(1 ((var(--c) 2)));\n  c: calc(((var(--c) 1)) * 2);\n}\n",
+    "a {\n  b: calc(1 ((var(--c) 2)));\n  c: calc(((var(--c) 1)) * 2);\n}\n"
+);
+test!(
+    calculation_parens_around_adjacency_alone,
+    "a {\n  b: calc((var(--c) 1));\n  c: calc((1 px));\n}\n",
+    "a {\n  b: calc((var(--c) 1));\n  c: calc((1 px));\n}\n"
+);
+test!(
+    calculation_parens_around_adjacency_in_a_math_function,
+    "a {\n  b: min((var(--c) 1), 2px);\n  c: clamp(1px, (var(--c) 2), 3px);\n}\n",
+    "a {\n  b: min((var(--c) 1), 2px);\n  c: clamp(1px, (var(--c) 2), 3px);\n}\n"
+);
+test!(
+    calculation_parens_around_several_adjacencies,
+    "a {\n  b: calc((1 var(--c)) (2 var(--d)));\n}\n",
+    "a {\n  b: calc((1 var(--c)) (2 var(--d)));\n}\n"
+);
+test!(
+    // The group carries its own parentheses, so an enclosing operator adds
+    // none: exactly one pair, not two.
+    calculation_parens_around_adjacency_as_an_operand,
+    "a {\n  b: calc((var(--c) 1) * 2);\n  c: calc((var(--c) 1) + 2px);\n}\n",
+    "a {\n  b: calc((var(--c) 1) * 2);\n  c: calc((var(--c) 1) + 2px);\n}\n"
+);
+test!(
+    // A list that reaches an operator without parentheses of its own -- from
+    // an inlined nested `calc()` -- still gets them, since the grouping is
+    // real either way.
+    calculation_bare_adjacency_as_an_operand_gains_parens,
+    "a {\n  b: calc(calc(#{\"a\"} 1) * 3px);\n}\n",
+    "a {\n  b: calc((a 1) * 3px);\n}\n"
+);
+test!(
+    // Parentheses are structure, not text, so `meta.calc-args()` reports them
+    // as written.
+    calculation_parens_around_adjacency_reach_calc_args,
+    "@use \"sass:meta\";\na {\n  b: meta.calc-args(calc(1 (var(--c) 2)));\n}\n",
+    "a {\n  b: 1 (var(--c) 2);\n}\n"
+);
+error!(
+    // Grouping does not make an all-known list meaningful.
+    calculation_parens_around_all_known_adjacency,
+    "a {\n  b: calc(1 (2 3));\n}\n", "Error: Missing math operator."
+);
 // Parentheses around opaque text are preserved; only the browser knows whether
 // they matter.
 test!(

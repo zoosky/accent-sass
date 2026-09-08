@@ -370,6 +370,14 @@ impl<'a> Serializer<'a> {
                     self.write_calculation_arg(arg)?;
                 }
             }
+            // The group carries its own parentheses, so an enclosing operator
+            // adds none of its own: `calc((var(--c) 1) * 2)` keeps exactly the
+            // pair the source wrote.
+            CalculationArg::Paren(inner) => {
+                self.buffer.push(b'(');
+                self.write_calculation_arg(inner)?;
+                self.buffer.push(b')');
+            }
             CalculationArg::Calculation(calc) => {
                 self.visit_calculation(calc)?;
             }

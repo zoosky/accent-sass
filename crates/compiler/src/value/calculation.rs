@@ -30,6 +30,17 @@ pub enum CalculationArg {
     /// in `calc(var(--c) 1)`. They are emitted space-separated and never
     /// simplified, since only the browser can tell what they mean.
     Space(Vec<Self>),
+    /// A parenthesized group the source wrote, kept because it groups a
+    /// [`Self::Space`] whose parentheses cannot be recovered from position
+    /// alone.
+    ///
+    /// Parentheses around anything Sass can resolve are redundant and dropped,
+    /// and parentheses around opaque text are kept in the text itself. Around
+    /// a space-separated list they are neither: dropping them flattens
+    /// `calc(1 (2 var(--c)) 3)` into `calc(1 2 var(--c) 3)`, which this
+    /// compiler rejects on the way back in. Nesting is preserved as written,
+    /// since Dart Sass keeps every pair.
+    Paren(Box<Self>),
 }
 
 impl CalculationArg {
@@ -1037,7 +1048,8 @@ impl SassCalculation {
             | CalculationArg::Operation { .. }
             | CalculationArg::Interpolation(..)
             | CalculationArg::String(..)
-            | CalculationArg::Space(..) => arg,
+            | CalculationArg::Space(..)
+            | CalculationArg::Paren(..) => arg,
             CalculationArg::Calculation(mut calc) => {
                 if calc.name == CalculationName::Calc && !calc.args.is_empty() {
                     // Inlining a nested `calc()` around opaque text can change
@@ -1203,5 +1215,9 @@ pub(crate) fn is_opaque_value(arg: &CalculationArg) -> bool {
         // in practice one of them is always opaque; asking anyway keeps the
         // answer correct without relying on that.
         CalculationArg::Space(args) => args.iter().any(is_opaque_value),
+        // Parentheses do not change what the group is, only how it is
+        // written: `calc(1 (var(--c) 2))` is as legal as `calc(1 var(--c) 2)`
+        // would be.
+        CalculationArg::Paren(inner) => is_opaque_value(inner),
     }
 }

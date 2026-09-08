@@ -3528,6 +3528,15 @@ impl<'a> Visitor<'a> {
                     CalculationArg::Interpolation(text) => {
                         CalculationArg::Interpolation(format!("({})", text))
                     }
+                    // A space-separated list keeps its parentheses as
+                    // structure rather than as text. They are not part of any
+                    // operand, and position alone cannot recover them:
+                    // dropping them flattens `calc(1 (2 var(--c)) 3)` into
+                    // `calc(1 2 var(--c) 3)`, which this compiler then
+                    // rejects for the neighbouring `1 2`.
+                    result @ (CalculationArg::Space(..) | CalculationArg::Paren(..)) => {
+                        CalculationArg::Paren(Box::new(result))
+                    }
                     result => result,
                 }
             }
