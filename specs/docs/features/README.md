@@ -4,6 +4,12 @@ This directory holds one implementation document per work item that closes
 the gap between this project and dart-sass 1.103.1, ranked by the number of
 sass-spec tests each item unlocks.
 
+It also holds a second kind of item, added 2026-09-08: **delivery items**,
+which unlock no fixtures at all. Items 12, 13 and 14 are the WebAssembly
+targets. They are listed under [Delivery items](#delivery-items----no-spec-impact)
+and are deliberately kept out of the ranking, which counts failures and would
+read them as worthless.
+
 **The ranking below was rebuilt on 2026-09-05 and re-measured on 2026-09-06,
 then updated as item 11 landed.**
 The original one was drawn up against 1,718 failures, when six large items
@@ -121,6 +127,28 @@ on 2026-09-06 with the flags dropped and is unchanged.
 
 Both open items are calculation work, so the roadmap's tracked queue is now one
 area deep. What is left of substance is the 134 nobody has read for causes.
+
+### Delivery items -- no spec impact
+
+Packaging and target support. None of these changes what the compiler accepts
+or prints, so none of them moves a fixture; they are ranked by who wants the
+artifact. Kept apart from the table above so a reader looking for conformance
+work is not sent to them, and so a reader looking for the WebAssembly story
+finds it recorded rather than folklore.
+
+| Doc | What it is | State |
+|---|---|---|
+| [12-wasm-browser-package.md](12-wasm-browser-package.md) | `wasm32-unknown-unknown` for npm: options, a JS-supplied filesystem, structured errors, size | open |
+| [13-wasm-wasi.md](13-wasm-wasi.md) | `wasm32-wasip1`, and a CI job that runs the artifact rather than only building it | open |
+| [14-wasm-component-model.md](14-wasm-component-model.md) | `wasm32-wasip2` and a WIT interface for Accent's plugin runtime | recorded, not queued -- build it only when one of its triggers fires |
+
+The pipeline behind item 12 shipped a module with no compiler in it for two
+releases: `wasm-exports` is not a default feature and the job never asked for
+it, so wasm-bindgen exported nothing and the linker dropped everything.
+`zoosky/accent-sass` #47 fixed the build, made the job run the package it
+builds, and put it on pull requests. That is the reason item 13's acceptance
+criteria insist on *running* the artifact: for a target nothing exercises, a
+green build says very little.
 
 ### Landed -- residue only
 
