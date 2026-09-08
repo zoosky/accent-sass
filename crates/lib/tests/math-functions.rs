@@ -222,6 +222,63 @@ error!(
     calculation_space_separated_all_known,
     "a {\n  b: calc(1 2);\n}\n", "Error: Missing math operator."
 );
+// The neighbour itself has to be opaque, not merely hold something opaque.
+// An operation never counts, however much text is inside it, and neither does
+// a math function that could not be simplified away.
+error!(
+    calculation_adjacent_operation_is_not_opaque,
+    "a {\n  b: calc(1 px + 2px);\n}\n", "Error: Missing math operator."
+);
+error!(
+    calculation_adjacent_product_is_not_opaque,
+    "a {\n  b: calc(1 px * 2);\n}\n", "Error: Missing math operator."
+);
+error!(
+    calculation_adjacent_parenthesized_operation_is_not_opaque,
+    "a {\n  b: calc(1 (px + 2px));\n}\n", "Error: Missing math operator."
+);
+error!(
+    calculation_adjacent_operation_over_a_variable_is_not_opaque,
+    "a {\n  b: calc(1 var(--c) + 2px);\n}\n", "Error: Missing math operator."
+);
+error!(
+    calculation_operation_before_a_number_is_not_opaque,
+    "a {\n  b: calc(var(--c) + 1px 2px);\n}\n", "Error: Missing math operator."
+);
+error!(
+    calculation_adjacent_math_function_is_not_opaque,
+    "a {\n  b: calc(1 min(var(--c), 2px));\n}\n", "Error: Missing math operator."
+);
+// Text beside a number stays legal in either order, and through a chain.
+test!(
+    calculation_space_separated_number_first,
+    "a {\n  b: calc(1 var(--c));\n}\n",
+    "a {\n  b: calc(1 var(--c));\n}\n"
+);
+test!(
+    calculation_space_separated_bare_identifier,
+    "a {\n  b: calc(1 px);\n}\n",
+    "a {\n  b: calc(1 px);\n}\n"
+);
+test!(
+    // Every neighbouring pair is checked, so text between two numbers carries
+    // both of them.
+    calculation_space_separated_chain,
+    "a {\n  b: calc(1 px 2);\n  c: calc(1px var(--c) 2px);\n}\n",
+    "a {\n  b: calc(1 px 2);\n  c: calc(1px var(--c) 2px);\n}\n"
+);
+test!(
+    // The operation is simplified before the check, so this pair is text and
+    // a number rather than text and an operation.
+    calculation_space_separated_simplified_operation,
+    "a {\n  b: calc(var(--c) 1 + 2);\n}\n",
+    "a {\n  b: calc(var(--c) 3);\n}\n"
+);
+test!(
+    calculation_space_separated_operand_keeps_its_parens,
+    "a {\n  b: calc((var(--c) 1) * 2);\n}\n",
+    "a {\n  b: calc((var(--c) 1) * 2);\n}\n"
+);
 // Parentheses around opaque text are preserved; only the browser knows whether
 // they matter.
 test!(
