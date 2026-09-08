@@ -2709,7 +2709,13 @@ impl<'a> Visitor<'a> {
             self.perform_interpolation(comment.text, false)?,
             comment.span,
         );
-        self.css_tree.add_stmt(comment, self.parent);
+
+        // Route through `add_child` for the same reason a style declaration
+        // does (see `visit_style`): a loud comment holds its place in source
+        // order, so a nested rule written between two of them splits the
+        // enclosing rule rather than letting the second comment hoist back up
+        // beside the first.
+        self.add_child(comment, Some(|_: &CssStmt| false));
 
         Ok(None)
     }

@@ -183,3 +183,17 @@ test!(
     "a {\n  color: red;\n  /* own */\n}\n",
     "a {\n  color: red;\n  /* own */\n}\n"
 );
+test!(
+    // A loud comment holds its place in source order, so a nested rule written
+    // between two of them splits the enclosing rule. Hoisting the second
+    // comment back up beside the first would reorder the output, the same way
+    // hoisting a declaration would.
+    nested_rule_between_two_loud_comments_splits_the_rule,
+    "a {
+        /* one */
+        b { color: red; }
+        /* two */
+        c { color: blue; }
+    }",
+    "a {\n  /* one */\n}\na b {\n  color: red;\n}\na {\n  /* two */\n}\na c {\n  color: blue;\n}\n"
+);
