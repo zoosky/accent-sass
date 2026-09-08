@@ -1178,18 +1178,30 @@ pub(crate) fn needs_parens(text: &str) -> bool {
         .any(|c| c.is_whitespace() || matches!(c, '*' | '/'))
 }
 
-/// Whether `arg` contains any text Sass cannot resolve.
+/// Whether `arg` is itself text Sass cannot resolve.
 ///
 /// Whitespace-separated values in a calculation are only meaningful when at
-/// least one part is opaque; otherwise the author simply forgot an operator.
-pub(crate) fn contains_opaque_value(arg: &CalculationArg) -> bool {
+/// least one neighbour is opaque; otherwise the author simply forgot an
+/// operator. The question is about the neighbour itself, so this does not
+/// look inside an operation -- only into a nested list, whose members are
+/// neighbours in their own right.
+pub(crate) fn is_opaque_value(arg: &CalculationArg) -> bool {
     match arg {
         CalculationArg::Number(..) => false,
         CalculationArg::String(..) | CalculationArg::Interpolation(..) => true,
-        CalculationArg::Operation { lhs, rhs, .. } => {
-            contains_opaque_value(lhs) || contains_opaque_value(rhs)
-        }
-        CalculationArg::Space(args) => args.iter().any(contains_opaque_value),
-        CalculationArg::Calculation(calc) => calc.args.iter().any(contains_opaque_value),
+        // An operation or a nested math function is not opaque, however much
+        // opaque text it holds. Dart Sass rejects `calc(1 px + 2px)` and
+        // `calc(1 min(var(--c), 2px))` even though `px` and `var(--c)` are
+        // each opaque on their own: only a value that is itself text may sit
+        // beside a number. Looking inside would also lose the distinction
+        // that decides the question -- `calc(#{$a} px + 2px)` is legal, and
+        // it differs from the rejected form only in that its first operand
+        // is text rather than a number.
+        CalculationArg::Operation { .. } | CalculationArg::Calculation(..) => false,
+        // A nested list is opaque when any of its members is. Its members
+        // have each passed this same check as neighbours of one another, so
+        // in practice one of them is always opaque; asking anyway keeps the
+        // answer correct without relying on that.
+        CalculationArg::Space(args) => args.iter().any(is_opaque_value),
     }
 }

@@ -40,7 +40,7 @@ use crate::{
     utils::{to_sentence, trim_ascii},
     value::{
         ArgList, CalculationArg, CalculationName, Number, SassCalculation, SassFunction, SassMap,
-        SassNumber, UserDefinedFunction, Value, contains_opaque_value,
+        SassNumber, UserDefinedFunction, Value, is_opaque_value,
     },
 };
 
@@ -3547,9 +3547,12 @@ impl<'a> Visitor<'a> {
                 // Adjacency is only meaningful where an opaque value sits on
                 // one side of it, so every neighbouring pair is checked:
                 // `calc(c 1 2)` is an error even though it has opaque text.
+                // The test is on the neighbour itself, not on what it holds,
+                // which is why `calc(1 px + 2px)` is an error while
+                // `calc(#{$a} px + 2px)` is not.
                 if args
                     .windows(2)
-                    .any(|pair| !pair.iter().any(contains_opaque_value))
+                    .any(|pair| !pair.iter().any(is_opaque_value))
                 {
                     return Err(("Missing math operator.", span).into());
                 }

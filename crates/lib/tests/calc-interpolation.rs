@@ -171,7 +171,10 @@ error!(
 
 test!(
     // `+` binds tighter than the space, so the list is `1` next to the
-    // unsimplifiable `px + 2px` and needs no parentheses.
+    // unsimplifiable `px + 2px` and needs no parentheses. The interpolation is
+    // also what makes this legal at all: written as `calc(1 px + 2px)` the
+    // first operand is a number beside an operation, which is
+    // `calculation_adjacent_operation_is_not_opaque` in `math-functions.rs`.
     adjacency_binds_looser_than_addition,
     "$a: 1;\na {\n  b: calc(#{$a} px + 2px);\n}\n",
     "a {\n  b: calc(1 px + 2px);\n}\n"
