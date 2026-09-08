@@ -3,7 +3,20 @@ name: 'Build WebAssembly'
 on:
   push:
     tags: [ '*' ]
-      
+
+  # The empty-artifact bug survived two releases because nothing ran this job
+  # until a tag was pushed, by which point the release was cut. The filter
+  # keeps it off pull requests that cannot change the module: docs, specs, and
+  # the test suite, which the wasm build does not compile.
+  pull_request:
+    paths:
+      - 'crates/**'
+      - '!crates/*/tests/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.github/workflows/build_wasm.yml'
+      - '.github/scripts/wasm-smoke.mjs'
+
   workflow_dispatch:
 
 jobs:
