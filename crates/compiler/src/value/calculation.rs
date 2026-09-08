@@ -1182,7 +1182,9 @@ pub(crate) fn needs_parens(text: &str) -> bool {
 ///
 /// Whitespace-separated values in a calculation are only meaningful when at
 /// least one neighbour is opaque; otherwise the author simply forgot an
-/// operator.
+/// operator. The question is about the neighbour itself, so this does not
+/// look inside an operation -- only into a nested list, whose members are
+/// neighbours in their own right.
 pub(crate) fn is_opaque_value(arg: &CalculationArg) -> bool {
     match arg {
         CalculationArg::Number(..) => false,
@@ -1196,8 +1198,10 @@ pub(crate) fn is_opaque_value(arg: &CalculationArg) -> bool {
         // it differs from the rejected form only in that its first operand
         // is text rather than a number.
         CalculationArg::Operation { .. } | CalculationArg::Calculation(..) => false,
-        // A nested space-separated list passed this same check, so it holds
-        // at least one opaque value already.
-        CalculationArg::Space(..) => true,
+        // A nested list is opaque when any of its members is. Its members
+        // have each passed this same check as neighbours of one another, so
+        // in practice one of them is always opaque; asking anyway keeps the
+        // answer correct without relying on that.
+        CalculationArg::Space(args) => args.iter().any(is_opaque_value),
     }
 }
