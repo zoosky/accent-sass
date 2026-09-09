@@ -126,7 +126,8 @@ jobs:
 
       # Size is the point of the separate profile, so it is reported rather
       # than assumed. A jump here is worth looking at even though nothing
-      # gates on it.
+      # gates on it. The table goes to the log as well as the run summary,
+      # because the summary is only readable in the web interface.
       - name: Report artifact sizes
         run: |
           {
@@ -138,7 +139,7 @@ jobs:
                      target/wasm32-wasip1/small/accent_sass.wasm; do
               echo "| \`$f\` | $(stat -c%s "$f") | $(gzip -9 -c "$f" | wc -c) |"
             done
-          } >> "$GITHUB_STEP_SUMMARY"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
 
   # Compiles Bootstrap with both engines and reports how far apart they are.
   # Advisory: this fork does not reach exact byte equality across a whole
