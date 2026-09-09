@@ -146,7 +146,7 @@ finds it recorded rather than folklore.
 | Doc | What it is | State |
 |---|---|---|
 | [12-wasm-browser-package.md](12-wasm-browser-package.md) | `wasm32-unknown-unknown` for npm: options, a JS-supplied filesystem, structured errors, size | open |
-| [13-wasm-wasi.md](13-wasm-wasi.md) | `wasm32-wasip1`, and a CI job that runs the artifact rather than only building it | gaps 1 and 2 closed by #49; gap 3, a library-only profile, is open |
+| [13-wasm-wasi.md](13-wasm-wasi.md) | `wasm32-wasip1`, and a CI job that runs the artifact rather than only building it | closed: gaps 1 and 2 by #49, gap 3 by #50, gap 4 by #51 |
 | [14-wasm-component-model.md](14-wasm-component-model.md) | `wasm32-wasip2` and a WIT interface for Accent's plugin runtime | recorded, not queued -- build it only when one of its triggers fires |
 
 Item 13 has since been measured end to end: the WASI artifact runs, and the

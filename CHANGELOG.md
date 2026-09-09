@@ -13,6 +13,18 @@ at `0.13.4` and below are upstream's and are kept for lineage.
 
 ## [Unreleased]
 
+### Added
+
+- options for the WebAssembly C ABI (`wasi-exports`). `accent_sass_options_new`
+  returns an opaque handle a host fills in and passes to
+  `accent_sass_compile_string_with_options` or
+  `accent_sass_compile_path_with_options`, which covers output style, entry
+  point syntax, load paths, `charset`, `alertAscii` and `quiet`. The setters
+  are named after dart-sass's JavaScript API so this ABI and the browser
+  binding do not drift apart; a value the ABI does not define is refused rather
+  than rounded to a default. `accent_sass_compile_string` and
+  `accent_sass_compile_path` are unchanged and still compile with defaults
+
 ## [0.15.0] - 2026-09-08
 
 Twenty-two merged pull requests since `0.14.0`: plain CSS parity (nesting, the
