@@ -68,6 +68,39 @@ jobs:
 
       - run: cargo clippy --features=macro --all-targets -- -D warnings
 
+  # The wasm32-wasip1 build, run rather than only built.
+  #
+  # This gates. It is fast and deterministic, and the target has no other
+  # coverage at all: nothing else in this workflow would notice if a filesystem
+  # call started failing under WASI, because every one of them compiles either
+  # way. The browser package shipped a module with no compiler in it for two
+  # releases for want of a check like this one.
+  #
+  # See specs/docs/features/13-wasm-wasi.md.
+  wasi:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@master
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.96.1"
+          targets: wasm32-wasip1
+
+      - name: Install wasmtime
+        run: |
+          curl -sSL -o wasmtime.tar.xz \
+            https://github.com/bytecodealliance/wasmtime/releases/download/v48.0.1/wasmtime-v48.0.1-x86_64-linux.tar.xz
+          tar xf wasmtime.tar.xz
+          echo "WASMTIME=$PWD/wasmtime-v48.0.1-x86_64-linux/wasmtime" >> "$GITHUB_ENV"
+
+      - name: Build for wasm32-wasip1
+        run: cargo build --release -p accent-sass --target wasm32-wasip1 --features commandline
+
+      - name: Compile under wasmtime
+        run: .github/scripts/wasi-smoke.sh
+
   # Compiles Bootstrap with both engines and reports how far apart they are.
   # Advisory: this fork does not reach exact byte equality across a whole
   # framework -- what remains is accent-sass's own rule-grouping behaviour, which
