@@ -11,8 +11,8 @@ who wants the artifact rather than by failure count.
 **Gaps 1 and 2 are closed** by `zoosky/accent-sass` #49. The artifact has been
 run, the CI job runs it on every push and pull request, and the path questions
 have answers taken from a runtime rather than from reading. **Gap 3 is closed**
-by PR-PLACEHOLDER: there is a library artifact, it is measured, and CI calls it.
-Gap 4, the options the C ABI does not take, is open.
+by `zoosky/accent-sass` #50: there is a library artifact, it is measured, and
+CI calls it. Gap 4, the options the C ABI does not take, is open.
 
 ## What works
 
