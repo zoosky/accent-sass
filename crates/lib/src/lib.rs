@@ -65,6 +65,9 @@ accent-sass input.scss
     unknown_lints,
 )]
 
+#[cfg(feature = "wasi-exports")]
+pub mod wasi_exports;
+
 pub use accent_sass_compiler::{
     Error, ErrorKind, Fs, InputSyntax, Logger, NullFs, NullLogger, Options, OutputStyle, Result,
     StdFs, StdLogger, from_path, from_string,

@@ -10,7 +10,9 @@ who wants the artifact rather than by failure count.
 
 **Gaps 1 and 2 are closed** by `zoosky/accent-sass` #49. The artifact has been
 run, the CI job runs it on every push and pull request, and the path questions
-have answers taken from a runtime rather than from reading. Gap 3 is open.
+have answers taken from a runtime rather than from reading. **Gap 3 is closed**
+by `zoosky/accent-sass` #50: there is a library artifact, it is measured, and
+CI calls it. Gap 4, the options the C ABI does not take, is open.
 
 ## What works
 
@@ -25,9 +27,14 @@ cargo build --release -p accent-sass --target wasm32-wasip1 --features commandli
 
 | artifact | size |
 |---|---:|
-| `accent-sass.wasm`, as built | 18.64 MB |
-| stripped of debug info | 2.82 MB |
-| gzipped | 0.89 MB |
+| `accent-sass.wasm`, as built | 18.64 MiB |
+| stripped of debug info | 2.82 MiB |
+| gzipped | 0.89 MiB |
+
+The target has a second shape. The command module above is what a host runs
+like a process; the library module is what a host instantiates once and calls
+into, and it is smaller -- 1.31 MiB, about 0.4 MiB gzipped. Gap 3 has the
+build command, the full comparison and the ABI.
 
 `StdFs` works under WASI, so `@use` and `@import` resolve against preopened
 directories with no bridge, no importer callback and no synchronous-read
@@ -101,12 +108,129 @@ it, and re-running both forms on wasmtime 28.0.0 and 48.0.1 shows they behave
 identically. The rule an embedder has to follow is only the first sentence:
 map a preopen onto every load path, under whatever name you like.
 
-## 3. Size and the profile -- open
+## 3. Size and the profile -- closed
 
-2.82 MB stripped is the CLI including clap. A library-only WASI build for an
-embedder is smaller and is the more likely artifact for a plugin host. As with
-[12](12-wasm-browser-package.md) gap 4, use a separate release profile rather
-than changing the shared one, and measure rather than assume.
+### What was wrong
+
+Every figure recorded for this target described the command module, so every
+one of them included clap and an argument parser no embedder ever calls.
+Nothing said what a plugin host would actually carry, and nothing built such a
+thing. The workspace even had a `small` profile already, inherited from
+upstream, that no build used.
+
+### What shipped
+
+**A library artifact with something in it.** A `wasi-exports` feature adds a C
+ABI in `crates/lib/src/wasi_exports.rs` -- `accent_sass_alloc`,
+`accent_sass_dealloc`, `accent_sass_compile_string`,
+`accent_sass_compile_path`, `accent_sass_result_free` -- which turns the
+`cdylib` into a reactor: instantiated once, called many times, no process
+startup per compile.
+
+The exports are what make the number mean anything. A `cdylib` that exports
+nothing is dead code to the linker, and that is exactly how the browser
+package once measured 0.22 MB while containing no compiler at all
+([12](12-wasm-browser-package.md), "What works today"). Measuring a
+library-only build without pinning the compiler into it would have repeated
+that mistake with a smaller number.
+
+```bash
+cargo build --profile small -p accent-sass --target wasm32-wasip1 \
+  --no-default-features --features wasi-exports,random
+```
+
+**The `small` profile, not a change to `release`.** `opt-level = 'z'`, fat
+LTO, one codegen unit, `panic = 'abort'`, `strip = true`. It stays separate
+because `opt-level = 'z'` costs native compile speed for a win only a module
+cares about, which is what [12](12-wasm-browser-package.md) gap 4 asks for.
+
+**A host that calls it, in CI.** `.github/scripts/wasi-lib-smoke.mjs`
+instantiates the module under Node's WASI and drives the ABI: two compiles in
+one instance, `@use` resolved through a preopened directory, an import that
+leaves a narrower preopen, a compile error, and bytes that are not UTF-8.
+wasmtime runs the command module in the same job but cannot run this one --
+its CLI has no way to write bytes into the guest's memory, and every call here
+needs to.
+
+The memory handling is tested natively as well, in the crate's own unit tests.
+A leaked result or a mismatched free is invisible to a smoke test that
+compiles once and exits; it shows up in a host as an instance that grows.
+`wasi-exports` is therefore in the feature set the gating jobs use.
+
+### Measured
+
+2026-09-09, aarch64 macOS, rustc 1.97.0-nightly (14196dbfa 2026-04-12). Sizes
+are MiB; "stripped" is `RUSTFLAGS=-C strip=debuginfo`, which is what the
+`small` profile does at link time; gzip is `gzip -9`.
+
+| module | profile | size | gzipped |
+|---|---|---:|---:|
+| command, `--features commandline` | `release` | 18.64 | 4.15 |
+| command | `release`, stripped | 2.82 | 0.89 |
+| command | `small` | 1.39 | 0.50 |
+| library, `--no-default-features --features wasi-exports,random` | `release` | 16.41 | 3.58 |
+| library | `release`, stripped | 2.42 | 0.75 |
+| library | `small` | **1.31** | **0.44** |
+| library | `small`, then `wasm-opt -Oz` | 1.10 | 0.43 |
+
+The command module's stripped release row reproduces 2026-09-08's figures to
+the byte, so the two sessions' numbers can be compared.
+
+**The toolchain moves the compressed figure, not the module.** The same
+library build on 1.96.1, the MSRV the `wasi` job pins, is 1,374,929 bytes
+against nightly's 1,376,528 -- 0.1% apart -- but gzips to 0.40 MiB against
+0.44, which is 7%. Same input size, different code layout. The `wasi` job
+prints both artifacts' sizes on every run, and those are the MSRV numbers:
+1,374,881 and 422,980 bytes on Linux, within 0.1% of the MSRV build measured
+here. Compare a compressed figure only against one taken on the same
+toolchain.
+
+**The profile is the lever; the interface is not.** Dropping the command-line
+interface saves 0.40 MiB against the stripped release build, and 0.08 MiB --
+5% -- against the `small` one. Changing the profile saves 1.11 MiB, 46%. The
+premise this gap was written on, that a library-only build is the smaller
+artifact, is true and nearly beside the point. Take the library build because
+a host wants exports rather than a process, not because of its size.
+
+**Compression flattens what is left.** The two `small` modules are 0.06 MiB
+apart gzipped.
+
+**`wasm-opt -Oz` buys 0.21 MiB, and 0.01 MiB after gzip.** It is worth running
+if the host loads the module uncompressed, and hard to justify otherwise, so
+it is not in CI. Pass the feature flags explicitly if you do run it: binaryen
+112 rejects the module by default (`Bulk memory operations require bulk
+memory [--enable-bulk-memory]`), and `--all-features` produced a module that
+Node then refused to compile (`invalid value type 0x0`). This worked, and the
+smoke test passes against its output:
+
+```bash
+wasm-opt -Oz --enable-bulk-memory --enable-sign-ext --enable-mutable-globals \
+  --enable-nontrapping-float-to-int --enable-multivalue --enable-reference-types \
+  accent_sass.wasm -o accent_sass.opt.wasm
+```
+
+### What was not measured
+
+`random` is on in every library figure, so the module carries `rand` and the
+`random()` and `unique-id()` builtins, exactly as the command module does.
+Turning it off was not measured. Nor was brotli, for want of the tool -- the
+same omission [12](12-wasm-browser-package.md) gap 4 records.
+
+## 4. The C ABI compiles with default options -- open
+
+`accent_sass_compile_string` and `accent_sass_compile_path` build
+`Options::default()`, so a host cannot choose an output style, declare the
+input to be the indented syntax, add a load path or silence a warning. It gets
+expanded CSS or a formatted error.
+
+This is the gap the browser binding has ([12](12-wasm-browser-package.md) gap
+1) in the other target's clothes, and the fix has the same shape: an owned
+configuration the host fills in before the call. Under WASI it is the smaller
+job of the two -- scalars and string offsets in linear memory, with no
+wasm-bindgen and no JavaScript types to agree on -- and it should follow
+whatever names item 12 settles on, so the two artifacts do not diverge.
+
+Do it when an embedder asks for it.
 
 ## The spec suite under WASI
 
@@ -182,4 +306,6 @@ difference is module load rather than execution.
       explained.
 - [x] The three path questions in gap 2 are answered in this document.
 - [x] Whether the job gates is stated in the workflow.
-- [ ] Gap 3: a library-only profile, measured.
+- [x] Gap 3: a library-only profile, measured. The comparison is in gap 3, and
+      the `wasi` job builds the artifact, calls its exports and prints its size
+      on every run.
