@@ -10,10 +10,16 @@
 # Three things are checked, and the third is the interesting one:
 #
 #   1. a single file compiles, and the output matches the native build's,
-#   2. `@use` resolves against a preopened directory, with no importer bridge,
+#   2. `--load-path` resolves against a preopened directory, with no importer
+#      bridge. The partial is reachable *only* through the load path, so the
+#      check fails if load-path handling breaks under WASI,
 #   3. an import that reaches outside every preopen fails with the compiler's
 #      own error rather than a panic or a silent miss. That is the sandbox
 #      doing its job, and it is the property the whole target is for.
+#
+# The expected output deliberately avoids anything under active development.
+# A `calc()` here would turn this job red for a deliberate calc change and
+# point at WASI, which would be the wrong place to look.
 #
 # Usage: .github/scripts/wasi-smoke.sh
 #   WASMTIME  path to the wasmtime binary  (default: wasmtime)
@@ -34,9 +40,12 @@ work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
 mkdir -p "$work/site" "$work/shared"
-printf '$v: 2.5rem;\n' > "$work/site/_partial.scss"
-printf '@use "partial";\na {\n  b: calc(#{partial.$v} - 0.5rem);\n}\n' > "$work/site/main.scss"
-printf '$w: 2px;\n' > "$work/shared/_x.scss"
+printf '$v: 2px;\n' > "$work/site/_partial.scss"
+printf '@use "partial";\na {\n  b: partial.$v + 1px;\n}\n' > "$work/site/main.scss"
+printf '$w: 4px;\n' > "$work/shared/_x.scss"
+# Reachable only through --load-path: there is no `x` beside the entry point.
+printf '@use "x";\na {\n  b: x.$w;\n}\n' > "$work/site/via-load-path.scss"
+# Reachable only by leaving the entry point's directory.
 printf '@use "../shared/x";\na {\n  b: x.$w;\n}\n' > "$work/site/escape.scss"
 
 fail=0
@@ -53,14 +62,19 @@ check() { # name expected actual
 
 cd "$work" || exit 1
 
-# 1. One file, and the same answer the native build gives.
-want=$'a {\n  b: calc(2.5rem - 0.5rem);\n}'
+# 1. One file and its neighbour, with arithmetic that has one answer.
 got=$("$WASMTIME" run --dir=. "$WASM" site/main.scss 2>&1)
-check "compiles a stylesheet" "$want" "$got"
+check "compiles a stylesheet" $'a {\n  b: 3px;\n}' "$got"
 
-# 2. `@use` through a preopen, from a directory that is not the entry point's.
-got=$("$WASMTIME" run --dir=. "$WASM" --load-path=shared site/escape.scss 2>&1)
-check "resolves @use through a preopen" $'a {\n  b: 2px;\n}' "$got"
+# 2. A partial that exists nowhere but the load path, so the check fails if
+#    --load-path stops being honoured rather than passing on a fallback.
+got=$("$WASMTIME" run --dir=. "$WASM" --load-path=shared site/via-load-path.scss 2>&1)
+check "resolves @use through a load path" $'a {\n  b: 4px;\n}' "$got"
+
+# 2b. The same file with the load path removed must fail, or check 2 proves
+#     nothing: it would pass on any resolution that happened to find `x`.
+got=$("$WASMTIME" run --dir=. "$WASM" site/via-load-path.scss 2>&1 | head -n 1)
+check "needs that load path" "Error: Can't find stylesheet to import." "$got"
 
 # 3. The same import with a preopen that does not cover the target. The
 #    compiler must say so in its own words; a panic or an empty success here

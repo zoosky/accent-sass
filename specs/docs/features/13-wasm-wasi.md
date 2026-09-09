@@ -78,19 +78,28 @@ missing file, which is what it looks like from inside.
 under `--dir=.`, where the preopen covers both directories, resolves and
 compiles. The boundary is the preopen, not the `..`.
 
-**An absolute `--load-path` needs a preopen mapped onto it, and a short guest
-path.** A bare host path fails: the guest has no `/Users/...`, and adding
-`--dir=/` does not rescue it. What works is mapping the host directory onto a
-guest name and passing that name:
+**An absolute `--load-path` needs a preopen mapped onto it.** A bare host path
+fails, because the guest has no `/Users/...`:
+
+```
+Error: Can't find stylesheet to import.
+```
+
+Preopening the host root does not rescue it. `--dir=/` and `--dir=/::/` both
+leave the run failing, and less legibly -- a raw `No such file or directory
+(os error 44)` instead of the compiler's message. What works is mapping the
+directory and passing the guest name:
 
 ```bash
 wasmtime run --dir=. --dir=/host/shared::/shared module.wasm --load-path=/shared input.scss
 ```
 
-A deep guest alias -- repeating the host path after `::` -- failed where a
-short one worked, so keep the alias short. This is the rule any host embedding
-the CLI has to follow, and it is why the spec wrapper below rewrites the
-argument instead of passing it through.
+The alias itself is free: `--dir=/host/shared::/host/shared` works too. An
+earlier draft of this document claimed a deep alias failed where a short one
+worked. **That was wrong** -- it came from a probe with a second variable in
+it, and re-running both forms on wasmtime 28.0.0 and 48.0.1 shows they behave
+identically. The rule an embedder has to follow is only the first sentence:
+map a preopen onto every load path, under whatever name you like.
 
 ## 3. Size and the profile -- open
 
@@ -142,6 +151,12 @@ so a relative import resolves inside a preopen instead of escaping one. Anyone
 pointing a sandboxed compiler at a suite of relative imports will meet this;
 the fix is to give the sandbox the tree, not the leaf.
 
+It also refuses to run rather than falling back. If no `--load-path` covers the
+working directory -- a different runner, a different argument order -- the
+wrapper exits 78 with a message instead of passing the cwd-relative path
+through, because the fallback produces exactly the phantom failures above and
+they read as a compiler that cannot find a file.
+
 
 `.github/scripts/wasi-sass.sh` presents the module to the spec runner as if it
 were a native binary, so the measurement can be re-taken:
@@ -153,8 +168,8 @@ npm run sass-spec -- --impl=dart-sass --command ../.github/scripts/wasi-sass.sh 
   --trim-errors --ignore-warning-diffs --ignore-error-diffs
 ```
 
-It is not in CI. A full run takes about twenty minutes against three for the
-native build, because each of the 14,218 tests pays wasmtime's startup: a
+It is not in CI. A full run takes about twenty-three minutes against three for
+the native build, because each of the 14,218 tests pays wasmtime's startup: a
 single compile costs 0.085s under the runtime against 0.005s native, and the
 difference is module load rather than execution.
 

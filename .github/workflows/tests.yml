@@ -68,10 +68,6 @@ jobs:
 
       - run: cargo clippy --features=macro --all-targets -- -D warnings
 
-  # Compiles Bootstrap with both engines and reports how far apart they are.
-  # Advisory: this fork does not reach exact byte equality across a whole
-  # framework -- what remains is accent-sass's own rule-grouping behaviour, which
-  # predates this fork -- so the job prints the delta rather than gating.
   # The wasm32-wasip1 build, run rather than only built.
   #
   # This gates. It is fast and deterministic, and the target has no other
@@ -105,6 +101,10 @@ jobs:
       - name: Compile under wasmtime
         run: .github/scripts/wasi-smoke.sh
 
+  # Compiles Bootstrap with both engines and reports how far apart they are.
+  # Advisory: this fork does not reach exact byte equality across a whole
+  # framework -- what remains is accent-sass's own rule-grouping behaviour, which
+  # predates this fork -- so the job prints the delta rather than gating.
   bootstrap:
     continue-on-error: true
     runs-on: ubuntu-latest

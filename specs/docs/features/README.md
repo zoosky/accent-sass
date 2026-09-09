@@ -31,6 +31,13 @@ The ranking comes from a full run of the pinned sass-spec revision
 14218 runs, 13916 passing, 294 failures, 8 todo, 0 ignored, 0 errors
 ```
 
+**The current figure is 284**, measured 2026-09-09 on `c3329ac`. The ten
+between came from #43, the calculation and loud-comment work, which belongs to
+no item here; #44 and #45 moved no fixture, verified by diffing failure lists
+rather than comparing totals. The ranking below has not been rebuilt at 284, so
+read its per-area counts as of the 294 run. Which areas #43 closed was not
+recorded at the time and is not reconstructed here.
+
 The original ranking was taken on 2026-09-02 at 12,492 passing against 1,718
 failures; items 01-06 closed the difference, reaching 650 on `6d43969`. Five
 pull requests since then took it to 397: #27 (CSS nesting passthrough) to 590,
