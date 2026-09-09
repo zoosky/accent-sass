@@ -68,9 +68,9 @@ git checkout -b fix/my-change
 
 # 2. Change, then run the gates
 cargo fmt --all -- --check
-cargo +1.96.1 clippy --features=macro --all-targets -- -D warnings
-cargo +stable  clippy --features=macro --all-targets -- -D warnings
-cargo test --features=macro
+cargo +1.96.1 clippy --features=macro,wasi-exports --all-targets -- -D warnings
+cargo +stable  clippy --features=macro,wasi-exports --all-targets -- -D warnings
+cargo test --features=macro,wasi-exports
 
 # 3. Commit and push
 git add . && git commit -m "Describe the change"
@@ -99,8 +99,8 @@ crates; the integration jobs use `stable`. The commands CI runs:
 
 ```bash
 cargo fmt --all -- --check
-cargo clippy --features=macro --all-targets -- -D warnings
-cargo test --features=macro
+cargo clippy --features=macro,wasi-exports --all-targets -- -D warnings
+cargo test --features=macro,wasi-exports
 ```
 
 Clippy gates on **two** toolchains, the MSRV and current stable, and both must
@@ -109,9 +109,13 @@ after it, so a contributor on stable once saw sixteen errors CI called clean.
 Run it locally the way CI does:
 
 ```bash
-cargo +1.96.1 clippy --features=macro --all-targets -- -D warnings
-cargo +stable  clippy --features=macro --all-targets -- -D warnings
+cargo +1.96.1 clippy --features=macro,wasi-exports --all-targets -- -D warnings
+cargo +stable  clippy --features=macro,wasi-exports --all-targets -- -D warnings
 ```
+
+`wasi-exports` is in the feature set so the WebAssembly C ABI in
+`crates/lib/src/wasi_exports.rs` is linted and tested on the host. The `wasi`
+job is what exercises it on the target.
 
 Clippy reads `rust-version`, so raising the MSRV can turn lints on. Going from
 1.85 to 1.96 made `collapsible_if` suggest let chains, which need 1.88: 23
@@ -126,6 +130,7 @@ CI jobs in `.github/workflows/tests.yml`:
 |---|---|---|
 | `tests`, `fmt` | yes | the commands above, on the MSRV |
 | `clippy` | yes | the command above, on **both** the MSRV and stable |
+| `wasi` | yes | builds both `wasm32-wasip1` artifacts and runs them: the command module under wasmtime, the library module through a Node host that calls its C ABI |
 | `bootstrap` | advisory | compiles Bootstrap 5.0.2 with both engines; fails only on a colour-value difference |
 | `frameworks` | yes | compiles Bulma, Pico, Foundation and USWDS with both engines via `.github/scripts/frameworks.sh`; fails on a colour-value difference |
 | `sass-spec` | advisory | runs the official spec suite and publishes the tallies |

@@ -55,6 +55,10 @@ default = ["commandline", "random"]
 commandline = ["clap"]
 random = ["accent_sass_compiler/random"]
 wasm-exports = ["accent_sass_compiler/wasm-exports", "wasm-bindgen"]
+# Option: expose a C ABI for embedding the cdylib in a WebAssembly host,
+# wasm32-wasip1 in particular. See `wasi_exports` and
+# specs/docs/features/13-wasm-wasi.md.
+wasi-exports = []
 # Option: include the proc macro `accent_sass::include!`
 macro = ["accent-sass-macro"]
 nightly = ["accent-sass-macro/nightly"]

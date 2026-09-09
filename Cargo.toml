@@ -14,6 +14,13 @@ panic = "abort"
 lto = true
 codegen-units = 1
 
+# The size profile for WebAssembly artifacts, kept separate from `release`
+# because `opt-level = 'z'` costs native compile speed for a size win only a
+# module cares about. It is what the `wasi` CI job builds the library artifact
+# with, and it is the bigger lever by far: on wasm32-wasip1 it takes the
+# library build from 2.42 MiB stripped to 1.31 MiB, where dropping the
+# command-line interface saves only 0.08 MiB. See
+# specs/docs/features/13-wasm-wasi.md.
 [profile.small]
 inherits = 'release'
 opt-level = 'z'

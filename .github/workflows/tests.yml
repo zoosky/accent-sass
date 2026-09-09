@@ -19,8 +19,11 @@ jobs:
       - name: version info
         run: rustc --version; cargo --version;
 
+      # `wasi-exports` is in the set so the WebAssembly C ABI is compiled and
+      # its tests run here rather than only on the target. See
+      # crates/lib/src/wasi_exports.rs.
       - name: Run all tests
-        run: cargo test --features=macro
+        run: cargo test --features=macro,wasi-exports
 
   fmt:
     runs-on: ubuntu-latest
@@ -66,9 +69,11 @@ jobs:
       - name: version info
         run: cargo clippy --version
 
-      - run: cargo clippy --features=macro --all-targets -- -D warnings
+      - run: cargo clippy --features=macro,wasi-exports --all-targets -- -D warnings
 
-  # The wasm32-wasip1 build, run rather than only built.
+  # The wasm32-wasip1 builds, run rather than only built: the command module
+  # under wasmtime, and the library module through a host that calls its
+  # exports.
   #
   # This gates. It is fast and deterministic, and the target has no other
   # coverage at all: nothing else in this workflow would notice if a filesystem
@@ -95,11 +100,45 @@ jobs:
           tar xf wasmtime.tar.xz
           echo "WASMTIME=$PWD/wasmtime-v48.0.1-x86_64-linux/wasmtime" >> "$GITHUB_ENV"
 
+      # The library check is a Node host, and it uses `node:wasi`.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
       - name: Build for wasm32-wasip1
         run: cargo build --release -p accent-sass --target wasm32-wasip1 --features commandline
 
       - name: Compile under wasmtime
         run: .github/scripts/wasi-smoke.sh
+
+      # The other shape of the target: a reactor the host instantiates once
+      # and calls into, built without the command-line interface and with the
+      # size profile. It is the artifact a plugin host embeds, and it has its
+      # own ABI, so it needs its own check -- the command module passing says
+      # nothing about whether the exports still work.
+      - name: Build the library artifact
+        run: |
+          cargo build --profile small -p accent-sass --target wasm32-wasip1 \
+            --no-default-features --features wasi-exports,random
+
+      - name: Call the library artifact from a host
+        run: node .github/scripts/wasi-lib-smoke.mjs
+
+      # Size is the point of the separate profile, so it is reported rather
+      # than assumed. A jump here is worth looking at even though nothing
+      # gates on it.
+      - name: Report artifact sizes
+        run: |
+          {
+            echo "### wasm32-wasip1 artifacts"
+            echo
+            echo "| artifact | bytes | gzipped |"
+            echo "|---|---:|---:|"
+            for f in target/wasm32-wasip1/release/accent-sass.wasm \
+                     target/wasm32-wasip1/small/accent_sass.wasm; do
+              echo "| \`$f\` | $(stat -c%s "$f") | $(gzip -9 -c "$f" | wc -c) |"
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
 
   # Compiles Bootstrap with both engines and reports how far apart they are.
   # Advisory: this fork does not reach exact byte equality across a whole
