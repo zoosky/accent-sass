@@ -183,7 +183,8 @@ against nightly's 1,376,528 -- 0.1% apart -- but gzips to 0.40 MiB against
 0.44, which is 7%. Same input size, different code layout. The `wasi` job
 prints both artifacts' sizes on every run, and those are the MSRV numbers:
 1,374,881 and 422,980 bytes on Linux, within 0.1% of the MSRV build measured
-here. Compare a compressed figure only against one taken on the same
+here. Those two figures predate gap 4; see its table for what the options
+handle added. Compare a compressed figure only against one taken on the same
 toolchain.
 
 **The profile is the lever; the interface is not.** Dropping the command-line
@@ -293,7 +294,9 @@ gap 3's table:
 | after | 1,376,523 | 424,120 |
 | difference | +1,594 (+0.12%) | +668 (+0.16%) |
 
-The before figure reproduces gap 3's MSRV measurement to the byte.
+The before figure reproduces gap 3's MSRV measurement to the byte. The `wasi`
+job saw the same delta on Linux -- 1,374,881 bytes before, 1,376,475 after --
+so the cost is the exports themselves rather than anything about the host.
 
 ### How it is tested
 
