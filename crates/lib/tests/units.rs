@@ -434,3 +434,45 @@ test!(
     "@use \"sass:math\";\n@use \"sass:meta\";\na {\n  color: meta.inspect(math.div(1px, 1em));\n}\n",
     "a {\n  color: calc(1px / 1em);\n}\n"
 );
+
+// Unit names are case-sensitive, which CSS is not and Dart Sass is. Only the
+// canonical spelling is a known unit; any other casing is an unknown one that
+// prints back as written and converts to nothing. Every expectation below was
+// taken from dart-sass 1.103.1.
+test!(
+    unit_case_is_preserved,
+    "a {\n  color: 1Q;\n  b: 1q;\n  c: 1PX;\n}\n",
+    "a {\n  color: 1Q;\n  b: 1q;\n  c: 1PX;\n}\n"
+);
+test!(
+    arithmetic_keeps_the_unit_case_it_was_given,
+    "a {\n  color: 2Q * 3;\n}\n",
+    "a {\n  color: 6Q;\n}\n"
+);
+error!(
+    a_miscased_unit_is_not_the_unit_it_resembles,
+    "a {\n  color: 1PX + 1px;\n}\n", "Error: Incompatible units px and PX."
+);
+test!(
+    frequency_units_keep_their_canonical_case,
+    "@use \"sass:math\";\na {\n  color: math.div(1kHz, 1hz);\n}\n",
+    "a {\n  color: calc(1kHz / 1hz);\n}\n"
+);
+// The one place case is ignored. A calculation asks whether two units *could*
+// be compatible before it gives up, and Dart Sass lowercases for that question
+// alone: `Q` counts as a length there even though it converts like an unknown
+// unit everywhere else.
+error!(
+    a_miscased_unit_is_still_known_incompatible,
+    "a {\n  color: calc(1Q + 1deg);\n}\n", "Error: 1Q and 1deg are incompatible."
+);
+test!(
+    a_miscased_unit_is_compatible_with_its_own_kind,
+    "a {\n  color: calc(1Q + 1mm);\n}\n",
+    "a {\n  color: calc(1Q + 1mm);\n}\n"
+);
+test!(
+    an_unknown_unit_is_compatible_with_anything,
+    "a {\n  color: calc(1foo + 1deg);\n}\n",
+    "a {\n  color: calc(1foo + 1deg);\n}\n"
+);

@@ -238,13 +238,19 @@ impl SassNumber {
             return false;
         }
 
-        let known_compatibilities = match known_compatibilities_by_unit(&self.unit) {
+        // Case is ignored here and nowhere else: dart-sass lowercases before
+        // this lookup, so `calc(1Q + 1deg)` is an error even though `Q` is an
+        // unknown unit that never converts. See `Unit::ignoring_case`.
+        let this = self.unit.ignoring_case();
+        let other_unit = other.unit.ignoring_case();
+
+        let known_compatibilities = match known_compatibilities_by_unit(&this) {
             Some(known_compatibilities) => known_compatibilities,
             None => return true,
         };
 
-        known_compatibilities.contains(&other.unit)
-            || known_compatibilities_by_unit(&other.unit).is_none()
+        known_compatibilities.contains(&other_unit)
+            || known_compatibilities_by_unit(&other_unit).is_none()
     }
 
     pub fn unit(&self) -> &Unit {

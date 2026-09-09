@@ -174,6 +174,29 @@ impl Unit {
         }
     }
 
+    /// The known unit this one names when case is ignored, or a clone of it.
+    ///
+    /// dart-sass splits the two readings of a unit name. Conversion and
+    /// printing are case-sensitive, so `1Q` is an unknown unit that never
+    /// becomes millimetres -- but the known-compatibility check that decides
+    /// whether `calc(1Q + 1deg)` is an error lowercases first, so `Q` counts
+    /// as a length *there* and the compile fails the way dart-sass's does.
+    /// Verified against dart-sass 1.103.1: `calc(1Q + 1mm)` compiles,
+    /// `calc(1Q + 1deg)` and `calc(1HZ + 1deg)` do not, and
+    /// `calc(1foo + 1deg)` does, an unknown name being compatible with
+    /// anything.
+    ///
+    /// Use it only for that check. Anywhere else it would erase the
+    /// distinction the rest of this type exists to keep.
+    pub(crate) fn ignoring_case(&self) -> Unit {
+        match self {
+            Unit::Unknown(name) => {
+                known_unit_ignoring_case(name.resolve_ref()).unwrap_or_else(|| self.clone())
+            }
+            _ => self.clone(),
+        }
+    }
+
     /// Used internally to determine if two units are comparable or not
     fn kind(&self) -> UnitKind {
         match self {
@@ -201,43 +224,67 @@ impl Unit {
     }
 }
 
+/// The known unit a name refers to when case is ignored, if any.
+///
+/// This is the only table of unit spellings; [`Unit::from`] narrows it to the
+/// canonical casing, and [`Unit::ignoring_case`] uses it as it stands.
+fn known_unit_ignoring_case(name: &str) -> Option<Unit> {
+    Some(match name.to_ascii_lowercase().as_str() {
+        "px" => Unit::Px,
+        "mm" => Unit::Mm,
+        "in" => Unit::In,
+        "cm" => Unit::Cm,
+        "q" => Unit::Q,
+        "pt" => Unit::Pt,
+        "pc" => Unit::Pc,
+        "em" => Unit::Em,
+        "rem" => Unit::Rem,
+        "lh" => Unit::Lh,
+        "%" => Unit::Percent,
+        "ex" => Unit::Ex,
+        "ch" => Unit::Ch,
+        "cap" => Unit::Cap,
+        "ic" => Unit::Ic,
+        "rlh" => Unit::Rlh,
+        "vw" => Unit::Vw,
+        "vh" => Unit::Vh,
+        "vmin" => Unit::Vmin,
+        "vmax" => Unit::Vmax,
+        "vi" => Unit::Vi,
+        "vb" => Unit::Vb,
+        "deg" => Unit::Deg,
+        "grad" => Unit::Grad,
+        "rad" => Unit::Rad,
+        "turn" => Unit::Turn,
+        "s" => Unit::S,
+        "ms" => Unit::Ms,
+        "hz" => Unit::Hz,
+        "khz" => Unit::Khz,
+        "dpi" => Unit::Dpi,
+        "dpcm" => Unit::Dpcm,
+        "dppx" => Unit::Dppx,
+        "fr" => Unit::Fr,
+        _ => return None,
+    })
+}
+
 impl From<String> for Unit {
+    /// Recognise a unit by its exact spelling.
+    ///
+    /// **The match is case-sensitive, deliberately.** CSS treats unit names
+    /// case-insensitively, but dart-sass does not: only the canonical
+    /// spelling is a known unit, and every other casing is an unknown one
+    /// that never converts and prints back as written. `1Q` is not the
+    /// quarter-millimetre unit, `math.div(1kHz, 1hz)` does not simplify, and
+    /// `1PX + 1px` is an error about incompatible units. Lowercasing here
+    /// made all three disagree with the reference implementation, and printed
+    /// `1Q` as `1q`.
+    ///
+    /// The one place case is ignored is [`Unit::ignoring_case`], which says
+    /// why.
     fn from(unit: String) -> Self {
-        match unit.to_ascii_lowercase().as_str() {
-            "px" => Unit::Px,
-            "mm" => Unit::Mm,
-            "in" => Unit::In,
-            "cm" => Unit::Cm,
-            "q" => Unit::Q,
-            "pt" => Unit::Pt,
-            "pc" => Unit::Pc,
-            "em" => Unit::Em,
-            "rem" => Unit::Rem,
-            "lh" => Unit::Lh,
-            "%" => Unit::Percent,
-            "ex" => Unit::Ex,
-            "ch" => Unit::Ch,
-            "cap" => Unit::Cap,
-            "ic" => Unit::Ic,
-            "rlh" => Unit::Rlh,
-            "vw" => Unit::Vw,
-            "vh" => Unit::Vh,
-            "vmin" => Unit::Vmin,
-            "vmax" => Unit::Vmax,
-            "vi" => Unit::Vi,
-            "vb" => Unit::Vb,
-            "deg" => Unit::Deg,
-            "grad" => Unit::Grad,
-            "rad" => Unit::Rad,
-            "turn" => Unit::Turn,
-            "s" => Unit::S,
-            "ms" => Unit::Ms,
-            "hz" => Unit::Hz,
-            "khz" => Unit::Khz,
-            "dpi" => Unit::Dpi,
-            "dpcm" => Unit::Dpcm,
-            "dppx" => Unit::Dppx,
-            "fr" => Unit::Fr,
+        match known_unit_ignoring_case(&unit) {
+            Some(known) if known.to_string() == unit => known,
             _ => Unit::Unknown(InternedString::get_or_intern(unit)),
         }
     }

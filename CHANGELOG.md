@@ -13,6 +13,24 @@ at `0.13.4` and below are upstream's and are kept for lineage.
 
 ## [Unreleased]
 
+### Fixed
+
+- unit names are case-sensitive, as they are in dart-sass. Only the canonical
+  spelling names a known unit, so `1Q` now prints as `1Q` rather than `1q`,
+  `math.div(1kHz, 1hz)` no longer simplifies, and `1PX + 1px` is an error
+  about incompatible units. The one place case is ignored is the check that
+  decides whether two units could ever be compatible, which is what makes
+  `calc(1Q + 1deg)` an error and `calc(1Q + 1mm)` legal
+- calculation errors say what dart-sass says. An *operation* a calculation
+  cannot perform is now distinguished from an *expression* it cannot hold and
+  reported at the operator, a rest argument is named as one, a bare list is
+  parenthesised in `Value (1 2 3) can't be used in a calculation.`, and the
+  parser reports `expected ")".`, `Expected expression.` or
+  `Expected identifier.` by position instead of the stale
+  `Expected number, variable, function, or calculation.`, which dart-sass no
+  longer emits anywhere. `calc("a")`, `calc(())` and `calc(1px % 2px)` are
+  rejected as the values and operators they are rather than as parse failures
+
 ### Added
 
 - options for the WebAssembly C ABI (`wasi-exports`). `accent_sass_options_new`

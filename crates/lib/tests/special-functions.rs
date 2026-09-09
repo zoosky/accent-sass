@@ -38,9 +38,11 @@ test!(
     "a {\n  color: calc(#{1 + 2});\n}\n",
     "a {\n  color: calc(3);\n}\n"
 );
+// A silent comment is not an expression, so nothing starts the argument and
+// the call itself is malformed. Verified against dart-sass 1.103.1.
 error!(
     calc_retains_silent_comment,
-    "a {\n  color: calc(//);\n}\n", "Error: Expected number, variable, function, or calculation."
+    "a {\n  color: calc(//);\n}\n", r#"Error: expected ")"."#
 );
 // See `calc_newline`. Verified against dart-sass 1.103.1.
 error!(
@@ -52,10 +54,12 @@ error!(
     "a {\n  color: calc(1% + 1px * 2px);\n}\n",
     "Error: Number calc(2px * 1px) isn't compatible with CSS calculations."
 );
+// The innermost `()` is the empty list: it parses, and a calculation cannot
+// hold what it parsed. Verified against dart-sass 1.103.1, which reports the
+// same for `calc(())` and `calc(( ))`.
 error!(
     calc_nested_parens,
-    "a {\n  color: calc((((()))));\n}\n",
-    "Error: Expected number, variable, function, or calculation."
+    "a {\n  color: calc((((()))));\n}\n", "Error: This expression can't be used in a calculation."
 );
 test!(
     calc_invalid_arithmetic,
@@ -82,21 +86,26 @@ test!(
     "a {\n  color: -webkit-calc(1 + 2);\n}\n",
     "a {\n  color: -webkit-calc(1 + 2);\n}\n"
 );
+// A quoted string parses as an expression and is rejected for being one.
+// Verified against dart-sass 1.103.1.
 error!(
     calc_quoted_string,
-    r#"a { color: calc("\ "); }"#, "Error: Expected number, variable, function, or calculation."
+    r#"a { color: calc("\ "); }"#, "Error: This expression can't be used in a calculation."
 );
 error!(
     calc_quoted_string_single_quoted_paren,
-    r#"a {color: calc(")");}"#, "Error: Expected number, variable, function, or calculation."
+    r#"a {color: calc(")");}"#, "Error: This expression can't be used in a calculation."
 );
 error!(
     calc_quoted_string_single_quotes,
-    "a {\n  color: calc('a');\n}\n", "Error: Expected number, variable, function, or calculation."
+    "a {\n  color: calc('a');\n}\n", "Error: This expression can't be used in a calculation."
 );
+// `#` begins an interpolation or a hex colour, so the parser is reading a name
+// by the time it fails. Verified against dart-sass 1.103.1, which reports the
+// same for `calc($)`.
 error!(
     calc_hash_no_interpolation,
-    "a {\n  color: calc(#);\n}\n", "Error: Expected number, variable, function, or calculation."
+    "a {\n  color: calc(#);\n}\n", "Error: Expected identifier."
 );
 error!(
     calc_boolean,
@@ -333,12 +342,12 @@ test!(
     "a {\n  color: calc(\\));\n}\n",
     "a {\n  color: calc(\\));\n}\n"
 );
-// Deliberately differs from dart-sass 1.103.1, which reports `expected ")"`.
-// accent-sass lists every token that could continue the list, a comma included, since
-// its calculation parser puts no upper bound on the argument count.
+// This used to list every token that could continue the argument list, which
+// deliberately differed from dart-sass. The list is gone: an unterminated call
+// is a missing `)` and nothing else, which is what dart-sass 1.103.1 says.
 error!(
     nothing_after_last_arg,
-    "a { color: calc(1 + 1", r#"Error: expected "+", "-", "*", "/", ",", or ")"."#
+    "a { color: calc(1 + 1", r#"Error: expected ")"."#
 );
 error!(
     progid_nothing_after,
@@ -490,4 +499,80 @@ test!(
     type_does_not_resolve_a_variable,
     "$x: 1;\na {b: type($x)}\n",
     "a {\n  b: type($x);\n}\n"
+);
+
+// Dart Sass separates an *operation* a calculation cannot perform from an
+// *expression* it cannot hold, and this compiler used to report both as the
+// second. One case of each family below; every expectation was taken from
+// dart-sass 1.103.1.
+//
+// A CSS math function whose arguments are not calculation syntax reaches the
+// evaluator as an ordinary function call, so `sqrt` and `calc` fail in
+// different places and have to be checked separately.
+error!(
+    calc_unknown_operator_is_an_operation,
+    "a {\n  color: calc(1px % 2px);\n}\n", "Error: This operation can't be used in a calculation."
+);
+error!(
+    calc_comparison_is_an_operation,
+    "a {\n  color: calc(1px <= 2px);\n}\n", "Error: This operation can't be used in a calculation."
+);
+error!(
+    math_function_unknown_operator_is_an_operation,
+    "a {\n  color: sqrt(7 % 3);\n}\n", "Error: This operation can't be used in a calculation."
+);
+// The four calculation operators are walked through rather than rejected, so
+// the report names what is actually wrong on either side of one.
+error!(
+    math_function_reports_the_operator_inside_an_addition,
+    "a {\n  color: sqrt(7 % 3 + \"a\");\n}\n",
+    "Error: This operation can't be used in a calculation."
+);
+error!(
+    math_function_reports_the_operand_inside_an_addition,
+    "a {\n  color: sqrt(\"a\" + 1);\n}\n", "Error: This expression can't be used in a calculation."
+);
+// A unary operator is an expression a calculation has no room for, not a sign.
+// `calc(+1px)` is still a signed number.
+error!(
+    calc_leading_operator_is_an_expression,
+    "a {\n  color: calc(+ 1px);\n}\n", "Error: This expression can't be used in a calculation."
+);
+test!(
+    calc_signed_number_is_not_a_unary_operator,
+    "a {\n  color: calc(+1px);\n}\n",
+    "a {\n  color: 1px;\n}\n"
+);
+// Nothing is committed at the start of an argument, so a token that cannot
+// begin an expression makes the call itself malformed; an operator has
+// promised an operand, so a missing one is reported as a missing expression.
+error!(
+    calc_argument_start_is_a_malformed_call,
+    "a {\n  color: calc(,);\n}\n", r#"Error: expected ")"."#
+);
+error!(
+    calc_trailing_operator_wants_an_expression,
+    "a {\n  color: calc(1px *);\n}\n", "Error: Expected expression."
+);
+error!(
+    calc_double_operator_wants_an_expression,
+    "a {\n  color: calc(1px ** 2px);\n}\n", "Error: Expected expression."
+);
+// A rest argument is rejected for its `...` before anything looks at what it
+// expands to.
+error!(
+    rest_arguments_are_rejected_before_their_contents,
+    "a {\n  color: clamp(1px 2px 3px...);\n}\n",
+    "Error: Rest arguments can't be used with calculations."
+);
+// A bare list is parenthesised in this message and nowhere else, so the reader
+// can see where the value ends; a bracketed one keeps its own brackets.
+error!(
+    a_bare_list_is_parenthesised_in_the_value_error,
+    "$a: 1 2 3;\nb {\n  c: calc($a);\n}\n", "Error: Value (1 2 3) can't be used in a calculation."
+);
+error!(
+    a_bracketed_list_keeps_its_brackets_in_the_value_error,
+    "$a: [1 2 3];\nb {\n  c: calc($a);\n}\n",
+    "Error: Value [1 2 3] can't be used in a calculation."
 );

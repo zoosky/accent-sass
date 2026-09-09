@@ -3252,15 +3252,14 @@ impl<'a> Visitor<'a> {
                     // A CSS math function only reaches this point when its
                     // arguments were not calculation syntax and no function of
                     // that name is defined, so there is nothing left to do
-                    // with it.
+                    // with it. Which message it gets depends on what in the
+                    // arguments a calculation cannot hold.
                     if CalculationName::from_lowercase_str(&name.as_str().to_ascii_lowercase())
                         .is_some()
                     {
-                        return Err((
-                            "This expression can't be used in a calculation.",
-                            func_call.span,
-                        )
-                            .into());
+                        let (message, span) =
+                            calculation_argument_error(&func_call.arguments, func_call.span);
+                        return Err((message, span).into());
                     }
 
                     SassFunction::Plain { name }
@@ -3600,11 +3599,22 @@ impl<'a> Visitor<'a> {
                     Value::Calculation(calc) => CalculationArg::Calculation(calc),
                     Value::String(s, QuoteKind::None) => CalculationArg::String(s),
                     value => {
+                        let inspected = value.inspect(span)?;
+                        // dart-sass parenthesises a bare list in this message
+                        // and nowhere else: `$a: 1 2 3` gives `Value (1 2 3)`
+                        // while `$a: [1 2 3]` keeps its brackets, so the
+                        // reader can see where the value ends. Checked against
+                        // 1.103.1 for space and comma lists, bracketed lists,
+                        // `()`, `(1,)`, maps and scalars.
+                        let named = match &value {
+                            Value::List(elems, _, Brackets::None) if elems.len() > 1 => {
+                                format!("({})", inspected)
+                            }
+                            _ => inspected.to_string(),
+                        };
+
                         return Err((
-                            format!(
-                                "Value {} can't be used in a calculation.",
-                                value.inspect(span)?
-                            ),
+                            format!("Value {} can't be used in a calculation.", named),
                             span,
                         )
                             .into());
@@ -4228,6 +4238,72 @@ impl<'a> Visitor<'a> {
         }
 
         Ok(None)
+    }
+}
+
+/// The error a CSS math function gets when its arguments are not calculation
+/// syntax and no Sass function of that name exists.
+///
+/// dart-sass distinguishes an *operation* a calculation cannot perform from an
+/// *expression* it cannot hold, and points at the operator in the first case.
+/// `sqrt(7 % 3)` is the first -- `%` is not one of the four calculation
+/// operators -- and `sqrt("a")` is the second. Reporting one message for both
+/// loses the distinction the reader needs: the first is a wrong operator, the
+/// second a wrong kind of value.
+///
+/// A rest argument is neither, and outranks both: `clamp(1px 2px 3px...)` is
+/// rejected for its `...` before anything looks at what it expands to.
+fn calculation_argument_error(arguments: &ArgumentInvocation, span: Span) -> (&'static str, Span) {
+    if arguments.rest.is_some() || arguments.keyword_rest.is_some() {
+        return ("Rest arguments can't be used with calculations.", span);
+    }
+
+    arguments
+        .positional
+        .iter()
+        .chain(arguments.named.values())
+        .find_map(|arg| disallowed_in_calculation(arg, span))
+        .unwrap_or(("This expression can't be used in a calculation.", span))
+}
+
+/// The first thing in `expr` a calculation cannot hold, depth first and left
+/// to right, which is the order dart-sass reports them in.
+///
+/// The four calculation operators are walked through rather than rejected, so
+/// `sqrt(7 % 3 + "a")` reports the `%` and `sqrt("a" + 1)` reports the string:
+/// both were checked against dart-sass 1.103.1. `span` is the fallback for a
+/// node that carries none of its own.
+fn disallowed_in_calculation(expr: &AstExpr, span: Span) -> Option<(&'static str, Span)> {
+    const OPERATION: &str = "This operation can't be used in a calculation.";
+    const EXPRESSION: &str = "This expression can't be used in a calculation.";
+
+    match expr {
+        AstExpr::Paren(inner) => disallowed_in_calculation(inner, span),
+        AstExpr::BinaryOp(binop) => match binop.op {
+            BinaryOp::Plus | BinaryOp::Minus | BinaryOp::Mul | BinaryOp::Div => {
+                disallowed_in_calculation(&binop.lhs, span)
+                    .or_else(|| disallowed_in_calculation(&binop.rhs, span))
+            }
+            _ => Some((OPERATION, binop.span)),
+        },
+        // An unquoted string is opaque text a calculation carries through, so
+        // `calc(1px + foo)` is not an error; a quoted one is a Sass value with
+        // no place in one.
+        AstExpr::String(StringExpr(_, QuoteKind::None), _) => None,
+        AstExpr::String(_, string_span) => Some((EXPRESSION, *string_span)),
+        AstExpr::UnaryOp(_, _, unary_span) => Some((EXPRESSION, *unary_span)),
+        // These reach a value at evaluation, which is where a calculation
+        // decides whether it can hold it -- a variable holding a map fails
+        // there, with a message naming the value.
+        AstExpr::Number { .. }
+        | AstExpr::Calculation { .. }
+        | AstExpr::Variable { .. }
+        | AstExpr::FunctionCall(..)
+        | AstExpr::InterpolatedFunction(..)
+        | AstExpr::If(..)
+        | AstExpr::CssIf(..)
+        | AstExpr::List(..) => None,
+        _ => Some((EXPRESSION, span)),
     }
 }
 
