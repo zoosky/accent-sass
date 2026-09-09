@@ -33,8 +33,8 @@ cargo build --release -p accent-sass --target wasm32-wasip1 --features commandli
 
 The target has a second shape. The command module above is what a host runs
 like a process; the library module is what a host instantiates once and calls
-into, and it is smaller -- 1.31 MiB, 0.44 MiB gzipped. Gap 3 has the build
-command, the full comparison and the ABI.
+into, and it is smaller -- 1.31 MiB, about 0.4 MiB gzipped. Gap 3 has the
+build command, the full comparison and the ABI.
 
 `StdFs` works under WASI, so `@use` and `@import` resolve against preopened
 directories with no bridge, no importer callback and no synchronous-read
@@ -174,9 +174,16 @@ are MiB; "stripped" is `RUSTFLAGS=-C strip=debuginfo`, which is what the
 | library | `small`, then `wasm-opt -Oz` | 1.10 | 0.43 |
 
 The command module's stripped release row reproduces 2026-09-08's figures to
-the byte, so the two sessions' numbers can be compared. The toolchain barely
-matters here either: the same library build on 1.96.1, the MSRV the `wasi` job
-pins, is 1,374,929 bytes against nightly's 1,376,528.
+the byte, so the two sessions' numbers can be compared.
+
+**The toolchain moves the compressed figure, not the module.** The same
+library build on 1.96.1, the MSRV the `wasi` job pins, is 1,374,929 bytes
+against nightly's 1,376,528 -- 0.1% apart -- but gzips to 0.40 MiB against
+0.44, which is 7%. Same input size, different code layout. The `wasi` job
+prints both artifacts' sizes on every run, and those are the MSRV numbers:
+1,374,881 and 422,980 bytes on Linux, within 0.1% of the MSRV build measured
+here. Compare a compressed figure only against one taken on the same
+toolchain.
 
 **The profile is the lever; the interface is not.** Dropping the command-line
 interface saves 0.40 MiB against the stripped release build, and 0.08 MiB --
