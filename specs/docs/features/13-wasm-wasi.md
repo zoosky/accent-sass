@@ -8,11 +8,12 @@ one of the platforms this project ships binaries for.
 **This item unlocks no sass-spec fixtures.** It is delivery work, ranked by
 who wants the artifact rather than by failure count.
 
-**Gaps 1 and 2 are closed** by `zoosky/accent-sass` #49. The artifact has been
-run, the CI job runs it on every push and pull request, and the path questions
-have answers taken from a runtime rather than from reading. **Gap 3 is closed**
-by `zoosky/accent-sass` #50: there is a library artifact, it is measured, and
-CI calls it. Gap 4, the options the C ABI does not take, is open.
+**Every gap is closed.** Gaps 1 and 2 by `zoosky/accent-sass` #49: the
+artifact has been run, the CI job runs it on every push and pull request, and
+the path questions have answers taken from a runtime rather than from reading.
+Gap 3 by #50: there is a library artifact, it is measured, and CI calls it.
+Gap 4 by #51: the C ABI takes an options handle, so a host can choose an
+output style, a syntax, load paths and the rest.
 
 ## What works
 
@@ -182,7 +183,8 @@ against nightly's 1,376,528 -- 0.1% apart -- but gzips to 0.40 MiB against
 0.44, which is 7%. Same input size, different code layout. The `wasi` job
 prints both artifacts' sizes on every run, and those are the MSRV numbers:
 1,374,881 and 422,980 bytes on Linux, within 0.1% of the MSRV build measured
-here. Compare a compressed figure only against one taken on the same
+here. Those two figures predate gap 4; see its table for what the options
+handle added. Compare a compressed figure only against one taken on the same
 toolchain.
 
 **The profile is the lever; the interface is not.** Dropping the command-line
@@ -216,21 +218,100 @@ wasm-opt -Oz --enable-bulk-memory --enable-sign-ext --enable-mutable-globals \
 Turning it off was not measured. Nor was brotli, for want of the tool -- the
 same omission [12](12-wasm-browser-package.md) gap 4 records.
 
-## 4. The C ABI compiles with default options -- open
+## 4. The C ABI compiles with default options -- closed
 
-`accent_sass_compile_string` and `accent_sass_compile_path` build
-`Options::default()`, so a host cannot choose an output style, declare the
-input to be the indented syntax, add a load path or silence a warning. It gets
-expanded CSS or a formatted error.
+### What was wrong
 
-This is the gap the browser binding has ([12](12-wasm-browser-package.md) gap
-1) in the other target's clothes, and the fix has the same shape: an owned
-configuration the host fills in before the call. Under WASI it is the smaller
-job of the two -- scalars and string offsets in linear memory, with no
-wasm-bindgen and no JavaScript types to agree on -- and it should follow
-whatever names item 12 settles on, so the two artifacts do not diverge.
+`accent_sass_compile_string` and `accent_sass_compile_path` built
+`Options::default()`, so a host could not choose an output style, declare the
+input to be the indented syntax, add a load path or silence a warning. It got
+expanded CSS or a formatted error, and nothing else. That is the same gap the
+browser binding has ([12](12-wasm-browser-package.md) gap 1) in the other
+target's clothes.
 
-Do it when an embedder asks for it.
+### What shipped
+
+An owned configuration the host fills in before the call, reached through an
+opaque handle. `accent_sass_options_new` returns one, setters write to it,
+`accent_sass_compile_string_with_options` and
+`accent_sass_compile_path_with_options` read it, and
+`accent_sass_options_free` releases it. The handle is why an owned struct was
+needed at all: `Options<'a>` borrows its filesystem and logger, so it cannot
+outlive the call that builds it and cannot be a pointer a host holds.
+
+A handle is reusable, and that is the shape the reactor build is for -- set it
+up once and compile a whole theme through it. The two original functions keep
+working unchanged, with defaults.
+
+**The names follow dart-sass's JavaScript API**, checked against
+<https://sass-lang.com/documentation/js-api/> rather than recalled:
+
+| this ABI | dart-sass | values |
+|---|---|---|
+| `accent_sass_options_set_style` | `style` | 0 `expanded`, 1 `compressed` |
+| `accent_sass_options_set_syntax` | `syntax` | 0 `scss`, 1 `indented`, 2 `css` |
+| `accent_sass_options_add_load_path` | `loadPaths` | one path per call |
+| `accent_sass_options_set_charset` | `charset` | non-zero is true, default true |
+| `accent_sass_options_set_alert_ascii` | `alertAscii` | non-zero is true, default false |
+| `accent_sass_options_set_quiet` | -- | non-zero is true, default false |
+
+Two of those need saying out loud. dart-sass's `Syntax` type is `"scss" |
+"indented" | "css"` -- the middle value is `indented`, not `sass`, even though
+this crate's own enum spells it `InputSyntax::Sass`; the ABI takes dart-sass's
+name because that is the point of following it. And `alertAscii` is the
+*inverse* of this crate's `unicode_error_messages`, so the ABI carries
+dart-sass's polarity and flips it on the way in. Both default the same way
+round in both projects.
+
+`quiet` has no name in dart-sass's JavaScript API, which silences warnings by
+passing `Logger.silent`; its command line calls it `--quiet`, and so does this
+project's, so the ABI does too. It matters more here than natively: the logger
+writes to standard output, which in a reactor module is whatever file
+descriptor the host wired up at instantiation.
+
+**A refused call changes nothing.** Every setter returns a status word -- 0
+ok, 1 refused, 2 not UTF-8 -- and a value the ABI does not define is refused
+rather than rounded to a default, so a host that ignores the status keeps what
+it set instead of silently getting something it did not ask for. A null handle
+is refused the same way, including at the compile call, which returns `Error:
+null options handle.` rather than quietly compiling with defaults: a host that
+lost its handle wanted the options it set.
+
+**Load paths are guest paths.** Under WASI a path resolves only if a preopen
+covers it, so a host passing `/shared` must map a directory onto that name at
+instantiation -- the rule gap 2 established for the command module, now
+reaching the library one through this setter. A load path no preopen covers is
+not an error by itself; it simply never resolves an import.
+
+### What it cost
+
+Nothing worth a decision. Same toolchain (1.96.1), same machine and profile as
+gap 3's table:
+
+| library module, `small` profile | bytes | gzipped |
+|---|---:|---:|
+| before | 1,374,929 | 423,452 |
+| after | 1,376,523 | 424,120 |
+| difference | +1,594 (+0.12%) | +668 (+0.16%) |
+
+The before figure reproduces gap 3's MSRV measurement to the byte. The `wasi`
+job saw the same delta on Linux -- 1,374,881 bytes before, 1,376,475 after --
+so the cost is the exports themselves rather than anything about the host.
+
+### How it is tested
+
+Eleven unit tests in `crates/lib/src/wasi_exports.rs`, and thirteen more
+checks in `.github/scripts/wasi-lib-smoke.mjs`, which takes the smoke test
+from seven checks to twenty against the real module under Node's WASI. Both sets are written so that a *silently ignored* option fails
+the test rather than passing it: the indented-syntax check compiles input that
+is not valid SCSS, and the load-path check compiles an `@use` that nothing
+else can resolve. An assertion that only says "the output is right" would pass
+with the whole feature deleted.
+
+`quiet` is the exception, and deliberately: proving a warning did not reach
+the logger needs a logger to inspect, and the ABI does not expose one. The
+smoke test sets it alongside the style so the path is exercised, and the
+`@warn` it silences would otherwise land on the host's standard output.
 
 ## The spec suite under WASI
 
@@ -309,3 +390,6 @@ difference is module load rather than execution.
 - [x] Gap 3: a library-only profile, measured. The comparison is in gap 3, and
       the `wasi` job builds the artifact, calls its exports and prints its size
       on every run.
+- [x] Gap 4: the C ABI takes options, named after dart-sass's JavaScript API,
+      with the size cost measured and the checks written so an ignored option
+      fails them.

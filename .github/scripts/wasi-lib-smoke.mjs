@@ -8,9 +8,10 @@
 // The checks are the ABI's contract, not the compiler's: that a string
 // crosses the boundary and comes back as CSS, that `@use` resolves through a
 // preopened directory with no importer bridge, that a read outside every
-// preopen is reported as the compiler's own error rather than a trap, and
-// that bad input is a status rather than a panic. Anything about what CSS the
-// compiler produces belongs in the Rust test suite.
+// preopen is reported as the compiler's own error rather than a trap, that an
+// options handle survives the boundary and changes the output, and that bad
+// input is a status rather than a panic. Anything about what CSS the compiler
+// produces belongs in the Rust test suite.
 //
 // Node's WASI is used rather than wasmtime because the CLI cannot write bytes
 // into the guest's memory, and every call here needs to.
@@ -63,7 +64,21 @@ const {
   accent_sass_compile_string,
   accent_sass_compile_path,
   accent_sass_result_free,
+  accent_sass_options_new,
+  accent_sass_options_free,
+  accent_sass_options_set_style,
+  accent_sass_options_set_syntax,
+  accent_sass_options_add_load_path,
+  accent_sass_options_set_quiet,
+  accent_sass_compile_string_with_options,
+  accent_sass_compile_path_with_options,
 } = instance.exports;
+
+// The ABI's status words and enum values, as the module documents them.
+const OK = 0;
+const REJECTED = 1;
+const STYLE_COMPRESSED = 1;
+const SYNTAX_INDENTED = 1;
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -98,6 +113,22 @@ function call(fn, input) {
   const result = take(fn(ptr, len));
   accent_sass_dealloc(ptr, len);
   return result;
+}
+
+/** Call one of the `_with_options` exports with a string argument. */
+function callWith(fn, input, options) {
+  const { ptr, len } = put(input);
+  const result = take(fn(ptr, len, options));
+  accent_sass_dealloc(ptr, len);
+  return result;
+}
+
+/** Append a load path to a handle, copying it into the guest first. */
+function addLoadPath(options, path) {
+  const { ptr, len } = put(path);
+  const status = accent_sass_options_add_load_path(options, ptr, len);
+  accent_sass_dealloc(ptr, len);
+  return status;
 }
 
 let failed = 0;
@@ -146,6 +177,59 @@ check("reports a compile error", "1|true", `${got.status}|${got.body.startsWith(
 // 7. Bytes that are not UTF-8 are rejected without reaching the parser.
 got = call(accent_sass_compile_string, new Uint8Array([0x61, 0xff, 0x7b, 0x7d]));
 check("rejects invalid UTF-8", 2, got.status);
+
+// 8. An options handle crosses the boundary and changes the output. Compressed
+//    output is the cheapest knob to see from outside: same input, one line.
+const options = accent_sass_options_new();
+check("sets the output style", OK, accent_sass_options_set_style(options, STYLE_COMPRESSED));
+check("silences the logger", OK, accent_sass_options_set_quiet(options, 1));
+got = callWith(
+  accent_sass_compile_string_with_options,
+  '@warn "noisy";\na {\n  b: 1px + 2px;\n}\n',
+  options,
+);
+check("compiles compressed", "0|a{b:3px}", `${got.status}|${got.body}`);
+
+// 9. The same handle again. A configuration that survives one call only would
+//    be no use to a host compiling a theme.
+got = callWith(accent_sass_compile_path_with_options, "/work/site/main.scss", options);
+check("reuses a handle for a path compile", "0|a{b:3px}", `${got.status}|${got.body}`);
+
+// 10. A load path, which under WASI is a guest path and so needs a preopen.
+//     The input has no file of its own, so nothing but the load path can
+//     resolve the import.
+check("adds a load path", OK, addLoadPath(options, "/work/site"));
+got = callWith(
+  accent_sass_compile_string_with_options,
+  '@use "partial";\na {\n  b: partial.$v + 1px;\n}\n',
+  options,
+);
+check("resolves @use through a load path", "0|a{b:3px}", `${got.status}|${got.body}`);
+
+// 11. The indented syntax, which is not valid SCSS. If the option were
+//     ignored this would be a parse error rather than a pass.
+check("sets the syntax", OK, accent_sass_options_set_syntax(options, SYNTAX_INDENTED));
+got = callWith(accent_sass_compile_string_with_options, "a\n  b: 1px + 2px\n", options);
+check("parses the indented syntax", "0|a{b:3px}", `${got.status}|${got.body}`);
+
+// 12. A value the ABI does not define is refused rather than rounded to a
+//     default, and the refusal leaves the handle as it was.
+check("refuses an undefined style", REJECTED, accent_sass_options_set_style(options, 7));
+check("refuses an undefined syntax", REJECTED, accent_sass_options_set_syntax(options, 7));
+got = callWith(accent_sass_compile_string_with_options, "a\n  b: 1px + 2px\n", options);
+check("keeps the settings a refusal did not change", "0|a{b:3px}", `${got.status}|${got.body}`);
+
+accent_sass_options_free(options);
+
+// 13. A null handle is a refusal with a message, not a trap and not a silent
+//     compile with defaults.
+check("refuses a null handle", REJECTED, accent_sass_options_set_quiet(0, 1));
+got = callWith(accent_sass_compile_string_with_options, "a { b: 1px; }", 0);
+check(
+  "refuses to compile without a handle",
+  "1|Error: null options handle.",
+  `${got.status}|${got.body}`,
+);
 
 await rm(work, { recursive: true, force: true });
 process.exit(failed);

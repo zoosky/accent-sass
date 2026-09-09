@@ -66,6 +66,13 @@ function implemented in JS would have to cross the boundary on every call.
   reference before writing the names down rather than assuming them; the
   roadmap's ground rule about verifying against dart-sass applies to its API
   surface as much as to its output.
+- **[13](13-wasm-wasi.md) gap 4 settled these names first**, for the WASI C
+  ABI, against the same reference. Take them from there rather than deriving
+  them again: `style`, `syntax`, `loadPaths`, `charset`, `alertAscii`, and
+  `quiet` for the one knob dart-sass's JavaScript API has no name for. Two
+  traps that gap already walked into are worth inheriting -- dart-sass's
+  `Syntax` spells the indented value `indented`, not `sass`, and `alertAscii`
+  is the inverse of this crate's `unicode_error_messages`.
 - `Options` borrows (`Options<'a>`), and wasm-bindgen structs cannot carry a
   lifetime. Build the `Options` inside the exported function from an owned
   configuration struct.
