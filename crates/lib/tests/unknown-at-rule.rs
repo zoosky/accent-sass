@@ -144,3 +144,34 @@ test!(
     "@a url(http://x);\n",
     "@a url(http://x);\n"
 );
+
+// A nested at-rule normally gets a copy of the enclosing style rule, so that
+// declarations written directly inside it have somewhere to go. dart-sass
+// 1.103.1 exempts `@font-face`, whose descriptors belong to the at-rule
+// itself, and the exemption is on the plain name: neither case-insensitive
+// nor unvendored. All four expectations come from the binary.
+test!(
+    font_face_does_not_take_the_parent_selector,
+    "a {\n  b: c;\n  @font-face {\n    d: e;\n  }\n}\n",
+    "a {\n  b: c;\n}\n@font-face {\n  d: e;\n}\n"
+);
+test!(
+    font_face_from_a_mixin_does_not_take_the_parent_selector,
+    "@mixin a {\n  @font-face {\n    b: c;\n  }\n}\nd {\n  e: f;\n  @include a;\n}\n",
+    "d {\n  e: f;\n}\n@font-face {\n  b: c;\n}\n"
+);
+test!(
+    vendor_prefixed_font_face_still_takes_the_parent_selector,
+    "f {\n  @-moz-font-face {\n    g: h;\n  }\n}\n",
+    "@-moz-font-face {\n  f {\n    g: h;\n  }\n}\n"
+);
+test!(
+    uppercase_font_face_still_takes_the_parent_selector,
+    "i {\n  @FONT-FACE {\n    j: k;\n  }\n}\n",
+    "@FONT-FACE {\n  i {\n    j: k;\n  }\n}\n"
+);
+test!(
+    interpolated_font_face_does_not_take_the_parent_selector,
+    "l {\n  @#{\"font-face\"} {\n    m: n;\n  }\n}\n",
+    "@font-face {\n  m: n;\n}\n"
+);
