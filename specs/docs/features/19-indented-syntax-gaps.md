@@ -5,13 +5,16 @@
 `consumeNewlines` family; what is left is what that parameter did not
 reach.
 
+Section 2 has since been closed from another branch -- see the note under
+that heading before you start on it. Six of the nine remain.
+
 Measured 2026-09-10 against master (`31361d7`), the pinned sass-spec
 revision `4a9eea66`, and dart-sass 1.103.1 run as `npx -y sass@1.103.1`.
 
 | Section | Cause | Failures |
 |---|---|---:|
 | 1 | A loud comment in a value may not span lines | 4, plus 1 claimed |
-| 2 | A selector may not span lines inside brackets | 3 |
+| 2 | ~~A selector may not span lines inside brackets~~ | 3, since closed |
 | 3 | `@import` takes only one unquoted URL | 1 |
 | 4 | `@at-root` with no children is an error | 1 |
 
@@ -59,7 +62,25 @@ regardless of indentation.
 Indentation is not part of the rule -- the `no-indent` variants put the
 closing `*/` at column 1 and are equally valid.
 
-## 2. A selector may not span lines inside brackets
+## 2. A selector may not span lines inside brackets -- closed
+
+**Closed by #68, which is open at the time of writing.** That branch is
+item 24's cause 1, and it needed dart-sass's bracket stack in
+`almost_any_value` to reject an unbalanced bracket in a selector. Once the
+stack exists, dart-sass's newline case reads
+`if (indented && brackets.isEmpty) break loop`, and the `brackets.isEmpty`
+half is exactly this section: the two are one mechanism, so the fix landed
+there rather than here. The diagnosis below was right, and is kept for the
+record.
+
+The change reached seven further fixtures that no document claims, item 24
+included -- `spec/css/selector/attribute/sass/whitespace/{after_lbracket,
+after_lbracket_indented,after_operator,after_val,before_operator}` and
+`spec/css/selector/pseudoselector/whitespace/sass/{after_param,
+before_param}`. They are this section's cause seen in a pseudo-selector's
+parentheses and around an attribute selector's operator. Recorded here
+because this is the section that describes the rule, not because anything
+is left to do about them.
 
 `spec/parser/indentation/multiline_indent_level/{none,same,more}`
 
@@ -129,17 +150,18 @@ not a parse error.
   suite for sections 1 and 2, which change how newlines are read.
 - Add regression tests to `crates/lib/tests/` with `test!`, in the
   indented syntax, covering both the indented and the no-indent variants
-  of section 1 and all three indentation levels of section 2.
+  of section 1. Section 2's three indentation levels are already covered,
+  in `crates/lib/tests/selectors.rs`.
 - Verify every new expectation against dart-sass 1.103.1 with
   `npx -y sass@1.103.1`, never bare `npx sass`.
 
 ## Acceptance criteria
 
-- `spec/expressions/comments`, `spec/parser/indentation`,
-  `spec/directives/at_root` and `spec/non_conformant/sass/import` are clear
-  of these nine.
+- `spec/expressions/comments`, `spec/directives/at_root` and
+  `spec/non_conformant/sass/import` are clear of the six that remain.
+  `spec/parser/indentation` was section 2's and is already clear.
 - `spec/css/comment` drops by 1 through section 1.
 - The whole-suite "Test case should succeed but it did not" count drops by
-  at least 9, and the "Expected test to fail but it did not" count has not
-  risen: sections 1 and 2 loosen the parser, which is exactly how leniency
-  creeps in.
+  at least 6, and the "Expected test to fail but it did not" count has not
+  risen: section 1 loosens the parser, which is exactly how leniency creeps
+  in.
