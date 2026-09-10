@@ -1,5 +1,10 @@
 # @font-face bubbling
 
+**Landed. `spec/css/font-face` is down from 5 failures to 1, and the suite
+from 284 to 280.** The one left is `bubble/empty`, which needs item 18's
+section 1 as well; see below. The fix is the one condition this document
+predicted, and nothing else moved.
+
 5 sass-spec failures in `spec/css/font-face`, all one cause, and the fix is
 one condition.
 
@@ -42,14 +47,17 @@ dart-sass 1.103.1 has a third term. From the package
 if (styleRule == null || t1._inKeyframes || _this.name.value === "font-face")
 ```
 
-Add the same test. Two details it fixes only if you copy them exactly:
+The same test is now in `visit_unknown_at_rule`, captured as `is_font_face`
+before `name` is moved into the statement. Two details it fixes only if you
+copy them exactly, both checked against the binary:
 
 - The comparison is against the **plain, unvendored** name. `unvendor` is
   used two lines above for `keyframes`, but dart compares `name.value`
   directly, so `@-moz-font-face` still bubbles.
 - It is case-sensitive, and it reads the name after interpolation is
-  resolved, so `#{"font-face"}` is caught too. No fixture covers that, or
-  the `@FONT-FACE` spelling; pin both with tests.
+  resolved, so `#{"font-face"}` is caught and `@FONT-FACE` is not. No
+  fixture covers either; both are pinned by tests in
+  `crates/lib/tests/unknown-at-rule.rs`.
 
 ## The empty case
 
@@ -77,7 +85,7 @@ half of its diff.
 
 ## Acceptance criteria
 
-- `spec/css/font-face` drops from 5 failures to 1, and to 0 once item 18's
-  section 1 lands.
-- No other area moves. The condition is one name, but it is on a hot path,
-  so the whole-suite count is the measurement that counts.
+- ~~`spec/css/font-face` drops from 5 failures to 1~~ Done, and to 0 once
+  item 18's section 1 lands.
+- ~~No other area moves.~~ Done: 284 to 280, four fixtures, none newly
+  failing, checked by diffing the failure lists.

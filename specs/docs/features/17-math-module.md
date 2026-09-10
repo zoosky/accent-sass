@@ -1,5 +1,14 @@
 # The math module
 
+**Landed. `spec/core_functions/math` is clear, and the suite went from 284
+failures to 272.** All five sections are done; nothing regressed, and the
+"Expected test to fail but it did not" column fell from 28 to 27 through
+section 3. Two tests elsewhere pinned the old behaviour and were corrected
+against dart-sass 1.103.1 rather than re-baselined: the three clamp unit
+errors in `crates/lib/tests/math-module.rs` and
+`complex_unit_many_denom_one_numer` in `crates/lib/tests/units.rs`, which
+expected the unbracketed denominator this item calls a bug.
+
 12 sass-spec failures in `spec/core_functions/math`, the deepest single
 area no document claims. They are five independent causes, none of them
 large, and four of the five are a line or two.
@@ -13,13 +22,13 @@ cd sass-spec && npm run sass-spec -- --impl=dart-sass \
   --ignore-warning-diffs --ignore-error-diffs spec/core_functions/math
 ```
 
-| Section | Cause | Failures |
-|---|---|---:|
-| 1 | A fuzzy `is_zero()` stands in for an exact zero | 6 |
-| 2 | `clamp()` compares in the wrong order | 3 |
-| 3 | `clamp()` misses one unit mismatch | 1 |
-| 4 | `$min-number` is the smallest normal, not the smallest double | 1 |
-| 5 | `unit()` leaves a multi-unit denominator unbracketed | 1 |
+| Section | Cause | Failures | State |
+|---|---|---:|---|
+| 1 | A fuzzy `is_zero()` stands in for an exact zero | 6 | landed |
+| 2 | `clamp()` compares in the wrong order | 3 | landed |
+| 3 | `clamp()` misses one unit mismatch | 1 | landed |
+| 4 | `$min-number` is the smallest normal, not the smallest double | 1 | landed |
+| 5 | `unit()` leaves a multi-unit denominator unbracketed | 1 | landed |
 
 ## 1. A fuzzy `is_zero()` stands in for an exact zero
 
@@ -48,11 +57,11 @@ The serializer is not implicated: it already rounds 5.7296e-11 to
 `0.0000000001`, which is what dart-sass prints, so removing the guards is
 enough.
 
-Replace the fuzzy checks with exact `== 0.0` comparisons in these three
-functions. Then fix `acos` at line 299, which has the same defect through
-the neighbouring `is_one()` and no fixture that catches it:
-`math.acos(0.999999999999)` prints `0deg` here and `0.0000810276deg` in
-dart-sass 1.103.1. Check `atan2` too.
+The fix is exact `== 0.0` comparisons in these three functions. `acos` at
+line 299 had the same defect through the neighbouring `is_one()` and no
+fixture that catches it -- `math.acos(0.999999999999)` printed `0deg` and now
+prints `0.0000810276deg`, which is what dart-sass 1.103.1 gives. `atan2` was
+checked and needs nothing.
 
 ## 2. `clamp()` compares in the wrong order
 
@@ -95,8 +104,11 @@ all of them. The other five `some_unitless` fixtures pass only because
 `--ignore-error-diffs` hides the wording; dart-sass words all six as
 `$max: 2px and $min: 0 have incompatible units (one has units and the other
 doesn't).`, naming the two arguments that disagree. Fixing the wording as
-well as the missing case is the honest version of this section, and costs
-nothing extra.
+well as the missing case is the honest version of this section, and cost
+nothing extra: both comparisons now go through one helper that reports the
+argument against `$min`, in dart's order, and all six `some_unitless`
+fixtures plus the four `incompatible_units` ones now match dart-sass word for
+word rather than passing on a flag.
 
 ## 4. `$min-number` is the smallest normal, not the smallest double
 
@@ -111,8 +123,8 @@ subnormal, 5e-324. The names match and the values do not.
 a {b: math.$min-number * 1e300 * 1e39}
 ```
 
-prints `22250738585072010000000000000000` here and `4940656458412465` in
-dart-sass. Use `f64::from_bits(1)`, and say in a comment why
+printed `22250738585072010000000000000000` here and `4940656458412465` in
+dart-sass. It is now `f64::from_bits(1)`, with a comment saying why
 `f64::MIN_POSITIVE` is wrong, because it is the obvious thing to reach for
 again later.
 
@@ -131,12 +143,14 @@ never brackets:
 }
 ```
 
-`math.unit(1px * 1em / 1rad / 1s)` prints `"px*em/rad*s"` here and
-`"px*em/(rad*s)"` in dart-sass. Bracket `denom_rendered` when
+`math.unit(1px * 1em / 1rad / 1s)` printed `"px*em/rad*s"` here and
+`"px*em/(rad*s)"` in dart-sass. `denom_rendered` is now bracketed when
 `denom.len() > 1`, mirroring the arm two lines above.
 
-This `Display` is also what error messages use, so a scoped run of
-`spec/values` is worth doing after the change, not just `spec/core_functions`.
+This `Display` is also what error messages use, so the whole suite was the
+measurement rather than the scoped run. It moved one test outside the spec:
+`complex_unit_many_denom_one_numer` pinned the unbracketed form, and
+dart-sass 1.103.1 prints `"rem/(px*vh)"` for its input.
 
 ## Testing
 
@@ -153,8 +167,9 @@ This `Display` is also what error messages use, so a scoped run of
 
 ## Acceptance criteria
 
-- `spec/core_functions/math` passes: 0 failures, down from 12.
-- The whole-suite "Expected test to fail but it did not" count drops from
-  28 to 27 through section 3, and nothing else moves.
-- No other area regresses. Sections 1 and 5 touch shared code, so the
-  measurement that matters is the whole-suite count, not the scoped one.
+- ~~`spec/core_functions/math` passes: 0 failures, down from 12.~~ Done.
+- ~~The whole-suite "Expected test to fail but it did not" count drops from
+  28 to 27 through section 3, and nothing else moves.~~ Done.
+- ~~No other area regresses.~~ Done: 284 to 272, twelve fixtures, none
+  newly failing, checked by diffing the failure lists rather than comparing
+  totals.
