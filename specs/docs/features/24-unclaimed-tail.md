@@ -11,7 +11,7 @@ revision `4a9eea66`, and dart-sass 1.103.1 run as `npx -y sass@1.103.1`.
 | # | Cause | Failures |
 |---|---|---:|
 | 1 | Missing strictness checks | 8 |
-| 2 | An arglist does not keep its separator | 4 |
+| 2 | An arglist does not keep its separator | 4, one of them since closed |
 | 3 | `@extend` produces the wrong selector set | 4 |
 | 4 | `@extend` across media queries is not an error | 3 |
 | 5 | Nested `@media` is flattened | 3 |
@@ -52,7 +52,7 @@ one, counted there.
 
 `non_conformant/sass/var-args/success`,
 `non_conformant/scss-tests/{071,090}_*`,
-`libsass-closed-issues/issue_1269`
+~~`libsass-closed-issues/issue_1269`~~ -- closed by item 21
 
 ```scss
 @mixin foo($a, $b...) { b: $b }
@@ -68,8 +68,13 @@ where the arglist's separator decides the result.
 
 This is the arglist half of item 21: there, `Value::Map` and `Value::List`
 do not interchange; here, `Value::ArgList` carries the wrong separator.
-`Value::separator` at `crates/compiler/src/value/mod.rs:485` returns
-`Comma` for both variants, which is one of the two places to look.
+
+Item 21 has since taken `issue_1269` with it, by matching `Value::ArgList`
+wherever it matched `Value::Map` -- `list.join` was reading a hard-coded
+comma rather than the value's separator. The three left are a different
+defect and are not fixed by that: they need the arglist to be *built* with
+the separator of the list that was splatted into it, which happens in
+argument evaluation rather than in a list builtin.
 
 ## 3. `@extend` produces the wrong selector set
 
