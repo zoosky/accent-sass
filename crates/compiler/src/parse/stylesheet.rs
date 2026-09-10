@@ -41,7 +41,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
     const IDENTIFIER_LIKE: Option<fn(&mut Self) -> SassResult<Spanned<AstExpr>>> = None;
 
     fn parse_style_rule_selector(&mut self) -> SassResult<Interpolation> {
-        self.almost_any_value(false)
+        self.almost_any_value(false, false)
     }
 
     fn expect_statement_separator(&mut self, _name: Option<&str>) -> SassResult<()> {
@@ -449,7 +449,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
 
     fn parse_disallowed_at_rule(&mut self, start: usize) -> SassResult<AstStmt> {
         self.whitespace(false)?;
-        self.almost_any_value(false)?;
+        self.almost_any_value(false, false)?;
         Err((
             "This at-rule is not allowed here.",
             self.toks_mut().span_from(start),
@@ -481,7 +481,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
                 .into());
         }
 
-        let value = self.almost_any_value(false)?;
+        let value = self.almost_any_value(false, false)?;
 
         let is_optional = self.scan_char('!');
 
@@ -1228,7 +1228,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
 
         let value: Option<Interpolation> =
             if !self.toks_mut().next_char_is('!') && !self.at_end_of_statement() {
-                Some(self.almost_any_value(false)?)
+                Some(self.almost_any_value(false, true)?)
             } else {
                 None
             };
@@ -2665,7 +2665,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
                 }
 
                 self.toks_mut().set_cursor(before_decl);
-                let additional = self.almost_any_value(false)?;
+                let additional = self.almost_any_value(false, false)?;
                 if !self.is_indented() && self.toks_mut().next_char_is(';') {
                     return Err(e);
                 }
@@ -2954,6 +2954,20 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
         &mut self,
         // default=false
         omit_comments: bool,
+        // Whether a bracket still open when the value ends is an error.
+        //
+        // dart-sass reads an unknown at-rule's value with
+        // `_interpolatedDeclarationValue`, which ends with
+        // `if (brackets.isNotEmpty) scanner.expectChar(brackets.last)`. Its
+        // `almostAnyValue`, which reads selectors, has no such check. This
+        // parser uses one function for both, so the check is a parameter and
+        // only the at-rule call site passes `true`.
+        //
+        // Without it, `@foo (` in the indented syntax reads to the end of the
+        // file: the newline arm below ends the value only when no bracket is
+        // open, so every rule that follows is swallowed into the at-rule's
+        // value and disappears from the output.
+        expect_balanced_brackets: bool,
     ) -> SassResult<Interpolation> {
         let mut buffer = Interpolation::new();
 
@@ -3055,6 +3069,18 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
                     // closer that interpolation smuggled in cannot pair with
                     // an opener written outside it: `[a#{"]:is(b"})` reaches
                     // here at the `)` with `]` still open.
+                    //
+                    // Deliberate divergence, in an unknown at-rule's value
+                    // only: a closer with nothing open raises `Unexpected
+                    // ")".` here, which is what dart-sass's `almostAnyValue`
+                    // does, while its `_interpolatedDeclarationValue` -- the
+                    // one an at-rule value actually goes through -- ends the
+                    // value instead and reports `expected ";".` from the
+                    // statement separator. Both reject `@foo a) b {c: d}` at
+                    // the same character; only the wording differs, and
+                    // wording is not held to parity. Closing that gap means
+                    // giving the at-rule value its own reader, which is a
+                    // change of its own.
                     let Some(bracket) = brackets.pop() else {
                         return Err((
                             format!("Unexpected \"{}\".", tok.kind),
@@ -3074,6 +3100,10 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
                     }
                 }
             }
+        }
+
+        if expect_balanced_brackets && let Some(&last) = brackets.last() {
+            self.expect_char(last)?;
         }
 
         Ok(buffer)

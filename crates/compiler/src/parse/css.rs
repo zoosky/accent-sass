@@ -119,7 +119,7 @@ impl<'a> CssParser<'a> {
 
     /// Rejects an at-rule that only exists in Sass.
     fn forbidden_at_rule(&mut self, start: usize) -> SassResult<AstStmt> {
-        self.almost_any_value(false)?;
+        self.almost_any_value(false, false)?;
         Err((
             "This at-rule isn't allowed in plain CSS.",
             self.toks.span_from(start),

@@ -175,3 +175,53 @@ test!(
     "l {\n  @#{\"font-face\"} {\n    m: n;\n  }\n}\n",
     "@font-face {\n  m: n;\n}\n"
 );
+
+// An unknown at-rule's value ends at an unclosed bracket rather than reading
+// on. dart-sass reads that value with `_interpolatedDeclarationValue`, which
+// checks the brackets balance when the value ends; without that check the
+// indented syntax reads to the end of the file, because a newline inside a
+// bracket is not a statement terminator -- so every rule that followed was
+// swallowed into the value and vanished from the output. dart-sass 1.103.1
+// gives each error below.
+error!(
+    unclosed_paren_in_an_at_rule_value_does_not_swallow_the_next_rule,
+    ".a\n  @foo (\n.b\n  c: d\n",
+    r#"Error: expected ")"."#,
+    accent_sass::Options::default().input_syntax(accent_sass::InputSyntax::Sass)
+);
+error!(
+    unclosed_bracket_in_an_at_rule_value_does_not_swallow_the_next_declaration,
+    ".a\n  @foo [\n  b: c\n",
+    r#"Error: expected "]"."#,
+    accent_sass::Options::default().input_syntax(accent_sass::InputSyntax::Sass)
+);
+error!(
+    unclosed_paren_with_content_in_an_at_rule_value_is_an_error,
+    ".a\n  @foo (b\n.c\n  d: e\n",
+    r#"Error: expected ")"."#,
+    accent_sass::Options::default().input_syntax(accent_sass::InputSyntax::Sass)
+);
+error!(
+    unclosed_paren_at_end_of_file_is_an_error,
+    ".a\n  @foo (\n",
+    r#"Error: expected ")"."#,
+    accent_sass::Options::default().input_syntax(accent_sass::InputSyntax::Sass)
+);
+// A brace inside the unclosed paren does not end the value either.
+error!(
+    unclosed_paren_around_a_brace_is_an_error,
+    "@foo (a{b}) { c: d }\n", r#"Error: expected ")"."#
+);
+// The balance check is on the at-rule's value, so a balanced one still parses,
+// in both syntaxes.
+test!(
+    a_balanced_paren_in_an_at_rule_value_still_parses,
+    "@foo (a);\nb {c: d}\n",
+    "@foo (a);\nb {\n  c: d;\n}\n"
+);
+test!(
+    a_balanced_paren_in_an_at_rule_value_still_parses_indented,
+    ".a\n  @foo (b c)\n.d\n  e: f\n",
+    ".a {\n  @foo (b c);\n}\n\n.d {\n  e: f;\n}\n",
+    accent_sass::Options::default().input_syntax(accent_sass::InputSyntax::Sass)
+);
