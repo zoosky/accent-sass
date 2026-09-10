@@ -159,7 +159,7 @@ not a parse error.
 
 - `spec/expressions/comments`, `spec/directives/at_root` and
   `spec/non_conformant/sass/import` are clear of the six that remain.
-  `spec/parser/indentation` was section 2's and is already clear.
+  `spec/parser/indentation` was section 2's, and is clear once #68 lands.
 - `spec/css/comment` drops by 1 through section 1.
 - The whole-suite "Test case should succeed but it did not" count drops by
   at least 6, and the "Expected test to fail but it did not" count has not
