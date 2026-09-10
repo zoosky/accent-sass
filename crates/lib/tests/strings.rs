@@ -399,3 +399,103 @@ error!(
     ",
     "Error: $limit: 36893488147419103000 is not an int."
 );
+
+// An empty separator splits into characters. Rust's `split("")` also matches
+// before the first character and after the last, which added an empty piece
+// at each end. dart-sass 1.103.1 ignores $limit on this path, which the
+// second of these pins.
+test!(
+    str_split_empty_separator,
+    "@use 'sass:string';
+    a {
+        color: string.split('Helvetica', '');
+    }
+    ",
+    "a {\n  color: [\"H\", \"e\", \"l\", \"v\", \"e\", \"t\", \"i\", \"c\", \"a\"];\n}\n"
+);
+test!(
+    str_split_empty_separator_ignores_limit,
+    "@use 'sass:string';
+    a {
+        color: string.split('abcd', '', 1);
+    }
+    ",
+    "a {\n  color: [\"a\", \"b\", \"c\", \"d\"];\n}\n"
+);
+// Sass counts code points, not UTF-16 units, so a character outside the basic
+// multilingual plane is one piece. The trailing space closes the escape and is
+// consumed, so the string is two characters. Verified against dart-sass
+// 1.103.1, which gives the same two counts.
+test!(
+    str_split_empty_separator_astral_character,
+    "@use 'sass:string';
+    @use 'sass:list';
+    a {
+        pieces: list.length(string.split('\\1F46D a', ''));
+        first: string.length(list.nth(string.split('\\1F46D a', ''), 1));
+    }
+    ",
+    "a {\n  pieces: 2;\n  first: 1;\n}\n"
+);
+// An empty string splits into nothing, where Rust's `split` yields one empty
+// piece.
+test!(
+    str_split_empty_string,
+    "@use 'sass:string';
+    @use 'sass:meta';
+    a {
+        color: meta.inspect(string.split('', '/'));
+    }
+    ",
+    "a {\n  color: [];\n}\n"
+);
+test!(
+    str_split_both_empty,
+    "@use 'sass:string';
+    @use 'sass:meta';
+    a {
+        color: meta.inspect(string.split('', ''));
+    }
+    ",
+    "a {\n  color: [];\n}\n"
+);
+// The limit is checked before the string is looked at.
+error!(
+    str_split_zero_limit_on_empty_string,
+    "@use 'sass:string';
+    a {
+        color: string.split('', ',', 0);
+    }
+    ",
+    "Error: $limit: Must be 1 or greater, was 0."
+);
+// Each piece keeps the quotedness of the string it came from.
+test!(
+    str_split_unquoted_string,
+    "@use 'sass:string';
+    a {
+        color: string.split(abc, '');
+    }
+    ",
+    "a {\n  color: [a, b, c];\n}\n"
+);
+test!(
+    str_split_unquoted_string_with_separator,
+    "@use 'sass:string';
+    a {
+        color: string.split(abc, b);
+    }
+    ",
+    "a {\n  color: [a, c];\n}\n"
+);
+// An empty piece between two separators is real and is kept.
+test!(
+    str_split_keeps_interior_and_trailing_empties,
+    "@use 'sass:string';
+    @use 'sass:meta';
+    a {
+        color: meta.inspect(string.split('a,b,', ','));
+    }
+    ",
+    "a {\n  color: [\"a\", \"b\", \"\"];\n}\n"
+);

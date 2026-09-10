@@ -128,10 +128,9 @@ pub(crate) fn str_slice(mut args: ArgumentResult, visitor: &mut Visitor) -> Sass
 pub(crate) fn str_split(mut args: ArgumentResult, visitor: &mut Visitor) -> SassResult<Value> {
     args.max_args(3)?;
 
-    let s1 = args
+    let (string, quotes) = args
         .get_err(0, "string")?
-        .assert_string_with_name("string", args.span())?
-        .0;
+        .assert_string_with_name("string", args.span())?;
 
     let separator = args
         .get_err(1, "separator")?
@@ -140,25 +139,53 @@ pub(crate) fn str_split(mut args: ArgumentResult, visitor: &mut Visitor) -> Sass
 
     let limit = args.default_arg(2, "limit", Value::Null);
 
-    let vec = if matches!(limit, Value::Null) {
-        s1.split(&separator)
-            .map(|s| Value::String(s.to_string(), QuoteKind::Quoted))
-            .collect()
-    } else {
-        let limit = limit.assert_number_with_name("limit", args.span())?;
-        let limit_int = limit.assert_int_with_name("limit", args.span())?;
-        if limit_int < 1 {
-            return Err((
-                format!("$limit: Must be 1 or greater, was {}.", limit_int),
-                args.span(),
-            )
-                .into());
+    // The limit is checked before anything is split, so it is rejected even
+    // for an input that produces no chunks at all.
+    let limit = match limit {
+        Value::Null => None,
+        limit => {
+            let limit = limit.assert_number_with_name("limit", args.span())?;
+            let limit_int = limit.assert_int_with_name("limit", args.span())?;
+            if limit_int < 1 {
+                return Err((
+                    format!("$limit: Must be 1 or greater, was {}.", limit_int),
+                    args.span(),
+                )
+                    .into());
+            }
+            Some(limit_int)
         }
-        // note: `1 + limit_int` is required to match dart-sass
-        s1.splitn(limit_int.saturating_add(1) as usize, &separator)
-            .map(|s| Value::String(s.to_string(), QuoteKind::Quoted))
-            .collect()
     };
+
+    // Each piece keeps the quotedness of the string it came from, so
+    // `string.split(abc, "")` returns `[a, b, c]` rather than quoting them.
+    let piece = |s: &str| Value::String(s.to_owned(), quotes);
+
+    // An empty string splits into nothing, where Rust's `split` would yield
+    // one empty piece.
+    if string.is_empty() {
+        return Ok(Value::List(
+            Vec::new(),
+            ListSeparator::Comma,
+            Brackets::Bracketed,
+        ));
+    }
+
+    let vec = match (separator.is_empty(), limit) {
+        // An empty separator splits into characters -- Unicode code points,
+        // not UTF-16 units, so a character outside the basic multilingual
+        // plane stays whole. Rust's `split("")` would also match before the
+        // first character and after the last, adding an empty piece at each
+        // end. dart-sass ignores `$limit` on this path.
+        (true, _) => string.chars().map(|c| piece(&c.to_string())).collect(),
+        (false, None) => string.split(&separator).map(piece).collect(),
+        // note: `1 + limit_int` is required to match dart-sass
+        (false, Some(limit)) => string
+            .splitn(limit.saturating_add(1) as usize, &separator)
+            .map(piece)
+            .collect(),
+    };
+
     Ok(Value::List(vec, ListSeparator::Comma, Brackets::Bracketed))
 }
 
