@@ -111,6 +111,19 @@ pub(crate) struct CallableContentBlock {
     env: Environment,
 }
 
+/// One argument to a macro such as `if()`, which evaluates only the branch it
+/// takes.
+///
+/// Arguments written in the call stay unevaluated, so the branch not taken
+/// never runs. Arguments that arrive through a rest argument have already
+/// been evaluated -- splatting a list is what produced them -- and so carry a
+/// value instead.
+#[derive(Debug, Clone)]
+enum MacroArg {
+    Unevaled(AstExpr),
+    Evaled(Value),
+}
+
 /// A CSS statement a module emitted, recorded with its children so a later
 /// `@import` or `meta.load-css` of the module can emit a copy of it.
 ///
@@ -3814,10 +3827,10 @@ impl<'a> Visitor<'a> {
     }
 
     fn visit_ternary(&mut self, if_expr: Ternary) -> SassResult<Value> {
-        if_arguments().verify(if_expr.0.positional.len(), &if_expr.0.named, if_expr.0.span)?;
+        let span = if_expr.0.span;
+        let (mut positional, mut named) = self.evaluate_macro_arguments(if_expr.0)?;
 
-        let mut positional = if_expr.0.positional;
-        let mut named = if_expr.0.named;
+        if_arguments().verify(positional.len(), &named, span)?;
 
         let condition = if positional.is_empty() {
             named.remove(&Identifier::from("condition")).unwrap()
@@ -3837,13 +3850,113 @@ impl<'a> Visitor<'a> {
             positional.remove(0)
         };
 
-        let value = if self.visit_expr(condition)?.is_truthy() {
-            self.visit_expr(if_true)?
+        let branch = if self.visit_macro_arg(condition)?.is_truthy() {
+            if_true
         } else {
-            self.visit_expr(if_false)?
+            if_false
         };
 
+        let value = self.visit_macro_arg(branch)?;
+
         Ok(self.without_slash(value))
+    }
+
+    /// Evaluates one argument of a macro, which is a value already if it
+    /// reached the call through a rest argument and an expression otherwise.
+    fn visit_macro_arg(&mut self, arg: MacroArg) -> SassResult<Value> {
+        match arg {
+            MacroArg::Unevaled(expr) => self.visit_expr(expr),
+            MacroArg::Evaled(value) => Ok(value),
+        }
+    }
+
+    /// Evaluates `arguments` only as far as it takes to tell positional
+    /// arguments from named ones, expanding a rest argument in place.
+    ///
+    /// `if()` is a macro: it evaluates only the branch it takes, so its
+    /// arguments cannot go through [`Self::eval_args`], which evaluates every
+    /// one of them. A rest argument must still be expanded before the call
+    /// can be verified, because `if(true, b, c...)` supplies `$if-false`
+    /// through `c...`, and counting the rest as a single positional argument
+    /// rejects the call as missing one.
+    ///
+    /// Mirrors dart-sass's `_evaluateMacroArguments`. The values a rest
+    /// argument contributes are already evaluated, so unlike the arguments
+    /// written in the call they carry no laziness: splatting a list evaluates
+    /// it, including the branch not taken.
+    fn evaluate_macro_arguments(
+        &mut self,
+        arguments: ArgumentInvocation,
+    ) -> SassResult<(Vec<MacroArg>, BTreeMap<Identifier, MacroArg>)> {
+        let mut positional = arguments
+            .positional
+            .into_iter()
+            .map(MacroArg::Unevaled)
+            .collect::<Vec<_>>();
+
+        let mut named = arguments
+            .named
+            .into_iter()
+            .map(|(name, expr)| (name, MacroArg::Unevaled(expr)))
+            .collect::<BTreeMap<_, _>>();
+
+        let Some(rest) = arguments.rest else {
+            return Ok((positional, named));
+        };
+
+        // `add_rest_map` fills a map of values, so the names a rest argument
+        // contributes are collected separately and folded in at the end.
+        let mut rest_named = BTreeMap::new();
+
+        match self.visit_expr(rest)? {
+            Value::Map(rest) => self.add_rest_map(&mut rest_named, rest)?,
+            Value::List(elems, ..) => {
+                for elem in elems {
+                    let elem = self.without_slash(elem);
+                    positional.push(MacroArg::Evaled(elem));
+                }
+            }
+            Value::ArgList(arglist) => {
+                // todo: superfluous clone
+                for (&key, value) in arglist.keywords() {
+                    let value = self.without_slash(value.clone());
+                    rest_named.insert(key, value);
+                }
+
+                for elem in arglist.elems {
+                    let elem = self.without_slash(elem);
+                    positional.push(MacroArg::Evaled(elem));
+                }
+            }
+            rest => {
+                let rest = self.without_slash(rest);
+                positional.push(MacroArg::Evaled(rest));
+            }
+        }
+
+        if let Some(keyword_rest) = arguments.keyword_rest {
+            match self.visit_expr(keyword_rest)? {
+                Value::Map(keyword_rest) => self.add_rest_map(&mut rest_named, keyword_rest)?,
+                v => {
+                    return Err((
+                        format!(
+                            "Variable keyword arguments must be a map (was {}).",
+                            v.inspect(arguments.span)?
+                        ),
+                        arguments.span,
+                    )
+                        .into());
+                }
+            }
+        }
+
+        named.extend(
+            rest_named
+                .into_iter()
+                .map(|(name, value)| (name, MacroArg::Evaled(value))),
+        );
+
+        Ok((positional, named))
     }
 
     fn visit_string(&mut self, mut text: Interpolation, quote: QuoteKind) -> SassResult<Value> {

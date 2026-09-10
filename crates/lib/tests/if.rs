@@ -266,3 +266,60 @@ test!(
     }",
     "a {\n  color: red;\n}\n"
 );
+
+// `if()` is a macro: it evaluates only the branch it takes, so its arguments
+// are held as expressions rather than values. A rest argument still has to be
+// expanded before the call is verified, because the values it holds fill
+// parameters -- `if(true, b, c...)` supplies `$if-false` -- and counting the
+// rest as one positional argument rejects the call as missing one. dart-sass
+// 1.103.1 produced every expectation below; the fixtures are
+// `spec/libsass-closed-issues/issue_2321` and
+// `spec/values/numbers/divide/slash_free/argument`, `macro/rest`.
+test!(
+    ternary_rest_argument_fills_if_false,
+    "a {\n  b: if(true, b, c...);\n  c: if(false, b, c...);\n}\n",
+    "a {\n  b: b;\n  c: c;\n}\n"
+);
+test!(
+    ternary_rest_list_fills_both_branches,
+    "a {b: if(true, (p, q)...)}\n",
+    "a {\n  b: p;\n}\n"
+);
+// A value that reaches the call through a rest argument has been evaluated to
+// get there, so it arrives slash-free: `1/2` prints as `0.5`, not as `1/2`.
+test!(
+    ternary_rest_argument_drops_the_slash,
+    "a {b: if(true, 1/2 null...)}\n",
+    "a {\n  b: 0.5;\n}\n"
+);
+test!(
+    ternary_rest_map_fills_named_parameters,
+    "a {b: if((condition: false, if-true: p, if-false: q)...)}\n",
+    "a {\n  b: q;\n}\n"
+);
+test!(
+    ternary_keyword_rest_fills_a_named_parameter,
+    "a {b: if(true, p, (if-false: q)...)}\n",
+    "a {\n  b: p;\n}\n"
+);
+// Expanding the rest argument must not make the other arguments eager: the
+// branch not taken still never runs.
+test!(
+    ternary_does_not_evaluate_the_branch_it_does_not_take,
+    "a {b: if(true, taken, $undefined)}\n",
+    "a {\n  b: taken;\n}\n"
+);
+// The rest argument itself is not lazy -- splatting it is what produces the
+// values -- so it is evaluated whichever branch wins.
+error!(
+    ternary_rest_argument_is_evaluated_even_when_unused,
+    "a {b: if(true, taken, $undefined...)}\n", "Error: Undefined variable."
+);
+error!(
+    ternary_rest_argument_counts_toward_the_arity,
+    "a {b: if(true, x, y, z...)}\n", "Error: Only 3 arguments allowed, but 4 were passed."
+);
+error!(
+    ternary_rest_map_leaving_a_gap_is_missing_an_argument,
+    "a {b: if(true, (if-false: q)...)}\n", "Error: Missing argument $if-true."
+);
