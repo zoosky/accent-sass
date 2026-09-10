@@ -1241,25 +1241,27 @@ impl<'a> Serializer<'a> {
     }
 
     fn elem_needs_parens(sep: ListSeparator, elem: &Value) -> bool {
-        match elem {
-            Value::List(elems, sep2, brackets) => {
-                if elems.len() < 2 {
-                    return false;
-                }
+        // An arglist is a list, so it takes parentheses on the same terms. In
+        // dart-sass `SassArgumentList` extends `SassList` and
+        // `_elementNeedsParens` covers both without saying so; here the two
+        // are separate variants, and only the map-value rule had been carried
+        // across.
+        let (len, elem_sep, brackets) = match elem {
+            Value::List(elems, elem_sep, brackets) => (elems.len(), *elem_sep, *brackets),
+            Value::ArgList(arglist) => (arglist.elems.len(), arglist.separator, Brackets::None),
+            _ => return false,
+        };
 
-                if *brackets == Brackets::Bracketed {
-                    return false;
-                }
+        if len < 2 || brackets == Brackets::Bracketed {
+            return false;
+        }
 
-                match sep {
-                    ListSeparator::Comma => *sep2 == ListSeparator::Comma,
-                    ListSeparator::Slash => {
-                        *sep2 == ListSeparator::Comma || *sep2 == ListSeparator::Slash
-                    }
-                    _ => *sep2 != ListSeparator::Undecided,
-                }
+        match sep {
+            ListSeparator::Comma => elem_sep == ListSeparator::Comma,
+            ListSeparator::Slash => {
+                elem_sep == ListSeparator::Comma || elem_sep == ListSeparator::Slash
             }
-            _ => false,
+            _ => elem_sep != ListSeparator::Undecided,
         }
     }
 

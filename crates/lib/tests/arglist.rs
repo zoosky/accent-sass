@@ -200,3 +200,35 @@ test!(
     "@mixin m($a...) {\n  eq: ($a == ());\n}\n.a {@include m()}\n",
     ".a {\n  eq: false;\n}\n"
 );
+
+// An arglist nested inside another list takes parentheses on the same terms a
+// list does: more than one element, no brackets, and a separator that would
+// otherwise be ambiguous against the outer one. dart-sass gets this for free,
+// since `SassArgumentList` extends `SassList`; here the two are separate
+// variants and the rule has to be written twice.
+test!(
+    a_comma_arglist_inside_a_comma_list_takes_parentheses,
+    "@use \"sass:meta\";\n@mixin m($a...) {\n  b: meta.inspect((x, $a));\n}\n.a {@include m((1, 2, 3)...)}\n.b {@include m((1 2 3)...)}\n",
+    ".a {\n  b: x, (1, 2, 3);\n}\n\n.b {\n  b: x, 1 2 3;\n}\n"
+);
+// Under a space separator any decided separator is ambiguous, so a space
+// arglist takes them too.
+test!(
+    an_arglist_inside_a_space_list_takes_parentheses,
+    "@use \"sass:meta\";\n@use \"sass:list\";\n@mixin m($a...) {\n  b: meta.inspect(list.append((), $a, space));\n}\n.a {@include m((1 2 3)...)}\n",
+    ".a {\n  b: (1 2 3);\n}\n"
+);
+test!(
+    a_comma_arglist_inside_a_slash_list_takes_parentheses,
+    "@use \"sass:meta\";\n@use \"sass:list\";\n@mixin m($a...) {\n  b: meta.inspect(list.slash($a, 7));\n}\n.a {@include m((1, 2, 3)...)}\n.b {@include m((1 2 3)...)}\n",
+    ".a {\n  b: (1, 2, 3) / 7;\n}\n\n.b {\n  b: 1 2 3 / 7;\n}\n"
+);
+// One element cannot be ambiguous against the outer separator, so the element
+// rule does not fire. The parentheses that do appear are `inspect`'s own form
+// for a one-element comma list, `(9,)`, and would be there for a plain list
+// too.
+test!(
+    a_one_element_arglist_is_not_parenthesized_by_the_element_rule,
+    "@use \"sass:meta\";\n@use \"sass:list\";\n@mixin m($a...) {\n  b: meta.inspect(list.append((), $a, space));\n}\n.a {@include m(9)}\n",
+    ".a {\n  b: (9,);\n}\n"
+);
