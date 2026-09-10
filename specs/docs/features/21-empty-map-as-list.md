@@ -1,5 +1,18 @@
 # The empty map as a list
 
+**Landed. `spec/core_functions/list` is down from 9 failures to 1.** All
+three sections are done; the fixture left is `join/error/named`, which item
+24 covers. Measured on master after items 16, 17, 20 and 23 landed: 243
+failures before, 234 after, nothing regressed.
+
+The nine include one outside this item's area. A review pointed out that all
+three sections apply verbatim to `Value::ArgList`, which is a list too: the
+same arms now match it, and that closed
+`spec/libsass-closed-issues/issue_1269`, the fourth of item 24's
+arglist-separator fixtures. The other three are a different defect -- an
+arglist built from a splatted list should keep *that list's* separator -- and
+are still open under item 24.
+
 8 sass-spec failures in `spec/core_functions/list`. Sass says a map *is* a
 list of key-value pairs and the empty map *is* the empty list; this
 compiler keeps `Value::Map` and `Value::List` apart in three places where
@@ -49,8 +62,13 @@ prints as `space` and which lets the *other* operand of a `join` decide.
 That is the whole of the four `join/empty/map` failures: joining an empty
 map with `1 2 3` must give `1 2 3`, and today the map's comma wins.
 
-Return `ListSeparator::Undecided` when the map is empty. The enum already
-has the variant and `as_str` already maps it to a space.
+`Value::separator` now returns `ListSeparator::Undecided` when the map is
+empty. The enum already had the variant and `as_str` already mapped it to a
+space.
+
+`list.join` also hard-coded `ListSeparator::Comma` for a map on either side
+rather than asking the value, so the four `join/empty/map` fixtures needed
+that call site as well as the predicate.
 
 ## 2. `list.append` does not see a map as a list
 
@@ -70,22 +88,31 @@ A map falls to the second arm and becomes a one-element list *containing a
 map*, so `list.append((c: d, e: f), g)` returns `(c: d, e: f) g` and then
 fails to serialize with `(c: d, e: f) isn't a valid CSS value.`
 
-`Value::as_list` at line 476 already converts a map to its pair list, and
-`Value::separator` gives the separator; use both here rather than matching
-on the variant. Audit the other list builtins for the same pattern while
-you are in the file -- `list.length` and `list.join` already agree with
-dart-sass on a map, so the pattern is not uniform.
+`Value::as_list` at line 476 already converts a map to its pair list and
+`Value::separator` gives the separator, so `append` now uses both. The same
+arm matches `Value::ArgList`, which fell through to the scalar case in
+exactly the same way: `list.append(args(1, 2), 3)` gave `1, 2 3` where
+dart-sass gives `1, 2, 3`. The other list builtins were audited:
+`list.length` was already right, and `list.join` needed the separator half of
+the same fix on both of its operands.
 
 ## 3. An empty map does not equal an empty list
 
 `list/utils/empty_map/same_as_empty_list`
 
-`PartialEq for Value` at line 98 compares a map only against another map,
-and `not_equals` at line 428 falls through to `s != other`, so
-`$empty-map == ()` is `false`. dart-sass makes the empty map equal to any
-empty list. Add that case to both, and keep them consistent: `not_equals`
-is not derived from `eq`, so a fix to one alone leaves `!=` disagreeing
-with `==`.
+`PartialEq for Value` at line 98 compared a map only against another map,
+and `not_equals` at line 428 fell through to `s != other`, so
+`$empty-map == ()` was `false`. dart-sass makes the empty map equal to any
+empty list. Both directions are now handled in `PartialEq`, and `not_equals`
+has the case too: it is written out rather than derived from `eq`, so fixing
+one alone would have left `!=` disagreeing with `==`. A test pins all four
+combinations.
+
+An empty arglist is the same value as the empty map, and both directions are
+handled. It is *not* equal to `()`, though, which is the one pairing where an
+arglist's separator counts: it is comma-separated and `()` is undecided.
+dart-sass agrees, and a test pins that too, because it looks like an
+inconsistency and is not.
 
 ## Testing
 
@@ -101,8 +128,8 @@ with `==`.
 
 ## Acceptance criteria
 
-- `spec/core_functions/list` drops from 9 failures to 1, the one left being
-  `join/error/named`, which item 24 covers.
-- `spec/core_functions/map` and `spec/values/lists` do not regress.
-  Section 1 changes what every empty map reports, and section 3 changes
-  equality, which maps and lists both reach.
+- ~~`spec/core_functions/list` drops from 9 failures to 1, the one left
+  being `join/error/named`, which item 24 covers.~~ Done.
+- ~~`spec/core_functions/map` and `spec/values/lists` do not regress.~~
+  Done: 243 to 234, nine fixtures, none newly failing anywhere in the
+  suite.

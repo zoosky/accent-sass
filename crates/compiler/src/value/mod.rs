@@ -76,6 +76,7 @@ impl PartialEq for Value {
                         true
                     }
                 }
+                Value::Map(map2) => list1.is_empty() && map2.is_empty(),
                 _ => false,
             },
             Value::Null => matches!(other, Value::Null),
@@ -95,13 +96,20 @@ impl PartialEq for Value {
                     false
                 }
             }
-            Value::Map(map1) => {
-                if let Value::Map(map2) = other {
-                    map1 == map2
-                } else {
-                    false
-                }
-            }
+            Value::Map(map1) => match other {
+                Value::Map(map2) => map1 == map2,
+                // The empty map and the empty list are one value in Sass. A
+                // stylesheet reaches that shape by removing the last key from
+                // a map, which is what `spec/core_functions/list/_utils.scss`
+                // does.
+                Value::List(list2, ..) => map1.is_empty() && list2.is_empty(),
+                // An arglist is a list, so an empty one is that same value.
+                // Note that this is the only pairing where an arglist ignores
+                // its separator: `args() == ()` is false in dart-sass, because
+                // an arglist is comma-separated and `()` is undecided.
+                Value::ArgList(list2) => map1.is_empty() && list2.elems.is_empty(),
+                _ => false,
+            },
             Value::Color(color1) => {
                 if let Value::Color(color2) = other {
                     color1 == color2
@@ -111,6 +119,7 @@ impl PartialEq for Value {
             }
             Value::ArgList(list1) => match other {
                 Value::ArgList(list2) => list1 == list2,
+                Value::Map(map2) => list1.elems.is_empty() && map2.is_empty(),
                 Value::List(list2, ListSeparator::Comma, ..) => {
                     if list1.len() != list2.len() {
                         return false;
@@ -467,6 +476,10 @@ impl Value {
                         false
                     }
                 }
+                // `not_equals` is written out rather than derived from `eq`,
+                // so the empty map has to be recognized here as well or `!=`
+                // disagrees with `==`.
+                Value::Map(map2) => !(list1.is_empty() && map2.is_empty()),
                 _ => true,
             },
             s => s != other,
@@ -485,6 +498,11 @@ impl Value {
     pub fn separator(&self) -> ListSeparator {
         match self {
             Value::List(_, list_separator, _) => *list_separator,
+            // A map is a comma-separated list of its pairs, but an empty one
+            // has no pairs to separate. dart-sass reports it as undecided, so
+            // that joining it with a list takes the other list's separator
+            // rather than forcing a comma.
+            Value::Map(map) if map.is_empty() => ListSeparator::Undecided,
             Value::Map(..) | Value::ArgList(..) => ListSeparator::Comma,
             _ => ListSeparator::Space,
         }

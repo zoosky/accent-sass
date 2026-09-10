@@ -641,3 +641,68 @@ error!(
     zip_no_args,
     "a {\n  color: zip();\n}\n", "Error: () isn't a valid CSS value."
 );
+
+// Sass says a map is a list of its pairs and the empty map is the empty list.
+// The shape only turns up when a map arrives through a function, which is why
+// `map.remove` builds it here: a literal `()` is already a list. Every
+// expectation was checked against dart-sass 1.103.1.
+test!(
+    empty_map_equals_empty_list,
+    "@use 'sass:map';\n$empty: map.remove((a: b), a);\na {\n  eq: $empty == ();\n  eq-reversed: () == $empty;\n  ne: $empty != ();\n  ne-reversed: () != $empty;\n}\n",
+    "a {\n  eq: true;\n  eq-reversed: true;\n  ne: false;\n  ne-reversed: false;\n}\n"
+);
+test!(
+    non_empty_map_does_not_equal_empty_list,
+    "a {\n  color: (a: b) != ();\n}\n",
+    "a {\n  color: true;\n}\n"
+);
+// An empty map has no pairs to separate, so its separator is undecided, which
+// `list.separator` reports as `space`. A map with pairs is comma-separated.
+test!(
+    empty_map_separator_is_undecided,
+    "@use 'sass:map';\n$empty: map.remove((a: b), a);\na {\n  empty: list-separator($empty);\n  full: list-separator((a: b));\n}\n",
+    "a {\n  empty: space;\n  full: comma;\n}\n"
+);
+// Undecided means the other list decides, rather than a comma being forced.
+test!(
+    join_empty_map_takes_the_other_separator,
+    "@use 'sass:map';\n$empty: map.remove((a: b), a);\na {\n  first: join($empty, (1 2 3));\n  second: join((1 2 3), $empty);\n}\n",
+    "a {\n  first: 1 2 3;\n  second: 1 2 3;\n}\n"
+);
+// A map appended to is its list of pairs. This used to produce a one-element
+// list holding a map, which then refused to serialize.
+test!(
+    append_to_a_map,
+    "a {\n  color: append((c: d, e: f), g);\n}\n",
+    "a {\n  color: c d, e f, g;\n}\n"
+);
+test!(
+    append_to_an_empty_map,
+    "@use 'sass:map';\n$empty: map.remove((a: b), a);\na {\n  color: append($empty, 1);\n}\n",
+    "a {\n  color: 1;\n}\n"
+);
+
+// An arglist is a list too, so the same three fixes apply to it. dart-sass
+// 1.103.1 gives every expectation below.
+test!(
+    empty_arglist_equals_empty_map,
+    "@use 'sass:map';\n@function args($a...) {\n  @return $a;\n}\n$empty-args: args();\n$empty-map: map.remove((a: b), a);\na {\n  eq: $empty-args == $empty-map;\n  eq-reversed: $empty-map == $empty-args;\n  ne: $empty-args != $empty-map;\n}\n",
+    "a {\n  eq: true;\n  eq-reversed: true;\n  ne: false;\n}\n"
+);
+// The one pairing where an arglist does not ignore its separator: it is
+// comma-separated and `()` is undecided, so these are not equal.
+test!(
+    empty_arglist_does_not_equal_empty_list,
+    "@function args($a...) {\n  @return $a;\n}\na {\n  color: args() == ();\n}\n",
+    "a {\n  color: false;\n}\n"
+);
+test!(
+    append_to_an_arglist,
+    "@function args($a...) {\n  @return $a;\n}\na {\n  full: append(args(1, 2), 3);\n  empty: inspect(append(args(), 1));\n}\n",
+    "a {\n  full: 1, 2, 3;\n  empty: (1,);\n}\n"
+);
+test!(
+    join_an_arglist,
+    "@function args($a...) {\n  @return $a;\n}\na {\n  color: join(args(1, 2), (4 5));\n}\n",
+    "a {\n  color: 1, 2, 4, 5;\n}\n"
+);
