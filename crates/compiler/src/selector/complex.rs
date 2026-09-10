@@ -268,6 +268,31 @@ impl ComplexSelector {
             }
         })
     }
+
+    /// Whether this contains a parent selector that carries a suffix, such as
+    /// the `&--x` in `&--x .y`.
+    ///
+    /// A bare `&` can stand on its own with no parent -- the browser resolves
+    /// it as the CSS nesting selector -- but a suffix has nothing to attach
+    /// itself to, so dart-sass reports the two cases differently. Searches
+    /// inside a pseudo-selector's argument as well, because `:is(&--x)` is an
+    /// error too.
+    pub fn contains_suffixed_parent_selector(&self) -> bool {
+        self.components.iter().any(|c| {
+            if let ComplexSelectorComponent::Compound(compound) = c {
+                compound.components.iter().any(|simple| match simple {
+                    SimpleSelector::Parent(suffix) => suffix.is_some(),
+                    SimpleSelector::Pseudo(Pseudo {
+                        selector: Some(sel),
+                        ..
+                    }) => sel.contains_suffixed_parent_selector(),
+                    _ => false,
+                })
+            } else {
+                false
+            }
+        })
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Copy, Hash)]

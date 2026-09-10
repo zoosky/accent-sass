@@ -76,6 +76,14 @@ impl SelectorList {
             .any(ComplexSelector::contains_parent_selector)
     }
 
+    /// Whether any selector in this list contains a parent selector with a
+    /// suffix. See `ComplexSelector::contains_suffixed_parent_selector`.
+    pub fn contains_suffixed_parent_selector(&self) -> bool {
+        self.components
+            .iter()
+            .any(ComplexSelector::contains_suffixed_parent_selector)
+    }
+
     pub const fn new(span: Span) -> Self {
         Self {
             components: Vec::new(),
@@ -157,10 +165,11 @@ impl SelectorList {
     /// `&` is the CSS nesting selector, which the browser resolves, so Sass
     /// passes it through untouched.
     ///
-    /// The given `parent` may be `None`, indicating that this has no parents. If
-    /// so, this list is returned as-is if it doesn't contain any explicit
-    /// `SimpleSelector::Parent`s or if they are being preserved. Otherwise, this
-    /// returns a `SassError`.
+    /// The given `parent` may be `None`, indicating that this has no parents.
+    /// A `SimpleSelector::Parent` is then left in place: CSS nesting made `&`
+    /// meaningful to the browser, so dart-sass 1.103.1 passes a top-level one
+    /// through rather than rejecting it. A parent selector that carries a
+    /// suffix is still an error, because the suffix has nothing to attach to.
     pub fn resolve_parent_selectors(
         self,
         parent: Option<Self>,
@@ -170,14 +179,15 @@ impl SelectorList {
         let parent = match parent {
             Some(p) => p,
             None => {
-                if preserve_parent_selectors || !self.contains_parent_selector() {
-                    return Ok(self);
+                if !preserve_parent_selectors && self.contains_suffixed_parent_selector() {
+                    return Err((
+                        "A top-level selector may not contain a parent selector with a suffix.",
+                        self.span,
+                    )
+                        .into());
                 }
-                return Err((
-                    "Top-level selectors may not contain the parent selector \"&\".",
-                    self.span,
-                )
-                    .into());
+
+                return Ok(self);
             }
         };
 
