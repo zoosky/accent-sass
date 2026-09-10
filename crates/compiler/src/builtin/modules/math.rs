@@ -25,6 +25,53 @@ fn coerce_to_rad(num: f64, unit: Unit) -> f64 {
     num * factor
 }
 
+/// Reports the unit mismatch dart-sass reports when a `clamp()` argument does
+/// not agree with `$min`.
+///
+/// Two shapes: one argument has a unit and the other does not, which gets the
+/// parenthetical, or both have units that cannot be converted, which does not.
+/// Every message names `$min` as the second operand, because that is the
+/// argument dart-sass compares the other two against.
+fn assert_clamp_units(name: &str, value: &Value, min: &Value, span: Span) -> SassResult<()> {
+    let (
+        Value::Dimension(SassNumber { unit, .. }),
+        Value::Dimension(SassNumber { unit: min_unit, .. }),
+    ) = (value, min)
+    else {
+        return Ok(());
+    };
+
+    let one_is_unitless = (unit == &Unit::None) != (min_unit == &Unit::None);
+
+    if one_is_unitless {
+        return Err((
+            format!(
+                "${}: {} and $min: {} have incompatible units (one has units and the other doesn't).",
+                name,
+                value.inspect(span)?,
+                min.inspect(span)?
+            ),
+            span,
+        )
+            .into());
+    }
+
+    if !unit.comparable(min_unit) {
+        return Err((
+            format!(
+                "${}: {} and $min: {} have incompatible units.",
+                name,
+                value.inspect(span)?,
+                min.inspect(span)?
+            ),
+            span,
+        )
+            .into());
+    }
+
+    Ok(())
+}
+
 fn clamp(mut args: ArgumentResult, _: &mut Visitor) -> SassResult<Value> {
     args.max_args(3)?;
     let span = args.span();
@@ -56,64 +103,36 @@ fn clamp(mut args: ArgumentResult, _: &mut Visitor) -> SassResult<Value> {
         v => return Err((format!("$max: {} is not a number.", v.inspect(span)?), span).into()),
     };
 
-    // ensure that `min` and `max` are compatible
-    min.cmp(&max, span, BinaryOp::LessThan)?;
+    // dart-sass compares both of the other arguments against `$min`, and in
+    // this order, so an input that disagrees twice is reported by `$number`
+    // rather than by `$max`.
+    assert_clamp_units("number", &number, &min, span)?;
+    assert_clamp_units("max", &max, &min, span)?;
 
-    let min_unit = match min {
-        Value::Dimension(SassNumber {
-            num: _,
-            unit: ref u,
-            as_slash: _,
-        }) => u,
-        _ => unreachable!(),
-    };
-    let number_unit = match number {
-        Value::Dimension(SassNumber {
-            num: _,
-            unit: ref u,
-            as_slash: _,
-        }) => u,
-        _ => unreachable!(),
-    };
-    let max_unit = match max {
-        Value::Dimension(SassNumber {
-            num: _,
-            unit: ref u,
-            as_slash: _,
-        }) => u,
-        _ => unreachable!(),
-    };
-
-    if min_unit == &Unit::None && number_unit != &Unit::None {
-        return Err((
-            format!(
-                "$min is unitless but $number has unit {}. Arguments must all have units or all be unitless.",
-                number_unit
-            ), span).into());
-    } else if min_unit != &Unit::None && number_unit == &Unit::None {
-        return Err((
-                format!(
-                    "$min has unit {} but $number is unitless. Arguments must all have units or all be unitless.",
-                    min_unit
-                ), span).into());
-    } else if min_unit != &Unit::None && max_unit == &Unit::None {
-        return Err((
-            format!(
-                "$min has unit {} but $max is unitless. Arguments must all have units or all be unitless.",
-                min_unit
-            ), span).into());
+    // dart-sass resolves the three in a fixed ladder: an inverted range
+    // collapses to `$min`, and a bound wins every tie. Returning the bound
+    // rather than `$number` is what makes `clamp(180deg, 0.5turn, 360deg)`
+    // print `180deg` -- the two are equal, so the operand that is returned
+    // decides the unit.
+    if matches!(
+        min.cmp(&max, span, BinaryOp::GreaterThan)?,
+        Some(Ordering::Greater | Ordering::Equal)
+    ) {
+        return Ok(min);
     }
 
-    match min.cmp(&number, span, BinaryOp::LessThan)? {
-        Some(Ordering::Greater) => return Ok(min),
-        Some(Ordering::Equal) => return Ok(number),
-        Some(Ordering::Less) | None => {}
+    if matches!(
+        number.cmp(&min, span, BinaryOp::LessThan)?,
+        Some(Ordering::Less | Ordering::Equal)
+    ) {
+        return Ok(min);
     }
 
-    match max.cmp(&number, span, BinaryOp::GreaterThan)? {
-        Some(Ordering::Less) => return Ok(max),
-        Some(Ordering::Equal) => return Ok(number),
-        Some(Ordering::Greater) | None => {}
+    if matches!(
+        number.cmp(&max, span, BinaryOp::GreaterThan)?,
+        Some(Ordering::Greater | Ordering::Equal)
+    ) {
+        return Ok(max);
     }
 
     Ok(number)
@@ -206,17 +225,20 @@ fn log(mut args: ArgumentResult, _: &mut Visitor) -> SassResult<Value> {
         }
     };
 
+    // These guards ask whether the argument *is* zero, not whether it is close
+    // enough to compare equal. `Number::is_zero` is the fuzzy comparison Sass
+    // equality uses, and 1e-12 is fuzzily zero while `ln(1e-12)` is an
+    // ordinary -27.63.
     Ok(Value::Dimension(SassNumber::new_unitless(
         if let Some(base) = base {
-            if base.is_zero() {
+            if base.0 == 0.0 {
                 Number::zero()
             } else {
                 number.log(base)
             }
-        // todo: test with negative 0
-        } else if number.is_negative() && !number.is_zero() {
+        } else if number.is_negative() && number.0 != 0.0 {
             Number(f64::NAN)
-        } else if number.is_zero() {
+        } else if number.0 == 0.0 {
             Number(f64::NEG_INFINITY)
         } else {
             number.ln()
@@ -310,7 +332,7 @@ fn acos(mut args: ArgumentResult, _: &mut Visitor) -> SassResult<Value> {
     Ok(Value::Dimension(SassNumber {
         num: if number > Number(1.0) || number < Number(-1.0) {
             Number(f64::NAN)
-        } else if number.is_one() {
+        } else if number.0 == 1.0 {
             Number::zero()
         } else {
             number.acos()
@@ -337,7 +359,7 @@ fn asin(mut args: ArgumentResult, _: &mut Visitor) -> SassResult<Value> {
             unit: Unit::Deg,
             as_slash: None,
         }));
-    } else if number.is_zero() {
+    } else if number.0 == 0.0 {
         return Ok(Value::Dimension(SassNumber {
             num: Number::zero(),
             unit: Unit::Deg,
@@ -362,7 +384,7 @@ fn atan(mut args: ArgumentResult, _: &mut Visitor) -> SassResult<Value> {
         .assert_number_with_name("number", span)?;
     number.assert_no_units("number", span)?;
 
-    if number.num.is_zero() {
+    if number.num.0 == 0.0 {
         return Ok(Value::Dimension(SassNumber {
             num: (Number::zero()),
             unit: Unit::Deg,
@@ -497,6 +519,9 @@ pub(crate) fn declare(f: &mut Module) {
     );
     f.insert_builtin_var(
         "min-number",
-        Value::Dimension(SassNumber::new_unitless(f64::MIN_POSITIVE)),
+        // Dart's `double.minPositive` is the smallest *subnormal* double, 5e-324.
+        // Rust's `f64::MIN_POSITIVE` is the smallest normal one, 2.2e-308: the
+        // names match and the values do not.
+        Value::Dimension(SassNumber::new_unitless(f64::from_bits(1))),
     );
 }
