@@ -995,9 +995,52 @@ error!(
     ":#ab {}", "Error: Expected identifier."
 );
 error!(nothing_after_colon, "a:{}", "Error: Expected identifier.");
-error!(
+// dart-sass 1.103.1 keeps a top-level `&`, so this is a bogus-combinator
+// deprecation there rather than an error. The compiler has no warning
+// facility, so it prints the selector and says nothing.
+test!(
     toplevel_parent_selector_after_combinator,
-    "~&{}", "Error: Top-level selectors may not contain the parent selector \"&\"."
+    "~& {\n  a: b;\n}\n",
+    "~ & {\n  a: b;\n}\n"
+);
+test!(
+    toplevel_parent_selector_alone,
+    "& {\n  a: b;\n}\n",
+    "& {\n  a: b;\n}\n"
+);
+test!(
+    toplevel_parent_selector_last,
+    "foo & {\n  a: b;\n}\n",
+    "foo & {\n  a: b;\n}\n"
+);
+test!(
+    toplevel_parent_selector_in_list,
+    ".foo, & {\n  a: b;\n}\n",
+    ".foo, & {\n  a: b;\n}\n"
+);
+test!(
+    toplevel_parent_selector_nests,
+    "& {\n  foo {\n    a: b;\n  }\n}\n",
+    "& foo {\n  a: b;\n}\n"
+);
+test!(
+    toplevel_parent_selector_under_at_root,
+    "@at-root {\n  & {\n    a: b;\n  }\n}\n",
+    "& {\n  a: b;\n}\n"
+);
+error!(
+    toplevel_parent_selector_with_suffix,
+    "&--x {a: b}", "Error: A top-level selector may not contain a parent selector with a suffix."
+);
+error!(
+    toplevel_parent_selector_with_suffix_in_pseudo,
+    ":is(&--x) {a: b}",
+    "Error: A top-level selector may not contain a parent selector with a suffix."
+);
+error!(
+    toplevel_parent_selector_with_suffix_after_element,
+    "foo &--x {a: b}",
+    "Error: A top-level selector may not contain a parent selector with a suffix."
 );
 error!(
     toplevel_parent_selector_after_element,
