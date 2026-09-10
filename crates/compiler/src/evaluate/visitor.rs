@@ -2148,6 +2148,13 @@ impl<'a> Visitor<'a> {
             return Ok(None);
         }
 
+        // dart-sass copies the enclosing style rule into a nested at-rule so
+        // that declarations written directly inside it have somewhere to go,
+        // and exempts `@font-face`, whose descriptors belong to the at-rule
+        // itself. The comparison is on the plain name and is neither
+        // case-insensitive nor unvendored, so `@-moz-font-face` still bubbles.
+        let is_font_face = name == "font-face";
+
         let was_in_keyframes = self.flags.in_keyframes();
         let was_in_unknown_at_rule = self.flags.in_unknown_at_rule();
 
@@ -2197,7 +2204,7 @@ impl<'a> Visitor<'a> {
             stmt,
             true,
             |visitor| {
-                if !visitor.style_rule_exists() || visitor.flags.in_keyframes() {
+                if !visitor.style_rule_exists() || visitor.flags.in_keyframes() || is_font_face {
                     for stmt in children {
                         let result = visitor.visit_stmt(stmt)?;
                         debug_assert!(result.is_none());
