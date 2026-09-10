@@ -13,15 +13,16 @@ read them as worthless.
 **The ranking below was rebuilt on 2026-09-10, by cause rather than by
 area.** The original one was drawn up against 1,718 failures, when six large
 items accounted for most of them. Those six have landed, and so have items 09,
-10 and 11; the suite is at 284, which changed the shape of the problem rather
-than just its size.
+10, 11, and now 16, 17, 20 and 23; the suite is at 243, which changed the
+shape of the problem rather than just its size.
 
 The 2026-09-05 rebuild reported 134 failures in areas no document covered and
 ranked them by *area*, which said where the failures were and nothing about
 what caused them. Every one of those has now been read. There are 128 of them
 at 284, and they group into 21 causes: the deepest is worth 18 failures across
 five areas, the nine deepest cover 89 of the 128, and the rest is a tail of 12
-that item 24 records one by one. Items 15 to 24 are that reading. Several of
+that item 24 records one by one. Four of the causes have since been fixed, and
+91 of the unclaimed failures are left. Items 15 to 24 are that reading. Several of
 those items hold more than one defect -- item 17 is five -- so 21 is the count
 of things worth queueing, not of lines to change.
 
@@ -33,26 +34,37 @@ that shows up in five different areas and in no single area looks big.
 ## Measurement
 
 The ranking comes from a full run of the pinned sass-spec revision
-(`4a9eea66`) against the release build. Re-measured 2026-09-10 on master
-(`31361d7`):
+(`4a9eea66`) against the release build. Measured 2026-09-10 on master
+(`2a30a97`), with items 16, 17, 20 and 23 landed:
 
 ```
-14218 runs, 13926 passing, 284 failures, 8 todo, 0 ignored, 0 errors
+14218 runs, 13967 passing, 243 failures, 8 todo, 0 ignored, 0 errors
 ```
 
-Every count on this page is from that run, so the per-area numbers below are
-current rather than carried over from the 294 run. The failure list it produced
-was split by area and read fixture by fixture; the causes in items 15 to 24 come
-from that reading, and each was checked against dart-sass 1.103.1 before being
-written down.
+The 243 splits 152 in areas a document claims and 91 in areas none does.
 
-The 284 splits 156 in areas a document claims and 128 in areas none does. The
-earlier figure of 134 was taken at 294 and is not directly comparable: #43 and
-#52 both closed fixtures in unclaimed areas without belonging to any item.
+**This page records one measurement and does not keep a running total.** Put
+what an item closed in that item's own document, which opens with it; a total
+here is edited by every branch that lands, so it conflicts once per branch and
+is wrong between one merge and the next full run. It was, briefly: this
+paragraph read "the suite is at 277" on a master that measured 243. Rebuild
+the page in one deliberate pass after a batch lands, against a fresh run
+rather than by arithmetic, which is what this revision does.
 
-**Item 20 has since landed and the suite is at 277.** Every count below is
-still the 284 measurement, so read `spec/core_functions/string` as 1 rather
-than 8.
+Marking the table below has the same hazard in a milder form. A row and the
+row under it are one hunk to a three-way merge, so two items landing on
+separate branches conflict even though they edited different rows. Mark them
+in the same pass as the re-measurement.
+
+The ranking itself was drawn up against the 284 failures master carried
+before those four items landed. That run's failure list was split by area and
+read fixture by fixture; the causes in items 15 to 24 come from that reading,
+and each was checked against dart-sass 1.103.1 before being written down. The
+per-item "Failures" column below is what each item was worth against that run
+-- the size of the job, not a live count -- and the areas table further down
+is re-measured at 243. The 284 split 156 claimed against 128 unclaimed; the
+earlier figure of 134 was taken at 294 and is not directly comparable, #43 and
+#52 having closed fixtures in unclaimed areas without belonging to any item.
 
 The original ranking was taken on 2026-09-02 at 12,492 passing against 1,718
 failures; items 01-06 closed the difference, reaching 650 on `6d43969`. Five
@@ -97,34 +109,32 @@ since 2026-09-03; [08](08-calculation-warnings-and-error-wording.md) records
 them). Every count on this page is *with* the flags, so each is a floor rather
 than the whole gap. Drop the flags when an item's acceptance criteria say so.
 
-## Where the remaining 284 are
+## Where the remaining 243 are
 
 Ranked by the failures each item unlocks, deepest first. Items 15 to 24 were
-written on 2026-09-10 and between them account for all 128 failures that no
-document covered; nothing in the suite is unread now.
+written on 2026-09-10 and between them accounted for all 128 failures that no
+document covered; nothing in the suite is unread. Items 16, 17, 20 and 23
+have since landed and have moved to the table at the end of this page, which
+is what took the suite from 284 to 243. The "Failures" column is what each
+item was worth against the 284 run: the size of the job, not a live count.
 
 ### Open items
 
 | Doc | Cause | Failures | Main spec directories |
 |---|---|---|---|
 | [15-bogus-combinators.md](15-bogus-combinators.md) | A selector whose combinators cannot match is printed rather than dropped, and may act as an extender | 18 | `non_conformant/extend-tests`, `directives/extend`, `non_conformant/{scss,sass}` |
-| [16-top-level-parent-selector.md](16-top-level-parent-selector.md) | `&` at the top level is an error here and passes through in dart-sass, which dropped the restriction | 14 | `libsass/base-level-parent`, `libsass-closed-issues` |
-| [17-math-module.md](17-math-module.md) | Five defects: a fuzzy zero, `clamp()`'s comparison ladder, one missing unit check, `$min-number`, `unit()`'s brackets -- **landed** | 12 | `core_functions/math` |
-| [16-top-level-parent-selector.md](16-top-level-parent-selector.md) | `&` at the top level is an error here and passes through in dart-sass, which dropped the restriction -- **landed**, and worth 18 rather than 14 | 14 | `libsass/base-level-parent`, `libsass-closed-issues` |
 | [18-loud-comment-fidelity.md](18-loud-comment-fidelity.md) | A comment loses the line it was written on, and a continuation line loses the output indentation | 9, plus 1 of item 05's residue | `libsass-closed-issues`, `non_conformant`, `css/keyframes` |
 | [19-indented-syntax-gaps.md](19-indented-syntax-gaps.md) | Four `.sass` parse gaps left after item 10: comments and brackets spanning lines, `@import` lists, a bare `@at-root` | 9, plus 1 of item 05's residue | `expressions/comments`, `parser/indentation`, `directives/at_root` |
-| [20-string-split.md](20-string-split.md) | `string.split` mishandles an empty separator, an empty string and quotedness -- **landed**, 7 of its 8 | 8 | `core_functions/string` |
 | [21-empty-map-as-list.md](21-empty-map-as-list.md) | A map is not interchangeable with its list of pairs, and the empty map is not the empty list | 8 | `core_functions/list` |
 | [22-custom-property-raw-text.md](22-custom-property-raw-text.md) | A custom property's value is folded onto one line instead of being reindented | 6 | `css/custom_properties` |
-| [23-font-face-bubbling.md](23-font-face-bubbling.md) | A nested `@font-face` gets a copy of the parent selector, which dart-sass exempts it from -- **landed**, 4 of its 5 | 5 | `css/font-face` |
 | [24-unclaimed-tail.md](24-unclaimed-tail.md) | Twelve causes, none worth its own document: strictness checks, arglist separators, `@extend` result sets and nine more | 39 | scattered |
 | [07-calculation-long-tail.md](07-calculation-long-tail.md) | What #12 left in the calculation suite: `mod()` with a signed zero against an infinite divisor. Its sections 2 and 3 now pass | 1 | `spec/values/calculation` |
 | [08-calculation-warnings-and-error-wording.md](08-calculation-warnings-and-error-wording.md) | Deprecation warnings (none exist); the error wording is done | 22, invisible under the standard flags | `spec/values/calculation` |
 
 Items 15 to 24 are not disjoint from the residue the landed items left: items
 18 and 19 each close one failure in `spec/css/comment`, which item 05 counts
-as its residue. Those two are counted in the 156 claimed, not in the 128, so
-no number on this page double-counts them.
+as its residue. Those two were counted in the 284 run's 156 claimed rather
+than its 128 unclaimed, so no number on this page double-counts them.
 
 "Claimed" is by area, and one fixture shows why that is a rough measure:
 `spec/values/calculation/calc/operator/var/calculation` sits in an area two
@@ -134,39 +144,40 @@ Item 24 records it outside its count of 39.
 
 ### What the areas look like now
 
-The same 284 by area, for anyone who wants to scope a run. Areas a document
-already claims are marked.
+The 243 by area, for anyone who wants to scope a run, measured on `2a30a97`.
+Areas a document already claims are marked. `core_functions/math`,
+`core_functions/string` and `css/font-face` have left this table since the
+284 run, and `css/selector` and `core_functions/selector` shrank because item
+16 reached into them.
 
 | Area | Failures | Claimed by |
 |---|---:|---|
 | `spec/core_functions/meta` | 37 | 03 |
-| `spec/core_functions/selector` | 35 | 04 |
-| `spec/css/selector` | 34 | 04 |
+| `spec/core_functions/selector` | 34 | 04 |
+| `spec/css/selector` | 32 | 04 |
 | `spec/core_functions/color` | 22 | 01 |
-| `spec/core_functions/math` | 12 | 17 |
 | `spec/non_conformant/extend-tests` | 10 | 15, 24 |
 | `spec/css/comment` | 10 | 05, 18, 19, 24 |
 | `spec/core_functions/list` | 9 | 21, 24 |
 | `spec/directives/use` | 8 | 06 |
-| `spec/core_functions/string` | 8 | 20 |
 | `spec/directives/extend` | 6 | 15, 24 |
 | `spec/css/custom_properties` | 6 | 22 |
 | `spec/non_conformant/scss` | 5 | 15, 18, 24 |
 | `spec/directives/forward` | 5 | 06 |
-| `spec/css/font-face` | 5 | 23 |
-| everything else | 72 | mostly 16, 19 and 24 |
+| `spec/expressions/comments` | 4 | 19 |
+| everything else | 55 | mostly 19, 22 and 24 |
 
 The failure *kind* has settled where item 11 left it. Across the whole suite
-the 284 split into 208 "Expected did not match output", 48 "Test case should
-succeed but it did not" and 28 "Expected test to fail but it did not". The
-middle column is the one items 09 and 10 were drawn from; item 16 has since
-taken 18 of its 48, leaving 30.
+the 243 split into 186 "Expected did not match output", 30 "Test case should
+succeed but it did not" and 27 "Expected test to fail but it did not". The
+middle column is the one items 09 and 10 were drawn from; it stood at 48
+before item 16 took 18 of them.
 
 Item 11 has landed in full and moved to the table below. Item 07's 1 is also
 counted under item 01 -- 07 exists to describe what 01 deliberately left, and
 two of its three sections now pass. Item 08's failures are invisible under the
-standard flags, so they are outside the 284 entirely and are not double-counted
-either. Its **gap 2, the error wording, is
+standard flags, so they are outside the 243 entirely and are not
+double-counted either. Its **gap 2, the error wording, is
 closed** by `zoosky/accent-sass` #52: 36 of its 57 were error text, and the
 `spec/values/calculation` area is now at 24 under `--trim-errors` alone
 against 60 before. What remains under item 08 is gap 1, the deprecation
@@ -197,9 +208,10 @@ finds it recorded rather than folklore.
 | [14-wasm-component-model.md](14-wasm-component-model.md) | `wasm32-wasip2` and a WIT interface for Accent's plugin runtime | recorded, not queued -- build it only when one of its triggers fires |
 
 Item 13 has since been measured end to end: the WASI artifact runs, and the
-spec suite through it stands at 285 failures against the native build's 284 --
-one fixture, a last-digit floating-point difference on a colour far outside
-any gamut, where dart-sass does not match the fixture either.
+spec suite through it stood at 285 failures against the native build's 284 at
+the time -- one fixture, a last-digit floating-point difference on a colour
+far outside any gamut, where dart-sass does not match the fixture either. The
+one-fixture gap has not been re-measured since the four items landed.
 
 The pipeline behind item 12 shipped a module with no compiler in it for two
 releases: `wasm-exports` is not a default feature and the job never asked for
@@ -211,24 +223,28 @@ green build says very little.
 
 ### Landed -- residue only
 
-The counts here sum to 156, the share of the 284 in areas a document already
-claims; items 15 to 24 hold the other 128.
+The counts here sum to 152, the share of the 243 in areas a document already
+claims; items 15 to 24 hold the other 91. Each is re-measured on `2a30a97`.
 
-These nine are done. The counts are what remains in the areas they touched,
-not open work, and they are listed so nobody mistakes a residue for a
-priority.
+These thirteen are done. The counts are what remains in the areas they
+touched, not open work, and they are listed so nobody mistakes a residue for
+a priority.
 
 | Doc | Landed | Residue | Where |
 |---|---|---|---|
 | [01-calculation-functions.md](01-calculation-functions.md) | #12 | 24 | `values/calculation` 2, `core_functions/color` 22 -- item 11 took the 35 `attr()` fixtures; 21 of what is left are double-precision differences |
 | [02-css-if-function.md](02-css-if-function.md) | #13 | 1 | `spec/expressions/if` |
 | [03-meta-module.md](03-meta-module.md) | #14 | 37 | `spec/core_functions/meta` |
-| [04-selector-unification.md](04-selector-unification.md) | #15 | 69 | `core_functions/selector` 35, `css/selector` 34 |
+| [04-selector-unification.md](04-selector-unification.md) | #15 | 66 | `core_functions/selector` 34, `css/selector` 32 -- item 16 took three |
 | [05-comments-and-arguments.md](05-comments-and-arguments.md) | #16 | 10 | `spec/css/comment`; `spec/callable` is clear. Items 18 and 19 name causes for 2 of the 10 |
-| [06-module-system.md](06-module-system.md) | #17, #18 | 15 | `directives/use` 8, `forward` 5, `import` 2 |
-| [09-plain-css.md](09-plain-css.md) | #27, #29, #30 | 0 | `spec/css/plain` is clear; `directives/import` has 2 left, counted under 06 |
+| [06-module-system.md](06-module-system.md) | #17, #18 | 14 | `directives/use` 8, `forward` 5, `import` 1 -- item 16 took one |
+| [09-plain-css.md](09-plain-css.md) | #27, #29, #30 | 0 | `spec/css/plain` is clear; `directives/import` has 1 left, counted under 06 |
 | [10-indented-newlines.md](10-indented-newlines.md) | #32 | 0 | cut across 26 areas; `directives/for`, `directives/function`, `values/lists`, `css/media` and `css/style_rule` are clear |
 | [11-special-css-functions.md](11-special-css-functions.md) | #38, #39, #40, #41 | 0 | `css/functions`, `css/percent` and `css/supports` are clear; its 35 colour fixtures were part of item 01's residue |
+| [16-top-level-parent-selector.md](16-top-level-parent-selector.md) | #54 | 0 | `libsass/base-level-parent` and `libsass/parent-selector` are clear. Worth 18 rather than the 14 counted for it: it also reached `css/selector`, `core_functions/selector` and `directives/import`, which items 04 and 06 claim |
+| [17-math-module.md](17-math-module.md) | #55 | 0 | `core_functions/math` is clear |
+| [20-string-split.md](20-string-split.md) | #57 | 1 | `core_functions/string`: `split/private_use_character`, which also needs item 24's escaping fix |
+| [23-font-face-bubbling.md](23-font-face-bubbling.md) | #56 | 1 | `css/font-face`: `bubble/empty`, which also needs item 18's section 1 |
 
 Item 06's residue fell from 29 to 15 through #34, which is not one of these
 documents. Residue is not automatically worth chasing either, but it is worth
@@ -240,11 +256,11 @@ the residue is now a rounding question, not a colour-API one.
 
 ## Failure kinds
 
-Across the whole suite the 284 failures split into (2026-09-10):
+Across the whole suite the 243 failures split into (2026-09-10, `2a30a97`):
 
-- 208 "Expected did not match output" — accent-sass produces different CSS.
-- 48 "Test case should succeed but it did not" — accent-sass rejects valid input.
-- 28 "Expected test to fail but it did not" — accent-sass accepts invalid input.
+- 186 "Expected did not match output" — accent-sass produces different CSS.
+- 30 "Test case should succeed but it did not" — accent-sass rejects valid input.
+- 27 "Expected test to fail but it did not" — accent-sass accepts invalid input.
 
 The order flipped on 2026-09-05. On 2026-09-04 *rejects valid input* stood at
 304 and dominated; items 09 and 10 were both drawn from it, and it is now 48.
