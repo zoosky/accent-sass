@@ -370,8 +370,10 @@ impl fmt::Display for Unit {
                     write!(f, "{}^-1", denom_rendered)
                 } else if numer.is_empty() {
                     write!(f, "({})^-1", denom_rendered)
-                } else {
+                } else if denom.len() == 1 {
                     write!(f, "{}/{}", numer_rendered, denom_rendered)
+                } else {
+                    write!(f, "{}/({})", numer_rendered, denom_rendered)
                 }
             }
             // Every other unit has one spelling, and `canonical_name` is where
