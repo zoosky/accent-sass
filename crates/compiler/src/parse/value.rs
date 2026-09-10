@@ -29,6 +29,33 @@ fn is_hex_color(interpolation: &Interpolation) -> bool {
     false
 }
 
+/// Where an operand of a calculation sits, which decides what a failure to
+/// find one is called.
+///
+/// Dart Sass parses a calculation with its ordinary expression parser, so the
+/// two positions fail differently and this reproduces that. Nothing is
+/// committed at the start of an argument, and `calc(,)` reads as a malformed
+/// function call -- `expected ")".`. An operator has promised an operand, so
+/// `calc(1px *)` is a missing one -- `Expected expression.`. Both were taken
+/// from dart-sass 1.103.1.
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum OperandPosition {
+    /// The first operand of a calculation argument.
+    ArgumentStart,
+    /// An operand an operator has already promised.
+    AfterOperator,
+}
+
+impl OperandPosition {
+    /// What to say when no operand is there.
+    fn no_operand(self) -> &'static str {
+        match self {
+            Self::ArgumentStart => "expected \")\".",
+            Self::AfterOperator => "Expected expression.",
+        }
+    }
+}
+
 pub(crate) struct ValueParser<'a, 'c, P: StylesheetParser<'a>> {
     comma_expressions: Option<Vec<Spanned<AstExpr>>>,
     space_expressions: Option<Vec<Spanned<AstExpr>>>,
@@ -1781,8 +1808,57 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
         )
     }
 
-    fn parse_calculation_value(parser: &mut P) -> SassResult<Spanned<AstExpr>> {
+    /// Parses one operand of a calculation.
+    ///
+    /// `position` only decides what a failure is called; see
+    /// [`OperandPosition`].
+    fn parse_calculation_value(
+        parser: &mut P,
+        position: OperandPosition,
+    ) -> SassResult<Spanned<AstExpr>> {
         match parser.toks().peek() {
+            // A `/` at an operand position is Sass's unary slash: the binary
+            // one is consumed by the product loop, which only looks after an
+            // operand. It takes no whitespace to be one, unlike `+` and `-`,
+            // so `calc(/ 1px)` and `calc(/1px)` are both rejected.
+            Some(Token { kind: '/', .. }) => {
+                let start = parser.toks().cursor();
+                parser.toks_mut().next();
+                parser.whitespace(true)?;
+                ValueParser::parse_calculation_value(parser, OperandPosition::AfterOperator)?;
+
+                Err((
+                    "This expression can't be used in a calculation.",
+                    parser.toks_mut().span_from(start),
+                )
+                    .into())
+            }
+            // A `+` or `-` with whitespace after it is a unary operator, not
+            // the sign of a number, and a calculation has no unary operators.
+            // Dart Sass parses `calc(+ 1px)` as one with its ordinary
+            // expression parser and then rejects the expression, so the
+            // operand is parsed here too and the error names the whole of it.
+            Some(Token {
+                kind: '+' | '-', ..
+            }) if matches!(
+                parser.toks().peek_n(1),
+                Some(Token {
+                    kind: ' ' | '\t' | '\r' | '\n',
+                    ..
+                })
+            ) =>
+            {
+                let start = parser.toks().cursor();
+                parser.toks_mut().next();
+                parser.whitespace(true)?;
+                ValueParser::parse_calculation_value(parser, OperandPosition::AfterOperator)?;
+
+                Err((
+                    "This expression can't be used in a calculation.",
+                    parser.toks_mut().span_from(start),
+                )
+                    .into())
+            }
             // A leading `-` starts an identifier in `-infinity` and `-webkit-x`
             // but a number in `-1px`, so the identifier check comes first. An
             // interpolation continues the identifier rather than ending it, so
@@ -1794,6 +1870,21 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
                 kind: '+' | '-' | '.' | '0'..='9',
                 ..
             }) => ValueParser::parse_number(parser),
+            // A quoted string parses as an expression and is rejected for
+            // being one, which is not the same as failing to parse: Dart Sass
+            // says `calc("a")` holds an expression a calculation cannot use.
+            Some(Token {
+                kind: '"' | '\'', ..
+            }) => {
+                let start = parser.toks().cursor();
+                parser.parse_string()?;
+
+                Err((
+                    "This expression can't be used in a calculation.",
+                    parser.toks_mut().span_from(start),
+                )
+                    .into())
+            }
             Some(Token { kind: '$', .. }) => ValueParser::parse_variable(parser),
             Some(Token { kind: '(', .. }) => {
                 let start = parser.toks().cursor();
@@ -1803,6 +1894,19 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
                     Some(v) => v,
                     None => {
                         parser.whitespace(true)?;
+
+                        // `()` is the empty list, which parses and is then
+                        // rejected for what it is rather than for how it is
+                        // written. Dart Sass reports `calc(())` and
+                        // `calc(( ))` alike.
+                        if parser.scan_char(')') {
+                            return Err((
+                                "This expression can't be used in a calculation.",
+                                parser.toks_mut().span_from(start),
+                            )
+                                .into());
+                        }
+
                         ValueParser::parse_calculation_expression(parser)?.node
                     }
                 };
@@ -1812,12 +1916,52 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
 
                 Ok(AstExpr::Paren(Arc::new(value)).span(parser.toks_mut().span_from(start)))
             }
-            _ if !parser.looking_at_interpolated_identifier() => Err((
-                "Expected number, variable, function, or calculation.",
-                parser.toks().current_span(),
-            )
-                .into()),
+            _ if !parser.looking_at_interpolated_identifier() => {
+                if parser.scan_char('#') {
+                    return Err((
+                        ValueParser::after_hash(parser),
+                        parser.toks().current_span(),
+                    )
+                        .into());
+                }
+
+                Err((position.no_operand(), parser.toks().current_span()).into())
+            }
             _ => ValueParser::parse_calculation_identifier(parser),
+        }
+    }
+
+    /// What a `#` inside a calculation turned out to be.
+    ///
+    /// The `#` has already been consumed. Dart Sass reads a hex colour or a
+    /// name after it, so what fails depends on what follows: `#fff`, `#zzz`
+    /// and `#\65` all parse into something a calculation then refuses, while a
+    /// `#` with nothing usable behind it never gets that far and reports a
+    /// missing identifier.
+    ///
+    /// A digit run is a hex colour of 3, 4, 6 or 8 digits, and Dart Sass says
+    /// so when the run is another length: `#123` and `#12345678` are refused
+    /// expressions, `#1`, `#12`, `#12345` and `#1234567` want another hex
+    /// digit. A run longer than 8 takes the first 8 and is an expression
+    /// again. Every case here was taken from dart-sass 1.103.1.
+    fn after_hash(parser: &mut P) -> &'static str {
+        const EXPRESSION: &str = "This expression can't be used in a calculation.";
+
+        if parser.looking_at_identifier() {
+            return EXPRESSION;
+        }
+
+        let digits = (0..)
+            .take_while(|n| {
+                matches!(parser.toks().peek_n(*n), Some(Token { kind, .. }) if kind.is_ascii_hexdigit())
+            })
+            .count();
+
+        match digits {
+            3 | 4 | 6 => EXPRESSION,
+            n if n >= 8 => EXPRESSION,
+            0 => "Expected identifier.",
+            _ => "Expected hex digit.",
         }
     }
 
@@ -1912,8 +2056,11 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
             .span(parser.toks_mut().span_from(start)))
         }
     }
-    fn parse_calculation_product(parser: &mut P) -> SassResult<Spanned<AstExpr>> {
-        let mut product = ValueParser::parse_calculation_value(parser)?;
+    fn parse_calculation_product(
+        parser: &mut P,
+        position: OperandPosition,
+    ) -> SassResult<Spanned<AstExpr>> {
+        let mut product = ValueParser::parse_calculation_value(parser, position)?;
 
         loop {
             parser.whitespace(true)?;
@@ -1925,7 +2072,10 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
                     parser.toks_mut().next();
                     parser.whitespace(true)?;
 
-                    let rhs = ValueParser::parse_calculation_value(parser)?;
+                    let rhs = ValueParser::parse_calculation_value(
+                        parser,
+                        OperandPosition::AfterOperator,
+                    )?;
 
                     let span = product.span.merge(rhs.span);
 
@@ -1947,8 +2097,11 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
             }
         }
     }
-    fn parse_calculation_sum(parser: &mut P) -> SassResult<Spanned<AstExpr>> {
-        let mut sum = ValueParser::parse_calculation_product(parser)?;
+    fn parse_calculation_sum(
+        parser: &mut P,
+        position: OperandPosition,
+    ) -> SassResult<Spanned<AstExpr>> {
+        let mut sum = ValueParser::parse_calculation_product(parser, position)?;
 
         loop {
             match parser.toks().peek() {
@@ -1979,7 +2132,10 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
                     parser.toks_mut().next();
                     parser.whitespace(true)?;
 
-                    let rhs = ValueParser::parse_calculation_product(parser)?;
+                    let rhs = ValueParser::parse_calculation_product(
+                        parser,
+                        OperandPosition::AfterOperator,
+                    )?;
 
                     let span = sum.span.merge(rhs.span);
 
@@ -2014,7 +2170,7 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
     /// source wrote -- parentheses, or a nested `calc()` -- which is exactly
     /// when the output needs parentheses back.
     fn parse_calculation_expression(parser: &mut P) -> SassResult<Spanned<AstExpr>> {
-        let mut expr = ValueParser::parse_calculation_sum(parser)?;
+        let mut expr = ValueParser::parse_calculation_sum(parser, OperandPosition::ArgumentStart)?;
 
         loop {
             match parser.toks().peek() {
@@ -2043,7 +2199,7 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
         parser: &mut P,
         first: Spanned<AstExpr>,
     ) -> SassResult<Spanned<AstExpr>> {
-        let next = ValueParser::parse_calculation_sum(parser)?;
+        let next = ValueParser::parse_calculation_sum(parser, OperandPosition::ArgumentStart)?;
         let span = first.span.merge(next.span);
 
         let mut elems = match first.node {
@@ -2636,9 +2792,66 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
             }
         }
 
-        parser.expect_char_with_message(')', r#""+", "-", "*", "/", ",", or ")""#)?;
+        ValueParser::reject_non_calculation_operator(parser)?;
+        parser.expect_char(')')?;
 
         Ok(arguments)
+    }
+
+    /// Rejects a SassScript binary operator a calculation cannot use.
+    ///
+    /// A calculation has four operators; SassScript has more, and dart-sass
+    /// names the difference rather than reporting a missing `)`. `!` counts
+    /// only as the start of `!=`: `calc(1px !)` is a malformed call and
+    /// dart-sass reports it as one, as it does for `^`. Checked against
+    /// dart-sass 1.103.1 for `%`, `<`, `<=`, `>`, `>=`, `=`, `==`, `!=`, `!`
+    /// and `^`.
+    ///
+    /// `&` is a known divergence rather than a member of either group.
+    /// dart-sass reads it as the parent selector, so `calc(1px & 2px)` holds
+    /// an expression a calculation cannot use; this reports a missing `)`.
+    /// Recorded in
+    /// `specs/docs/features/08-calculation-warnings-and-error-wording.md`.
+    ///
+    /// The word operators `and` and `or` do not reach here. They read as
+    /// identifiers, so `calc(1px and 2px)` becomes a space-separated list and
+    /// is carried through to the output, where dart-sass rejects it. That is a
+    /// separate gap, recorded in
+    /// `specs/docs/features/08-calculation-warnings-and-error-wording.md`.
+    fn reject_non_calculation_operator(parser: &mut P) -> SassResult<()> {
+        let start = parser.toks().cursor();
+
+        // The width is the operator's, so the span covers `<=` and `!=` whole
+        // rather than pointing at half of one.
+        let width = match parser.toks().peek() {
+            Some(Token { kind: '%', .. }) => 1,
+            Some(Token {
+                kind: '<' | '>' | '=',
+                ..
+            }) => {
+                if matches!(parser.toks().peek_n(1), Some(Token { kind: '=', .. })) {
+                    2
+                } else {
+                    1
+                }
+            }
+            Some(Token { kind: '!', .. })
+                if matches!(parser.toks().peek_n(1), Some(Token { kind: '=', .. })) =>
+            {
+                2
+            }
+            _ => return Ok(()),
+        };
+
+        for _ in 0..width {
+            parser.toks_mut().next();
+        }
+
+        Err((
+            "This operation can't be used in a calculation.",
+            parser.toks_mut().span_from(start),
+        )
+            .into())
     }
 
     /// Parses `name(...)` as a CSS math function if `name` is one.

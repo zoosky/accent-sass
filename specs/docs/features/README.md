@@ -124,13 +124,23 @@ by one defect in a parser they share.
 | Doc | Area | Failures | Main spec directories |
 |---|---|---|---|
 | [07-calculation-long-tail.md](07-calculation-long-tail.md) | What #12 left in the calculation suite: `%` and `mod()` with a signed zero against an infinite divisor, a rounding strategy arriving through interpolation, line noise inside an interpolated `calc()` | 3 | `spec/values/calculation` |
-| [08-calculation-warnings-and-error-wording.md](08-calculation-warnings-and-error-wording.md) | Deprecation warnings (none exist) and error wording in calculations | 57, invisible under the standard flags | `spec/values/calculation` |
+| [08-calculation-warnings-and-error-wording.md](08-calculation-warnings-and-error-wording.md) | Deprecation warnings (none exist); the error wording is done | 22, invisible under the standard flags | `spec/values/calculation` |
 
 Item 11 has landed in full and moved to the table below. Item 07's 3 are the
 same three counted under item 01 -- 07 exists to describe what 01 deliberately
-left. Item 08's 57 are invisible under the standard flags, so they are outside
-the 294 entirely and are not double-counted either; that figure was re-measured
-on 2026-09-06 with the flags dropped and is unchanged.
+left; two of them remain, the third having started passing since. Item 08's
+failures are invisible under the standard flags, so they are outside the 294
+entirely and are not double-counted either. Its **gap 2, the error wording, is
+closed** by `zoosky/accent-sass` #52: 36 of its 57 were error text, and the
+`spec/values/calculation` area is now at 24 under `--trim-errors` alone
+against 60 before. What remains under item 08 is gap 1, the deprecation
+warnings, which needs a warning facility the compiler does not have.
+
+Gap 2 turned out to be more than wording. Eleven of its tests were a
+case-sensitivity difference in unit names -- dart-sass prints `1Q` where this
+compiler printed `1q` -- which is a CSS output bug the standard flags never
+saw. The measurement is in that item; the lesson is that a family of failures
+grouped by their symptom can hide a cause of a different kind.
 
 Both open items are calculation work, so the roadmap's tracked queue is now one
 area deep. What is left of substance is the 134 nobody has read for causes.
