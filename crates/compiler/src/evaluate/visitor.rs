@@ -2143,7 +2143,13 @@ impl<'a> Visitor<'a> {
                 false,
             );
 
-            self.css_tree.add_stmt(stmt, self.parent);
+            // Route through `add_child` for the same reason a style
+            // declaration does (see `visit_style`): a childless at-rule holds
+            // its place in source order, so a nested rule written above it
+            // splits the enclosing rule rather than letting the at-rule hoist
+            // back up beside the rule's earlier children. dart-sass calls
+            // `_copyParentAfterSibling` here for exactly this.
+            self.add_child(stmt, Some(|_: &CssStmt| false));
 
             return Ok(None);
         }
