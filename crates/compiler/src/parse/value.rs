@@ -1002,7 +1002,10 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
         let red: u32;
         let green: u32;
         let blue: u32;
-        let mut alpha: f64 = 1.0;
+        // `None` records that no alpha channel was written, which is what
+        // decides the serialization below. The alpha's *value* does not: an
+        // opaque `#abcf` still loses its spelling.
+        let mut alpha: Option<f64> = None;
 
         if parser.next_is_hex() {
             let digit4 = self.parse_hex_digit(parser)?;
@@ -1013,16 +1016,18 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
                 blue = (self.parse_hex_digit(parser)? << 4) + self.parse_hex_digit(parser)?;
 
                 if parser.next_is_hex() {
-                    alpha = ((self.parse_hex_digit(parser)? << 4) + self.parse_hex_digit(parser)?)
-                        as f64
-                        / 0xff as f64;
+                    alpha = Some(
+                        ((self.parse_hex_digit(parser)? << 4) + self.parse_hex_digit(parser)?)
+                            as f64
+                            / 0xff as f64,
+                    );
                 }
             } else {
                 // #abcd
                 red = (digit1 << 4) + digit1;
                 green = (digit2 << 4) + digit2;
                 blue = (digit3 << 4) + digit3;
-                alpha = ((digit4 << 4) + digit4) as f64 / 0xff as f64;
+                alpha = Some(((digit4 << 4) + digit4) as f64 / 0xff as f64);
             }
         } else {
             // #abc
@@ -1031,15 +1036,23 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
             blue = (digit3 << 4) + digit3;
         }
 
+        // Don't emit four- or eight-digit hex colors as hex, since that's not
+        // yet well-supported in browsers. dart-sass keeps the source spelling
+        // only for the three- and six-digit forms; the rest fall back to
+        // whatever the serializer infers, which is `rgba()` for a color with
+        // an alpha channel.
+        let format = if alpha.is_none() {
+            ColorFormat::Literal(parser.toks_mut().raw_text(start - 1))
+        } else {
+            ColorFormat::Infer
+        };
+
         Ok(Color::new_rgba(
             Number::from(red),
             Number::from(green),
             Number::from(blue),
-            Number(alpha),
-            // todo:
-            //     // Don't emit four- or eight-digit hex colors as hex, since that's not
-            //     // yet well-supported in browsers.
-            ColorFormat::Literal(parser.toks_mut().raw_text(start - 1)),
+            Number(alpha.unwrap_or(1.0)),
+            format,
         ))
     }
 
