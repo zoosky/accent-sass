@@ -7,7 +7,10 @@ use codemap::Span;
 
 use indexmap::IndexMap;
 
-use crate::{ast::CssMediaQuery, error::SassResult};
+use crate::{
+    ast::CssMediaQuery,
+    error::{SassError, SassResult},
+};
 
 use super::{
     ComplexSelector, ComplexSelectorComponent, ComplexSelectorHashSet, CompoundSelector, Pseudo,
@@ -72,7 +75,12 @@ pub(crate) struct ExtensionStore {
     ///
     /// This tracks the contexts in which each selector's style rule is defined.
     /// If a rule is defined at the top level, it doesn't have an entry.
-    media_contexts: HashMap<SelectorList, Vec<CssMediaQuery>>,
+    ///
+    /// The key is the rule's selector handle, not its value: `@extend`
+    /// rewrites the value in place, and two different rules may hold equal
+    /// selectors. `ExtendedSelector` hashes and compares by identity, which
+    /// is what dart-sass's `ModifiableBox` key gives it.
+    media_contexts: HashMap<ExtendedSelector, Vec<CssMediaQuery>>,
 
     /// A map from `SimpleSelector`s to the specificity of their source
     /// selectors.
@@ -96,6 +104,20 @@ pub(crate) struct ExtensionStore {
 
     /// The mode that controls this extender's behavior.
     mode: ExtendMode,
+
+    /// The first `You may not @extend selectors across media queries.` error
+    /// raised while extending, held until a caller that can return one asks
+    /// for it.
+    ///
+    /// The extend machinery returns `Option` throughout to mean "extension
+    /// did not apply", so an error cannot be returned from the middle of it
+    /// without turning every one of those into a `Result<Option<_>>`.
+    /// dart-sass throws instead. Recording the first error and handing it to
+    /// [`Self::take_deferred_error`] at the two entry points that do return
+    /// `SassResult` -- `add_selector` and `add_extension` -- reaches the same
+    /// place: neither can make progress after one, because a selector that
+    /// cannot be extended is not a selector this document has.
+    deferred_error: Option<Box<SassError>>,
 
     span: Span,
 }
@@ -251,7 +273,7 @@ impl ExtensionStore {
             }
         }
 
-        Ok(())
+        self.take_deferred_error()
     }
 
     pub fn extend(
@@ -263,6 +285,23 @@ impl ExtensionStore {
         Self::extend_or_replace(selector, source, targets, ExtendMode::AllTargets, span)
     }
 
+    /// Records `error` as the reason extension cannot proceed, unless an
+    /// earlier one is already waiting. The first error is the one dart-sass
+    /// would have thrown, since it stops there.
+    fn defer_error(&mut self, error: Option<Box<SassError>>) {
+        if self.deferred_error.is_none() {
+            self.deferred_error = error;
+        }
+    }
+
+    /// Takes the deferred error, if extension raised one.
+    fn take_deferred_error(&mut self) -> SassResult<()> {
+        match self.deferred_error.take() {
+            Some(error) => Err(error),
+            None => Ok(()),
+        }
+    }
+
     pub fn new(span: Span) -> Self {
         Self {
             selectors: HashMap::new(),
@@ -272,6 +311,7 @@ impl ExtensionStore {
             source_specificity: HashMap::new(),
             originals: ComplexSelectorHashSet::new(),
             mode: ExtendMode::Normal,
+            deferred_error: None,
             span,
         }
     }
@@ -556,17 +596,15 @@ impl ExtensionStore {
         // Optimize for the simple case of a single simple selector that doesn't
         // need any unification.
         if options.len() == 1 {
-            return Some(
-                options
-                    .first()?
-                    .clone()
-                    .into_iter()
-                    .map(|state| {
-                        state.assert_compatible_media_context(media_query_context);
-                        state.extender
-                    })
-                    .collect(),
-            );
+            let mut extenders = Vec::new();
+
+            for state in options.first()?.clone() {
+                let error = state.check_media_context(media_query_context);
+                self.defer_error(error);
+                extenders.push(state.extender);
+            }
+
+            return Some(extenders);
         }
 
         // Find all paths through `options`. In this case, each path represents a
@@ -643,7 +681,8 @@ impl ExtensionStore {
             let mut line_break = false;
 
             for state in path {
-                state.assert_compatible_media_context(media_query_context);
+                let error = state.check_media_context(media_query_context);
+                self.defer_error(error);
                 line_break = line_break || state.extender.line_break;
             }
 
@@ -1009,7 +1048,7 @@ impl ExtensionStore {
         mut selector: SelectorList,
         // span: Span,
         media_query_context: &Option<Vec<CssMediaQuery>>,
-    ) -> ExtendedSelector {
+    ) -> SassResult<ExtendedSelector> {
         if !selector.is_invisible() {
             for complex in selector.components.clone() {
                 self.originals.insert(&complex);
@@ -1018,24 +1057,20 @@ impl ExtensionStore {
 
         if !self.extensions.is_empty() {
             selector = self.extend_list(selector, None, media_query_context);
-            /*
-              todo: when we have error handling
-                  } on SassException catch (error) {
-              throw SassException(
-                  "From ${error.span.message('')}\n"
-                  "${error.message}",
-                  span);
-            }
-              */
-        }
-        if let Some(mut media_query_context) = media_query_context.clone() {
-            self.media_contexts
-                .get_mut(&selector)
-                .replace(&mut media_query_context);
+            // dart-sass wraps this error with the extended selector's own
+            // span (`From ${error.span.message('')}`); the span is the only
+            // difference, and spans are not held to parity here.
+            self.take_deferred_error()?;
         }
         let extended_selector = ExtendedSelector::new(selector.clone());
+
+        if let Some(media_query_context) = media_query_context.clone() {
+            self.media_contexts
+                .insert(extended_selector.clone(), media_query_context);
+        }
+
         self.register_selector(selector, &extended_selector);
-        extended_selector
+        Ok(extended_selector)
     }
 
     /// Every simple selector in `complex`, including ones nested inside
@@ -1114,7 +1149,7 @@ impl ExtensionStore {
         extend: &ExtendRule,
         media_context: &Option<Vec<CssMediaQuery>>,
         span: Span,
-    ) {
+    ) -> SassResult<()> {
         let selectors = self.selectors.get(target).cloned();
         let existing_extensions = self.extensions_by_extender.get(target).cloned();
 
@@ -1175,7 +1210,7 @@ impl ExtensionStore {
         let new_extensions = if let Some(new) = new_extensions {
             new
         } else {
-            return;
+            return Ok(());
         };
 
         let mut new_extensions_by_target = HashMap::new();
@@ -1192,6 +1227,8 @@ impl ExtensionStore {
         if let Some(selectors) = selectors {
             self.extend_existing_selectors(selectors, &new_extensions_by_target);
         }
+
+        self.take_deferred_error()
     }
 
     /// Extend `extensions` using `new_extensions`.
@@ -1304,10 +1341,11 @@ impl ExtensionStore {
     ) {
         for mut selector in selectors {
             let old_value = selector.clone().into_selector().0;
+            let media_context = self.media_contexts.get(&selector).cloned();
             selector.set_inner(self.extend_list(
                 old_value.clone(),
                 Some(new_extensions),
-                &self.media_contexts.get(&old_value).cloned(),
+                &media_context,
             ));
             /*
             todo: error handling
