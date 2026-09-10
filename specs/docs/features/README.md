@@ -50,6 +50,12 @@ The 284 splits 156 in areas a document claims and 128 in areas none does. The
 earlier figure of 134 was taken at 294 and is not directly comparable: #43 and
 #52 both closed fixtures in unclaimed areas without belonging to any item.
 
+**Item 16 has since landed and the suite is at 266.** Every count below is
+still the 284 measurement, so subtract item 16's eighteen when reading them:
+fourteen from the areas its row names, and four from areas items 04 and 06
+claim (`css/selector` 34 to 32, `core_functions/selector` 35 to 34,
+`directives/import` 2 to 1).
+
 The original ranking was taken on 2026-09-02 at 12,492 passing against 1,718
 failures; items 01-06 closed the difference, reaching 650 on `6d43969`. Five
 pull requests since then took it to 397: #27 (CSS nesting passthrough) to 590,
@@ -104,7 +110,7 @@ document covered; nothing in the suite is unread now.
 | Doc | Cause | Failures | Main spec directories |
 |---|---|---|---|
 | [15-bogus-combinators.md](15-bogus-combinators.md) | A selector whose combinators cannot match is printed rather than dropped, and may act as an extender | 18 | `non_conformant/extend-tests`, `directives/extend`, `non_conformant/{scss,sass}` |
-| [16-top-level-parent-selector.md](16-top-level-parent-selector.md) | `&` at the top level is an error here and passes through in dart-sass, which dropped the restriction | 14 | `libsass/base-level-parent`, `libsass-closed-issues` |
+| [16-top-level-parent-selector.md](16-top-level-parent-selector.md) | `&` at the top level is an error here and passes through in dart-sass, which dropped the restriction -- **landed**, and worth 18 rather than 14 | 14 | `libsass/base-level-parent`, `libsass-closed-issues` |
 | [17-math-module.md](17-math-module.md) | Five defects: a fuzzy zero, `clamp()`'s comparison ladder, one missing unit check, `$min-number`, `unit()`'s brackets | 12 | `core_functions/math` |
 | [18-loud-comment-fidelity.md](18-loud-comment-fidelity.md) | A comment loses the line it was written on, and a continuation line loses the output indentation | 9, plus 1 of item 05's residue | `libsass-closed-issues`, `non_conformant`, `css/keyframes` |
 | [19-indented-syntax-gaps.md](19-indented-syntax-gaps.md) | Four `.sass` parse gaps left after item 10: comments and brackets spanning lines, `@import` lists, a bare `@at-root` | 9, plus 1 of item 05's residue | `expressions/comments`, `parser/indentation`, `directives/at_root` |
@@ -154,8 +160,8 @@ already claims are marked.
 The failure *kind* has settled where item 11 left it. Across the whole suite
 the 284 split into 208 "Expected did not match output", 48 "Test case should
 succeed but it did not" and 28 "Expected test to fail but it did not". The
-middle column is the one items 09 and 10 were drawn from, and item 16 alone
-accounts for 14 of the 48 that are left.
+middle column is the one items 09 and 10 were drawn from; item 16 has since
+taken 18 of its 48, leaving 30.
 
 Item 11 has landed in full and moved to the table below. Item 07's 1 is also
 counted under item 01 -- 07 exists to describe what 01 deliberately left, and

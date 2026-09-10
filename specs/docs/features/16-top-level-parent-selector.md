@@ -1,5 +1,13 @@
 # A parent selector at the top level
 
+**Landed. The suite went from 284 failures to 266.** Eighteen fixtures
+closed, not the fourteen counted below: four of them are in areas a document
+already claims -- `spec/css/selector/parent/{alone/first,in_at_rule}`,
+`spec/core_functions/selector/nest/parent/alone/first` and
+`spec/directives/import/top_level_parent` -- so the cause reached past the
+areas this item was scoped to. Nothing regressed, and the "Test case should
+succeed but it did not" column fell from 48 to 30.
+
 14 sass-spec failures across eight areas, all of them the same error:
 
 ```
@@ -82,25 +90,31 @@ None => {
 The doc comment above the function describes the error as part of the
 contract, so it changes with the code.
 
-## Implementation instructions
+## What the change was
 
-Return `Ok(self)` in both branches -- that is, treat a missing parent the
-way `preserve_parent_selectors` already treats plain CSS -- and update the
-doc comment. Then check the shapes the fixtures do not cover before you
-conclude it is a two-line change:
+`Ok(self)` in both branches -- a missing parent is now treated the way
+`preserve_parent_selectors` already treats plain CSS -- with one exception
+found by checking the shapes no failing fixture covers.
 
-- `&--suffix` at the top level, where the parent selector carries a suffix.
-  The suffix path is where a resolved `&` normally has to produce a single
-  compound; with no parent there is nothing to attach to.
-- `@at-root { & { ... } }`, which two of the four `base-level-parent`
-  fixtures use. `@at-root` clears the parent, so this reaches the same
-  branch by a different route.
-- `&` in the indented syntax (`issue_2482`) and inside a module loaded by
-  `@use` (`issue_2304`), where the error currently points at the loaded
-  file rather than the entry point.
-- Selector functions. `selector.parse("&")` and friends take their own path
-  through the parser with `allow_parent`, and must not start accepting
-  something they reject today.
+**A suffixed parent is still an error, and dart-sass words it differently.**
+`&--x` at the top level gives `A top-level selector may not contain a parent
+selector with a suffix.` in dart-sass 1.103.1, and so do `:is(&--x)` and
+`foo &--x`: the rule is anywhere in the list, including inside a
+pseudo-selector's argument. Six fixtures in the pinned revision expect that
+message, and all six passed before the change only because the standard flags
+ignore error text -- this compiler was raising the other message. Deleting the
+check outright would have turned six passing tests into failures without the
+whole-suite count showing a net loss.
+
+`ComplexSelector::contains_suffixed_parent_selector` is the new predicate,
+mirroring `contains_parent_selector` and recursing into pseudo-selector
+arguments the same way.
+
+Three shapes were checked and needed nothing: `@at-root { & { ... } }`, which
+two of the four `base-level-parent` fixtures use; `&` in the indented syntax
+(`issue_2482`) and inside a module loaded by `@use` (`issue_2304`); and the
+selector functions, where `selector.nest("&c")` reaches the same branch and so
+gets the suffix error for free.
 
 ## Testing
 
@@ -115,8 +129,9 @@ conclude it is a two-line change:
 
 ## Acceptance criteria
 
-- All 14 fixtures above pass, and the whole-suite "Test case should succeed
-  but it did not" count drops from 48 to 34.
-- The whole-suite "Expected test to fail but it did not" count has not
-  risen above 28.
+- ~~All 14 fixtures above pass, and the whole-suite "Test case should
+  succeed but it did not" count drops from 48 to 34.~~ Done, and further:
+  18 fixtures, 48 to 30.
+- ~~The whole-suite "Expected test to fail but it did not" count has not
+  risen above 28.~~ Done: still 28.
 - The `frameworks` CI job still reports no colour-value differences.
