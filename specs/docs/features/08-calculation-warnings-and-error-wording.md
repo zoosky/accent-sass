@@ -167,15 +167,30 @@ operand, so `calc(1px *)` is a missing one (`Expected expression.`). That is
 because it begins an interpolation or a hex colour and the parser is already
 reading a name.
 
-**Values that parse and are then refused.** A quoted string and `()` are
-expressions a calculation cannot hold rather than parse failures, so they are
-parsed and rejected as such: `calc("a")`, `calc(())` and `calc((((()))))` all
+**Values that parse and are then refused.** A quoted string, `()`, a hex
+colour and a unary `/` are expressions a calculation cannot hold rather than
+parse failures, so they are parsed and rejected as such: `calc("a")`,
+`calc(())`, `calc((((())))`, `calc(#fff)`, `calc(/ 1px)` and `calc(/1px)` all
 say so now.
+
+A `#` is the fiddly one, because what follows decides whether dart-sass got
+far enough to have an expression at all. `calc(#)`, `calc(# )`, `calc(#,)` and
+`calc(#-)` are missing identifiers; `#fff`, `#zzz` and `#\65` are expressions;
+a digit run is a hex colour of 3, 4, 6 or 8 digits, so `#123` and `#12345678`
+are expressions while `#1`, `#12`, `#12345` and `#1234567` want another hex
+digit. All twenty cases were taken from dart-sass 1.103.1.
 
 **A bare list is parenthesised in the value error**, and only there:
 `Value (1 2 3)` for `$a: 1 2 3` against `Value [1 2 3]` for a bracketed one.
-Checked across space and comma lists, bracketed lists, `()`, `(1,)`, maps and
-scalars.
+A one-element space list counts -- `list.append((), 1px)` gives `Value (1px)`
+-- while a one-element comma list is exempt, because `inspect` already writes
+it as `(1px,)`.
+
+**How the argument list is written outranks what is in it.** A calculation
+takes neither keyword nor rest arguments, and dart-sass says which before it
+looks at what they would expand to: `sqrt($x: 7 % 3)` is refused for the `$x:`
+and never reaches the `%`. Keyword outranks rest, and a `$map...` counts as a
+rest argument.
 
 ### Measured
 
@@ -199,12 +214,22 @@ open:
 | `calc(1px and 2px)` | `This operation can't be used in a calculation.` | `calc(1px and 2px)` |
 | `calc(not 1px)` | `This expression can't be used in a calculation.` | `calc(not 1px)` |
 | `sqrt(7 and 3)` | `This operation can't be used in a calculation.` | `sqrt(7 and 3)` |
+| `calc(1px & 2px)` | `This expression can't be used in a calculation.` | `expected ")".` |
 
 The word operators read as identifiers, so the argument becomes a
-space-separated list and is carried through to the output. Fixing it means
+space-separated list and is carried through to the output; `&` is dart-sass's
+parent selector, an expression a calculation cannot hold. Fixing either means
 changing what the calculation parser accepts, not what it says when it
-refuses, so it is a behaviour change with no test behind it. It is recorded
-here rather than attempted.
+refuses, so it is a behaviour change with no test behind it. Recorded here
+rather than attempted.
+
+One difference is in the caret rather than the message. dart-sass underlines
+the operator in `This operation can't be used in a calculation.`; on the
+evaluator's path this underlines the whole operation, because the expression
+parser keeps its operators on a stack without their spans and `BinaryOpExpr`
+carries only the merged one. Giving it the narrower caret means threading an
+operator span through that parser, which no fixture asks for -- `--trim-errors`
+compares the first line. The parser's own path already points at the operator.
 
 ## Testing
 

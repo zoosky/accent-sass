@@ -576,3 +576,63 @@ error!(
     "$a: [1 2 3];\nb {\n  c: calc($a);\n}\n",
     "Error: Value [1 2 3] can't be used in a calculation."
 );
+
+// How the argument list is written outranks what is in it, and keyword
+// outranks rest. `sqrt($x: 7 % 3)` never reaches the `%`. Taken from
+// dart-sass 1.103.1, which reports the keyword for an argument list carrying
+// both, and treats `$map...` as a rest argument.
+error!(
+    keyword_arguments_are_rejected_before_their_contents,
+    "a {\n  color: sqrt($x: 7 % 3);\n}\n",
+    "Error: Keyword arguments can't be used with calculations."
+);
+error!(
+    keyword_arguments_outrank_rest_arguments,
+    "a {\n  color: sqrt($x: 1, 2px...);\n}\n",
+    "Error: Keyword arguments can't be used with calculations."
+);
+error!(
+    a_map_splat_is_a_rest_argument,
+    "$m: (a: 1);\nb {\n  c: sqrt(1, $m...);\n}\n",
+    "Error: Rest arguments can't be used with calculations."
+);
+// A `/` at an operand position is Sass's unary slash; the binary one is only
+// read after an operand. Neither form takes whitespace to be one.
+error!(
+    calc_leading_slash_is_an_expression,
+    "a {\n  color: calc(/ 1px);\n}\n", "Error: This expression can't be used in a calculation."
+);
+error!(
+    calc_leading_slash_without_whitespace_is_an_expression,
+    "a {\n  color: calc(/1px);\n}\n", "Error: This expression can't be used in a calculation."
+);
+test!(
+    calc_division_still_divides,
+    "a {\n  color: calc(4px / 2);\n}\n",
+    "a {\n  color: 2px;\n}\n"
+);
+// A `#` is a hex colour or a name, so what fails after it depends on what
+// follows. Only a `#` with nothing usable behind it is a missing identifier.
+error!(
+    calc_hash_colour_is_an_expression,
+    "a {\n  color: calc(#fff);\n}\n", "Error: This expression can't be used in a calculation."
+);
+error!(
+    calc_hash_short_digit_run_wants_another_digit,
+    "a {\n  color: calc(#12);\n}\n", "Error: Expected hex digit."
+);
+error!(
+    calc_hash_digit_colour_is_an_expression,
+    "a {\n  color: calc(#123);\n}\n", "Error: This expression can't be used in a calculation."
+);
+error!(
+    calc_hash_before_a_lone_hyphen_is_a_missing_identifier,
+    "a {\n  color: calc(#-);\n}\n", "Error: Expected identifier."
+);
+// A one-element space list is parenthesised too; only the comma one is
+// exempt, because `inspect` already writes it as `(1px,)`.
+error!(
+    a_one_element_bare_list_is_parenthesised_in_the_value_error,
+    "@use \"sass:list\";\nb {\n  c: calc(list.append((), 1px));\n}\n",
+    "Error: Value (1px) can't be used in a calculation."
+);

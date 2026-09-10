@@ -3603,11 +3603,21 @@ impl<'a> Visitor<'a> {
                         // dart-sass parenthesises a bare list in this message
                         // and nowhere else: `$a: 1 2 3` gives `Value (1 2 3)`
                         // while `$a: [1 2 3]` keeps its brackets, so the
-                        // reader can see where the value ends. Checked against
-                        // 1.103.1 for space and comma lists, bracketed lists,
-                        // `()`, `(1,)`, maps and scalars.
+                        // reader can see where the value ends. A one-element
+                        // comma list is the exception, and only because
+                        // `inspect` already prints it as `(1,)`; a one-element
+                        // space list is not, and `list.append((), 1px)` gives
+                        // `Value (1px)`. Checked against 1.103.1 for space and
+                        // comma lists of one and of several elements,
+                        // bracketed lists, `()`, `(1,)`, maps and scalars.
                         let named = match &value {
-                            Value::List(elems, _, Brackets::None) if elems.len() > 1 => {
+                            Value::List(elems, separator, Brackets::None)
+                                if match elems.len() {
+                                    0 => false,
+                                    1 => *separator != ListSeparator::Comma,
+                                    _ => true,
+                                } =>
+                            {
                                 format!("({})", inspected)
                             }
                             _ => inspected.to_string(),
@@ -4245,15 +4255,29 @@ impl<'a> Visitor<'a> {
 /// syntax and no Sass function of that name exists.
 ///
 /// dart-sass distinguishes an *operation* a calculation cannot perform from an
-/// *expression* it cannot hold, and points at the operator in the first case.
-/// `sqrt(7 % 3)` is the first -- `%` is not one of the four calculation
-/// operators -- and `sqrt("a")` is the second. Reporting one message for both
-/// loses the distinction the reader needs: the first is a wrong operator, the
-/// second a wrong kind of value.
+/// *expression* it cannot hold. `sqrt(7 % 3)` is the first -- `%` is not one
+/// of the four calculation operators -- and `sqrt("a")` is the second.
+/// Reporting one message for both loses the distinction the reader needs: the
+/// first is a wrong operator, the second a wrong kind of value.
 ///
-/// A rest argument is neither, and outranks both: `clamp(1px 2px 3px...)` is
-/// rejected for its `...` before anything looks at what it expands to.
+/// The caret is wider than dart-sass's on the operation case. dart-sass
+/// underlines the operator alone; this underlines the whole operation, because
+/// the expression parser keeps its operators on a stack without their spans
+/// and [`BinaryOpExpr`] carries only the merged one. The first line matches,
+/// which is what the spec suite compares.
+///
+/// How the argument list is *written* outranks what is in it. A calculation
+/// takes neither keyword nor rest arguments, and dart-sass says which before
+/// it looks at what they would expand to, so `sqrt($x: 7 % 3)` is refused for
+/// the `$x:` and never reaches the `%`. Keyword outranks rest in turn:
+/// `sqrt($x: 1, 2px...)` reports the keyword. A `$map...` counts as a rest
+/// argument, which is what `sqrt(1, $m...)` reports. All three taken from
+/// dart-sass 1.103.1.
 fn calculation_argument_error(arguments: &ArgumentInvocation, span: Span) -> (&'static str, Span) {
+    if !arguments.named.is_empty() {
+        return ("Keyword arguments can't be used with calculations.", span);
+    }
+
     if arguments.rest.is_some() || arguments.keyword_rest.is_some() {
         return ("Rest arguments can't be used with calculations.", span);
     }
@@ -4261,7 +4285,6 @@ fn calculation_argument_error(arguments: &ArgumentInvocation, span: Span) -> (&'
     arguments
         .positional
         .iter()
-        .chain(arguments.named.values())
         .find_map(|arg| disallowed_in_calculation(arg, span))
         .unwrap_or(("This expression can't be used in a calculation.", span))
 }

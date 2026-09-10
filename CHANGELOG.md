@@ -28,8 +28,10 @@ at `0.13.4` and below are upstream's and are kept for lineage.
   parser reports `expected ")".`, `Expected expression.` or
   `Expected identifier.` by position instead of the stale
   `Expected number, variable, function, or calculation.`, which dart-sass no
-  longer emits anywhere. `calc("a")`, `calc(())` and `calc(1px % 2px)` are
-  rejected as the values and operators they are rather than as parse failures
+  longer emits anywhere. `calc("a")`, `calc(())`, `calc(#fff)`, `calc(/ 1px)`
+  and `calc(1px % 2px)` are rejected as the values and operators they are
+  rather than as parse failures, and a keyword argument is named as one:
+  `sqrt($x: 1)` reports `Keyword arguments can't be used with calculations.`
 
 ### Added
 

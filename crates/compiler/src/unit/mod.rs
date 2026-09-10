@@ -174,6 +174,55 @@ impl Unit {
         }
     }
 
+    /// The one spelling that names this unit.
+    ///
+    /// `None` for the three that have no fixed spelling: an unknown unit
+    /// carries its own, a complex one is built from its parts, and
+    /// [`Unit::None`] has none at all.
+    ///
+    /// This is what makes the case rule cheap to state and to apply. A name is
+    /// the known unit only when it matches this exactly, which is the test
+    /// [`Unit::from`] makes, and it is what [`fmt::Display`] writes.
+    pub(crate) fn canonical_name(&self) -> Option<&'static str> {
+        Some(match self {
+            Unit::Px => "px",
+            Unit::Mm => "mm",
+            Unit::In => "in",
+            Unit::Cm => "cm",
+            Unit::Q => "q",
+            Unit::Pt => "pt",
+            Unit::Pc => "pc",
+            Unit::Em => "em",
+            Unit::Rem => "rem",
+            Unit::Lh => "lh",
+            Unit::Percent => "%",
+            Unit::Ex => "ex",
+            Unit::Ch => "ch",
+            Unit::Cap => "cap",
+            Unit::Ic => "ic",
+            Unit::Rlh => "rlh",
+            Unit::Vw => "vw",
+            Unit::Vh => "vh",
+            Unit::Vmin => "vmin",
+            Unit::Vmax => "vmax",
+            Unit::Vi => "vi",
+            Unit::Vb => "vb",
+            Unit::Deg => "deg",
+            Unit::Grad => "grad",
+            Unit::Rad => "rad",
+            Unit::Turn => "turn",
+            Unit::S => "s",
+            Unit::Ms => "ms",
+            Unit::Hz => "Hz",
+            Unit::Khz => "kHz",
+            Unit::Dpi => "dpi",
+            Unit::Dpcm => "dpcm",
+            Unit::Dppx => "dppx",
+            Unit::Fr => "fr",
+            Unit::Unknown(..) | Unit::None | Unit::Complex(..) => return None,
+        })
+    }
+
     /// The known unit this one names when case is ignored, or a clone of it.
     ///
     /// dart-sass splits the two readings of a unit name. Conversion and
@@ -284,7 +333,7 @@ impl From<String> for Unit {
     /// why.
     fn from(unit: String) -> Self {
         match known_unit_ignoring_case(&unit) {
-            Some(known) if known.to_string() == unit => known,
+            Some(known) if known.canonical_name() == Some(unit.as_str()) => known,
             _ => Unit::Unknown(InternedString::get_or_intern(unit)),
         }
     }
@@ -293,40 +342,6 @@ impl From<String> for Unit {
 impl fmt::Display for Unit {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Unit::Px => write!(f, "px"),
-            Unit::Mm => write!(f, "mm"),
-            Unit::In => write!(f, "in"),
-            Unit::Cm => write!(f, "cm"),
-            Unit::Q => write!(f, "q"),
-            Unit::Pt => write!(f, "pt"),
-            Unit::Pc => write!(f, "pc"),
-            Unit::Em => write!(f, "em"),
-            Unit::Rem => write!(f, "rem"),
-            Unit::Lh => write!(f, "lh"),
-            Unit::Percent => write!(f, "%"),
-            Unit::Ex => write!(f, "ex"),
-            Unit::Ch => write!(f, "ch"),
-            Unit::Cap => write!(f, "cap"),
-            Unit::Ic => write!(f, "ic"),
-            Unit::Rlh => write!(f, "rlh"),
-            Unit::Vw => write!(f, "vw"),
-            Unit::Vh => write!(f, "vh"),
-            Unit::Vmin => write!(f, "vmin"),
-            Unit::Vmax => write!(f, "vmax"),
-            Unit::Vi => write!(f, "vi"),
-            Unit::Vb => write!(f, "vb"),
-            Unit::Deg => write!(f, "deg"),
-            Unit::Grad => write!(f, "grad"),
-            Unit::Rad => write!(f, "rad"),
-            Unit::Turn => write!(f, "turn"),
-            Unit::S => write!(f, "s"),
-            Unit::Ms => write!(f, "ms"),
-            Unit::Hz => write!(f, "Hz"),
-            Unit::Khz => write!(f, "kHz"),
-            Unit::Dpi => write!(f, "dpi"),
-            Unit::Dpcm => write!(f, "dpcm"),
-            Unit::Dppx => write!(f, "dppx"),
-            Unit::Fr => write!(f, "fr"),
             Unit::Unknown(s) => write!(f, "{}", s),
             Unit::None => Ok(()),
             Unit::Complex(complex) => {
@@ -359,6 +374,14 @@ impl fmt::Display for Unit {
                     write!(f, "{}/{}", numer_rendered, denom_rendered)
                 }
             }
+            // Every other unit has one spelling, and `canonical_name` is where
+            // it lives, so that the name this writes and the name
+            // `Unit::from` accepts cannot drift apart.
+            simple => f.write_str(
+                simple
+                    .canonical_name()
+                    .expect("a unit with no canonical name is handled above"),
+            ),
         }
     }
 }

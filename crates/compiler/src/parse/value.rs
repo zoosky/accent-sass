@@ -1817,6 +1817,22 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
         position: OperandPosition,
     ) -> SassResult<Spanned<AstExpr>> {
         match parser.toks().peek() {
+            // A `/` at an operand position is Sass's unary slash: the binary
+            // one is consumed by the product loop, which only looks after an
+            // operand. It takes no whitespace to be one, unlike `+` and `-`,
+            // so `calc(/ 1px)` and `calc(/1px)` are both rejected.
+            Some(Token { kind: '/', .. }) => {
+                let start = parser.toks().cursor();
+                parser.toks_mut().next();
+                parser.whitespace(true)?;
+                ValueParser::parse_calculation_value(parser, OperandPosition::AfterOperator)?;
+
+                Err((
+                    "This expression can't be used in a calculation.",
+                    parser.toks_mut().span_from(start),
+                )
+                    .into())
+            }
             // A `+` or `-` with whitespace after it is a unary operator, not
             // the sign of a number, and a calculation has no unary operators.
             // Dart Sass parses `calc(+ 1px)` as one with its ordinary
@@ -1901,18 +1917,51 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
                 Ok(AstExpr::Paren(Arc::new(value)).span(parser.toks_mut().span_from(start)))
             }
             _ if !parser.looking_at_interpolated_identifier() => {
-                // `#` begins an interpolation or a hex colour, so Dart Sass
-                // has committed to reading a name by the time it fails, and
-                // reports the same missing identifier `$` does. It is consumed
-                // first so the span lands where Dart Sass puts it, after the
-                // `#`.
                 if parser.scan_char('#') {
-                    return Err(("Expected identifier.", parser.toks().current_span()).into());
+                    return Err((
+                        ValueParser::after_hash(parser),
+                        parser.toks().current_span(),
+                    )
+                        .into());
                 }
 
                 Err((position.no_operand(), parser.toks().current_span()).into())
             }
             _ => ValueParser::parse_calculation_identifier(parser),
+        }
+    }
+
+    /// What a `#` inside a calculation turned out to be.
+    ///
+    /// The `#` has already been consumed. Dart Sass reads a hex colour or a
+    /// name after it, so what fails depends on what follows: `#fff`, `#zzz`
+    /// and `#\65` all parse into something a calculation then refuses, while a
+    /// `#` with nothing usable behind it never gets that far and reports a
+    /// missing identifier.
+    ///
+    /// A digit run is a hex colour of 3, 4, 6 or 8 digits, and Dart Sass says
+    /// so when the run is another length: `#123` and `#12345678` are refused
+    /// expressions, `#1`, `#12`, `#12345` and `#1234567` want another hex
+    /// digit. A run longer than 8 takes the first 8 and is an expression
+    /// again. Every case here was taken from dart-sass 1.103.1.
+    fn after_hash(parser: &mut P) -> &'static str {
+        const EXPRESSION: &str = "This expression can't be used in a calculation.";
+
+        if parser.looking_at_identifier() {
+            return EXPRESSION;
+        }
+
+        let digits = (0..)
+            .take_while(|n| {
+                matches!(parser.toks().peek_n(*n), Some(Token { kind, .. }) if kind.is_ascii_hexdigit())
+            })
+            .count();
+
+        match digits {
+            3 | 4 | 6 => EXPRESSION,
+            n if n >= 8 => EXPRESSION,
+            0 => "Expected identifier.",
+            _ => "Expected hex digit.",
         }
     }
 
@@ -2754,9 +2803,15 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
     /// A calculation has four operators; SassScript has more, and dart-sass
     /// names the difference rather than reporting a missing `)`. `!` counts
     /// only as the start of `!=`: `calc(1px !)` is a malformed call and
-    /// dart-sass reports it as one. Checked against dart-sass 1.103.1 for
-    /// `%`, `<`, `<=`, `>`, `>=`, `=`, `==` and `!=`; `^` and `&`, which
-    /// SassScript has no operator for, keep the missing-`)` message there too.
+    /// dart-sass reports it as one, as it does for `^`. Checked against
+    /// dart-sass 1.103.1 for `%`, `<`, `<=`, `>`, `>=`, `=`, `==`, `!=`, `!`
+    /// and `^`.
+    ///
+    /// `&` is a known divergence rather than a member of either group.
+    /// dart-sass reads it as the parent selector, so `calc(1px & 2px)` holds
+    /// an expression a calculation cannot use; this reports a missing `)`.
+    /// Recorded in
+    /// `specs/docs/features/08-calculation-warnings-and-error-wording.md`.
     ///
     /// The word operators `and` and `or` do not reach here. They read as
     /// identifiers, so `calc(1px and 2px)` becomes a space-separated list and
