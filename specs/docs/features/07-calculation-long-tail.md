@@ -15,6 +15,12 @@ binary:
 The warning and error-wording differences the standard flags hide are a
 separate item, [08-calculation-warnings-and-error-wording.md](08-calculation-warnings-and-error-wording.md).
 
+**Re-measured 2026-09-10 on master (`31361d7`): 1 failure, section 1.**
+Sections 2 and 3 both pass now, closed by other work rather than by this
+item; nobody recorded which, and it is not reconstructed here. The area
+holds one other failure, `calc/operator/var/calculation`, which is not one
+of this item's three -- see [24-unclaimed-tail.md](24-unclaimed-tail.md).
+
 ## 1. Positive zero against an infinite divisor
 
 `spec/values/calculation/mod/nan/zero_and_negative_infinity`

@@ -6,6 +6,19 @@ Unlocks about 100 sass-spec tests from two cross-cutting parser gaps:
 under `spec/callable` for trailing commas and indented-syntax argument
 lists. Both are lexer/argument-parser work, so they share one document.
 
+**Landed. Re-measured 2026-09-10 on master (`31361d7`): 10 failures left in
+`spec/css/comment`, and `spec/callable` is clear.** Two of the ten now have
+causes written down elsewhere: `weird_indentation` under
+[18-loud-comment-fidelity.md](18-loud-comment-fidelity.md),
+`loud/multi_line/sass` under
+[19-indented-syntax-gaps.md](19-indented-syntax-gaps.md). The other eight are
+two `error/loud/sass/content_after_close` strictness checks, which are the
+same kind as [24-unclaimed-tail.md](24-unclaimed-tail.md)'s section 1 without
+being counted there; three `sourcemap` fixtures; two
+`block/loud/sass/content_after_close` output differences; and
+`block/loud/sass/trailing_whitespace`. None of those eight has been read for
+a cause.
+
 ## Gap 1: comments in more positions
 
 ### Current behavior
