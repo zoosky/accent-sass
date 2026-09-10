@@ -21,20 +21,48 @@ test!(
     "@use 'sass:math';\na {\n  color: math.clamp(0mm, 1cm, 2in);\n}\n",
     "a {\n  color: 1cm;\n}\n"
 );
+// dart-sass compares both other arguments against `$min`, and names the pair
+// that disagrees. The wording, and the order in which the two comparisons are
+// made, were checked against dart-sass 1.103.1.
 error!(
     clamp_only_min_has_no_unit,
     "@use 'sass:math';\na {\n  color: math.clamp(0, 1cm, 2in);\n}\n",
-    "Error: $min is unitless but $number has unit cm. Arguments must all have units or all be unitless."
+    "Error: $number: 1cm and $min: 0 have incompatible units (one has units and the other doesn't)."
 );
 error!(
     clamp_only_number_has_no_unit,
     "@use 'sass:math';\na {\n  color: math.clamp(0mm, 1, 2in);\n}\n",
-    "Error: $min has unit mm but $number is unitless. Arguments must all have units or all be unitless."
+    "Error: $number: 1 and $min: 0mm have incompatible units (one has units and the other doesn't)."
 );
 error!(
     clamp_only_max_has_no_unit,
     "@use 'sass:math';\na {\n  color: math.clamp(0mm, 1cm, 2);\n}\n",
-    "Error: $min has unit mm but $max is unitless. Arguments must all have units or all be unitless."
+    "Error: $max: 2 and $min: 0mm have incompatible units (one has units and the other doesn't)."
+);
+// $min and $number agree, so the mismatch is only found by the second
+// comparison. This shape produced no error at all before.
+error!(
+    clamp_only_max_has_a_unit,
+    "@use 'sass:math';\na {\n  color: math.clamp(0, 1, 2px);\n}\n",
+    "Error: $max: 2px and $min: 0 have incompatible units (one has units and the other doesn't)."
+);
+error!(
+    clamp_incompatible_units,
+    "@use 'sass:math';\na {\n  color: math.clamp(1deg, 1px, 1s);\n}\n",
+    "Error: $number: 1px and $min: 1deg have incompatible units."
+);
+// A bound wins a tie, which is what decides the unit that gets printed: 0.5turn
+// and 180deg are equal, and dart-sass returns $min.
+test!(
+    clamp_ties_go_to_the_bound,
+    "@use 'sass:math';\na {\n  min: math.clamp(180deg, 0.5turn, 360deg);\n  max: math.clamp(180deg, 1turn, 360deg);\n}\n",
+    "a {\n  min: 180deg;\n  max: 360deg;\n}\n"
+);
+// An inverted range collapses to $min before $number is looked at.
+test!(
+    clamp_min_greater_than_max,
+    "@use 'sass:math';\na {\n  color: math.clamp(1, 2, 0);\n}\n",
+    "a {\n  color: 1;\n}\n"
 );
 test!(
     sqrt_zero,
@@ -628,3 +656,47 @@ test!(
 );
 
 // todo: atan+asin with unitful NaN
+
+// A value close enough to zero to compare equal to it is still not zero, and
+// these functions are not degenerate there. All four expectations come from
+// dart-sass 1.103.1.
+test!(
+    asin_near_zero_is_not_zero,
+    "@use 'sass:math';\na {\n  pos: math.asin(0.000000000001);\n  neg: math.asin(-0.000000000001);\n}\n",
+    "a {\n  pos: 0.0000000001deg;\n  neg: -0.0000000001deg;\n}\n"
+);
+test!(
+    atan_near_zero_is_not_zero,
+    "@use 'sass:math';\na {\n  pos: math.atan(0.000000000001);\n  neg: math.atan(-0.000000000001);\n}\n",
+    "a {\n  pos: 0.0000000001deg;\n  neg: -0.0000000001deg;\n}\n"
+);
+test!(
+    acos_near_one_is_not_one,
+    "@use 'sass:math';\na {\n  color: math.acos(0.999999999999);\n}\n",
+    "a {\n  color: 0.0000810276deg;\n}\n"
+);
+test!(
+    log_near_zero_is_not_zero,
+    "@use 'sass:math';\na {\n  plain: math.log(0.000000000001);\n  base: math.log(2, 0.000000000001);\n}\n",
+    "a {\n  plain: -27.6310211159;\n  base: -0.025085833;\n}\n"
+);
+// The degenerate cases themselves are unchanged.
+test!(
+    log_of_exactly_zero,
+    "@use 'sass:math';\na {\n  plain: math.log(0);\n  base: math.log(2, 0);\n}\n",
+    "a {\n  plain: calc(-infinity);\n  base: 0;\n}\n"
+);
+// Dart's `double.minPositive` is the smallest subnormal, not the smallest
+// normal double. Multiplied up so the serializer cannot round it away.
+test!(
+    min_number_is_the_smallest_subnormal,
+    "@use 'sass:math';\na {\n  color: math.$min-number * 1e300 * 1e39;\n}\n",
+    "a {\n  color: 4940656458412465;\n}\n"
+);
+// More than one unit below the line needs brackets, or the string reads as a
+// product with the last unit in the numerator.
+test!(
+    unit_brackets_a_multi_unit_denominator,
+    "@use 'sass:math';\na {\n  two: math.unit(math.div(math.div(1px * 1em, 1rad), 1s));\n  one: math.unit(math.div(1px, 1s));\n}\n",
+    "a {\n  two: \"px*em/(rad*s)\";\n  one: \"px/s\";\n}\n"
+);
