@@ -730,3 +730,31 @@ error!(
     @include f#{o}o;"#,
     "Error: expected \";\"."
 );
+
+// Plain CSS is getting mixins of its own, and `--`-prefixed names are
+// reserved for them, so Sass refuses the spelling on the declaration and on
+// the `@include`. `Identifier` normalizes `_` to `-`, so `__a` and `--a` are
+// the same mixin -- but only the `--` spelling is forbidden, and the lookup
+// still comes first, so an undefined mixin reports that instead. dart-sass
+// 1.103.1 produced every expectation; the fixtures are
+// `spec/css/mixin/error/css/mixin` and
+// `spec/directives/mixin/custom_ident_include`.
+error!(
+    mixin_name_beginning_with_two_dashes_is_an_error,
+    "@mixin --a {}\n",
+    "Error: Sass @mixin names beginning with -- are forbidden for forward-compatibility with plain CSS mixins."
+);
+error!(
+    including_a_mixin_by_a_two_dash_name_is_an_error,
+    "@mixin __a() {b: c}\nd {@include --a}\n",
+    "Error: Sass @mixin names beginning with -- are forbidden for forward-compatibility with plain CSS mixins."
+);
+test!(
+    a_mixin_name_written_with_underscores_is_allowed,
+    "@mixin __a() {b: c}\nd {@include __a}\n",
+    "d {\n  b: c;\n}\n"
+);
+error!(
+    an_undefined_two_dash_mixin_still_reports_that,
+    "d {@include --a}\n", "Error: Undefined mixin."
+);

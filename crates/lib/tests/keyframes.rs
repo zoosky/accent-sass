@@ -344,3 +344,25 @@ error!(
 //     // color: \110000;
 //   }
 // }
+
+// A keyframe block holds declarations, not rules, so a style rule written
+// inside one is an error. The parent has to be the keyframe block itself:
+// `to {..}` written directly inside `@keyframes` *is* the block, and an
+// unknown at-rule or a `@media` inside one is still allowed. dart-sass
+// 1.103.1 produced every expectation; the fixture is
+// `spec/css/keyframes/error/in_keyframe_block/style_rule`.
+error!(
+    style_rule_in_a_keyframe_block_is_an_error,
+    "@keyframes a {\n  to {to {c: d}}\n}\n",
+    "Error: Style rules may not be used within keyframe blocks."
+);
+test!(
+    a_keyframe_selector_is_not_a_nested_style_rule,
+    "@keyframes a {\n  to {c: d}\n}\n",
+    "@keyframes a {\n  to {\n    c: d;\n  }\n}\n"
+);
+test!(
+    an_unknown_at_rule_in_a_keyframe_block_is_allowed,
+    "@keyframes a {\n  to {@b}\n}\n",
+    "@keyframes a {\n  to {\n    @b;\n  }\n}\n"
+);

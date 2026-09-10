@@ -25,7 +25,10 @@ use crate::{
             declare_module_string,
         },
     },
-    common::{BinaryOp, Brackets, Identifier, ListSeparator, QuoteKind, UnaryOp, unvendor},
+    common::{
+        BinaryOp, Brackets, CSS_MIXIN_NAME_ERROR, Identifier, ListSeparator, QuoteKind, UnaryOp,
+        unvendor,
+    },
     error::{SassError, SassResult},
     interner::InternedString,
     lexer::Lexer,
@@ -2425,6 +2428,13 @@ impl<'a> Visitor<'a> {
             .env
             .get_mixin(include_stmt.name, include_stmt.namespace)?;
 
+        // The lookup comes first, so an undefined mixin still reports that
+        // rather than the spelling. A builtin mixin cannot be named with `--`,
+        // so only a user-defined one can reach this.
+        if include_stmt.name_starts_with_dashes && matches!(mixin, Mixin::UserDefined(..)) {
+            return Err((CSS_MIXIN_NAME_ERROR, include_stmt.name.span).into());
+        }
+
         match mixin {
             Mixin::Builtin(mixin, _, accepts_content) => {
                 if include_stmt.content.is_some() && !accepts_content {
@@ -4017,6 +4027,25 @@ impl<'a> Visitor<'a> {
                 .into());
         }
 
+        // A keyframe block holds declarations, not rules. The parent has to be
+        // the keyframe block itself: `to {..}` written directly inside
+        // `@keyframes` is the block, and only a rule nested inside one of
+        // those is an error.
+        let parent_is_keyframe_block = self.parent.is_some_and(|parent| {
+            matches!(
+                *self.css_tree.get(parent),
+                Some(CssStmt::KeyframesRuleSet(..))
+            )
+        });
+
+        if self.flags.in_keyframes() && parent_is_keyframe_block {
+            return Err((
+                "Style rules may not be used within keyframe blocks.",
+                ruleset.span,
+            )
+                .into());
+        }
+
         let AstRuleSet {
             selector: ruleset_selector,
             body: ruleset_body,
@@ -4193,6 +4222,22 @@ impl<'a> Visitor<'a> {
         {
             return Err((
                 "Declarations may only be used within style rules.",
+                style.span,
+            )
+                .into());
+        }
+
+        // Inside a nested declaration block every child is SassScript. One
+        // that was parsed as raw CSS got there by being a custom property,
+        // whose value cannot be reinterpreted as part of an enclosing
+        // declaration's name.
+        if self.declaration_name.is_some() && !style.parsed_as_sass_script {
+            return Err((
+                if style.name.initial_plain().starts_with("--") {
+                    "Declarations whose names begin with \"--\" may not be nested."
+                } else {
+                    "Declarations parsed as raw CSS may not be nested."
+                },
                 style.span,
             )
                 .into());

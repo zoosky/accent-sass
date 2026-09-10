@@ -2,6 +2,14 @@ use std::fmt::{self, Display, Write};
 
 use crate::interner::InternedString;
 
+/// The error for a Sass `@mixin` whose name is spelled with a leading `--`.
+///
+/// Plain CSS is getting mixins of its own, and `--`-prefixed names are
+/// reserved for them, so Sass refuses the spelling on both the declaration
+/// and the `@include`. The two sites share the wording, which is dart-sass
+/// 1.103.1's.
+pub(crate) const CSS_MIXIN_NAME_ERROR: &str = "Sass @mixin names beginning with -- are forbidden for forward-compatibility with plain CSS mixins.\n\nFor details, see https://sass-lang.com/d/css-function-mixin";
+
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum UnaryOp {
     Plus,

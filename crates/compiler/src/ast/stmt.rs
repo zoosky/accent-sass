@@ -183,6 +183,13 @@ pub struct AstContentBlock {
 pub struct AstInclude {
     pub namespace: Option<Spanned<Identifier>>,
     pub name: Spanned<Identifier>,
+    /// Whether the name was written with a leading `--`, which reserves it
+    /// for a plain CSS mixin.
+    ///
+    /// [`Identifier`] normalizes `_` to `-`, which makes `__a` and `--a` the
+    /// same name; only the spelling tells the two apart, and only the `--`
+    /// spelling is forbidden.
+    pub name_starts_with_dashes: bool,
     pub args: ArgumentInvocation,
     pub content: Option<AstContentBlock>,
     pub span: Span,
