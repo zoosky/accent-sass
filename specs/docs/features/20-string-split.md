@@ -1,5 +1,10 @@
 # string.split
 
+**Landed. `spec/core_functions/string` is down from 8 failures to 1, and the
+suite from 284 to 277.** The one left is `private_use_character`, which needs
+the escaping fix item 24 records as well; this document said so before the
+change and the measurement bears it out.
+
 8 sass-spec failures in `spec/core_functions/string`, every one of them in
 `string.split` and every one of them in the same 35-line function. The rest
 of the string module is clear.
@@ -41,17 +46,20 @@ does not.
 
 `"".split("/")` in Rust yields one empty string; dart-sass returns an empty
 list. The `empty` fixture also checks that the empty result still reports
-`comma` as its separator, so return an empty *comma-separated bracketed*
-list rather than anything undecided.
+`comma` as its separator, so the empty list is comma-separated and
+bracketed rather than undecided.
+
+The `$limit` check has to stay in front of this: `string.split("", ",", 0)`
+is `$limit: Must be 1 or greater, was 0.` in dart-sass, not an empty list.
 
 ## 3. The result is always quoted
 
 `split/unquoted_string`
 
-Both `map` closures build `Value::String(s, QuoteKind::Quoted)`. dart-sass
+Both `map` closures built `Value::String(s, QuoteKind::Quoted)`. dart-sass
 gives each piece the quotedness of the input string, so
-`string.split(abc, "")` returns `[a, b, c]` unquoted. Carry the input's
-`QuoteKind` through instead of hard-coding `Quoted`.
+`string.split(abc, "")` returns `[a, b, c]` unquoted. The input's
+`QuoteKind` now carries through instead.
 
 ## What section 1 does not fix on its own
 
@@ -77,7 +85,9 @@ this fixture to pass.
 
 ## Acceptance criteria
 
-- `spec/core_functions/string` drops from 8 failures to 1, the one left
-  being `private_use_character`, which also needs item 24's escaping fix.
+- ~~`spec/core_functions/string` drops from 8 failures to 1, the one left
+  being `private_use_character`, which also needs item 24's escaping fix.~~
+  Done.
 - With that fix too, the area is clear.
-- No other area moves: `str_split` has one caller.
+- ~~No other area moves: `str_split` has one caller.~~ Done: 284 to 277,
+  seven fixtures, none newly failing.
