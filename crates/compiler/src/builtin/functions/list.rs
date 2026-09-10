@@ -54,12 +54,12 @@ pub(crate) fn set_nth(mut args: ArgumentResult, visitor: &mut Visitor) -> SassRe
     args.max_args(3)?;
     let (mut list, sep, brackets) = match args.get_err(0, "list")? {
         Value::List(v, sep, b) => (v, sep, b),
-        Value::ArgList(v) => (
-            v.elems.into_iter().collect(),
-            ListSeparator::Comma,
-            Brackets::None,
-        ),
-        Value::Map(m) => (m.as_list(), ListSeparator::Comma, Brackets::None),
+        // A map is its list of pairs and an arglist is a list already; both
+        // keep their own separator rather than taking a comma.
+        v @ (Value::Map(..) | Value::ArgList(..)) => {
+            let sep = v.separator();
+            (v.as_list(), sep, Brackets::None)
+        }
         v => (vec![v], ListSeparator::Undecided, Brackets::None),
     };
     let index = args

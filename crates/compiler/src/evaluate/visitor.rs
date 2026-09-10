@@ -2934,7 +2934,7 @@ impl<'a> Visitor<'a> {
             return Ok(ArgumentResult {
                 positional,
                 named,
-                separator: ListSeparator::Undecided,
+                separator,
                 span: arguments.span,
                 touched: BTreeSet::new(),
             });
@@ -3060,6 +3060,11 @@ impl<'a> Visitor<'a> {
                         Vec::new()
                     };
 
+                    // The arglist takes the separator of the list that was
+                    // splatted into it, so `foo(1, 2, (3 4 5)...)` gives
+                    // `$b: 2 3 4 5` rather than `2, 3, 4, 5`. A call with no
+                    // splat, or one whose splatted value has no separator of
+                    // its own, leaves it undecided and falls back to a comma.
                     let arg_list = Value::ArgList(ArgList::new(
                         rest,
                         Rc::clone(&were_keywords_accessed),
@@ -3068,7 +3073,7 @@ impl<'a> Visitor<'a> {
                         if evaluated.separator == ListSeparator::Undecided {
                             ListSeparator::Comma
                         } else {
-                            ListSeparator::Space
+                            evaluated.separator
                         },
                     ));
 
