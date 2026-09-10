@@ -588,7 +588,6 @@ test!(
     "@import url(2..);\n"
 );
 test!(
-    #[ignore = "we currently place plain @import ahead of loud comments that precede it"]
     import_multiline_comments_everywhere,
     "  /**/  @import  /**/  url(foo)  /**/  ;",
     "/**/\n@import url(foo);\n"
@@ -700,3 +699,44 @@ error!(
 // todo: test for absolute paths (how?)
 // todo: test for @import accessing things declared beforehand
 // e.g. b { @import } | $a: red; @import
+
+// A plain CSS `@import` has to come before any rule, so one written later
+// moves up. It moves to the end of the `@import` block, not to the top of the
+// document: comments are allowed between imports, so a comment written while
+// the block is still open belongs to the block and stays above the imports
+// that follow it. dart-sass 1.103.1 produced every expectation below; the
+// fixtures are `libsass-closed-issues/issue_469` and `issue_1080`.
+test!(
+    import_moves_up_past_a_rule_but_not_past_the_comment_above_it,
+    "/*!\n*/\n\n@charset \"utf-8\";\n\na {\n  color: red;\n}\n\n@import url(\"x\");\n",
+    "/*!\n*/\n@import url(\"x\");\na {\n  color: red;\n}\n"
+);
+test!(
+    comments_between_imports_keep_their_places,
+    "/** comment 1 */\n@import url(\"import-1\");\n/** comment 2 */\n@import url(\"import-2\");\n/** comment 3 */\nfoo { bar: baz; }\n",
+    "/** comment 1 */\n@import url(\"import-1\");\n/** comment 2 */\n@import url(\"import-2\");\n/** comment 3 */\nfoo {\n  bar: baz;\n}\n"
+);
+// A rule closes the block, so a comment written after one no longer joins it
+// and the later import moves past that comment.
+test!(
+    import_after_a_rule_moves_up_past_a_later_comment,
+    "/* one */\n/* two */\n@import url(\"x\");\na { b: c }\n@import url(\"y\");\n/* three */\n",
+    "/* one */\n/* two */\n@import url(\"x\");\n@import url(\"y\");\na {\n  b: c;\n}\n\n/* three */\n"
+);
+test!(
+    imports_after_a_rule_keep_their_order,
+    "a { b: c }\n@import url(\"x\");\n@import url(\"y\");\n",
+    "@import url(\"x\");\n@import url(\"y\");\na {\n  b: c;\n}\n"
+);
+// A nested import stays where it was written, and splits the enclosing rule
+// the way a declaration does when a nested rule comes between the two.
+test!(
+    nested_import_keeps_its_place_in_the_rule,
+    "a {\n  b {c: d}\n  @import url(\"x\");\n}\n",
+    "a b {\n  c: d;\n}\na {\n  @import url(\"x\");\n}\n"
+);
+test!(
+    import_inside_an_at_rule_stays_there,
+    "@media screen {\n  @import url(\"x\");\n}\n",
+    "@media screen {\n  @import url(\"x\");\n}\n"
+);

@@ -184,7 +184,18 @@ pub struct Visitor<'a> {
     css_tree: CssTree,
     parent: Option<CssTreeIdx>,
     configuration: Rc<RefCell<Configuration>>,
+    /// Plain CSS imports written after the top of the document, which move
+    /// back into the `@import` block at [`Self::end_of_imports`] when the
+    /// tree is finished.
     import_nodes: Vec<CssStmt>,
+    /// How many top-level statements belong to the `@import` block.
+    ///
+    /// CSS requires `@import` to come before any rule, so an import written
+    /// later is moved up. Comments are allowed between imports, so a comment
+    /// written while the block is still open extends it rather than closing
+    /// it -- otherwise a comment above an import would be left behind when
+    /// the import moved.
+    end_of_imports: usize,
     pub options: &'a Options<'a>,
     pub(crate) map: &'a mut CodeMap,
     // todo: remove
@@ -227,6 +238,7 @@ impl<'a> Visitor<'a> {
             configuration: Rc::new(RefCell::new(Configuration::empty())),
             is_plain_css: false,
             import_nodes: Vec::new(),
+            end_of_imports: 0,
             modules: BTreeMap::new(),
             module_configurations: BTreeMap::new(),
             current_upstream: Vec::new(),
@@ -265,11 +277,18 @@ impl<'a> Visitor<'a> {
 
         let mut finished_tree = self.css_tree.finish();
         if self.import_nodes.is_empty() {
-            Ok(finished_tree)
-        } else {
-            self.import_nodes.append(&mut finished_tree);
-            Ok(self.import_nodes)
+            return Ok(finished_tree);
         }
+
+        // The out-of-order imports go at the end of the `@import` block, not
+        // at the top of the document: the comments the block contains were
+        // written above them and stay there.
+        debug_assert!(self.end_of_imports <= finished_tree.len());
+        let mut rest = finished_tree.split_off(self.end_of_imports.min(finished_tree.len()));
+        finished_tree.append(&mut self.import_nodes);
+        finished_tree.append(&mut rest);
+
+        Ok(finished_tree)
     }
 
     /// Applies each module's extensions to the modules it loaded, and errors
@@ -1632,8 +1651,17 @@ impl<'a> Visitor<'a> {
         let node = CssStmt::Import(import, modifiers);
 
         if self.parent.is_some() && self.parent != Some(CssTree::ROOT) {
-            self.css_tree.add_stmt(node, self.parent);
+            // Nested, so it stays where it was written -- through `add_child`
+            // for the reason `visit_style` gives, since an import holds its
+            // place among the rule's other children.
+            self.add_child(node, Some(|_: &CssStmt| false));
+        } else if self.end_of_imports == self.css_tree.root_child_count() {
+            // Still inside the `@import` block, so it can stay in the tree.
+            self.css_tree.add_stmt(node, Some(CssTree::ROOT));
+            self.end_of_imports += 1;
         } else {
+            // A rule has been written since, so this import has to move back
+            // into the block when the tree is finished.
             self.import_nodes.push(node);
         }
 
@@ -2707,10 +2735,15 @@ impl<'a> Visitor<'a> {
             return Ok(None);
         }
 
-        // todo: Comments are allowed to appear between CSS imports
-        // if (_parent == _root && _endOfImports == _root.children.length) {
-        //   _endOfImports++;
-        // }
+        // Comments are allowed to appear between CSS imports, so one written
+        // while the `@import` block is still open belongs to it. Without
+        // this, a comment above an import would be left behind when a later
+        // import moved back into the block.
+        if (self.parent.is_none() || self.parent == Some(CssTree::ROOT))
+            && self.end_of_imports == self.css_tree.root_child_count()
+        {
+            self.end_of_imports += 1;
+        }
 
         let comment = CssStmt::Comment(
             self.perform_interpolation(comment.text, false)?,
