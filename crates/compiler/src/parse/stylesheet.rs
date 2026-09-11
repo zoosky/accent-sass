@@ -41,7 +41,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
     const IDENTIFIER_LIKE: Option<fn(&mut Self) -> SassResult<Spanned<AstExpr>>> = None;
 
     fn parse_style_rule_selector(&mut self) -> SassResult<Interpolation> {
-        self.almost_any_value(false, false)
+        self.almost_any_value(false)
     }
 
     fn expect_statement_separator(&mut self, _name: Option<&str>) -> SassResult<()> {
@@ -449,7 +449,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
 
     fn parse_disallowed_at_rule(&mut self, start: usize) -> SassResult<AstStmt> {
         self.whitespace(false)?;
-        self.almost_any_value(false, false)?;
+        self.almost_any_value(false)?;
         Err((
             "This at-rule is not allowed here.",
             self.toks_mut().span_from(start),
@@ -481,7 +481,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
                 .into());
         }
 
-        let value = self.almost_any_value(false, false)?;
+        let value = self.almost_any_value(false)?;
 
         let is_optional = self.scan_char('!');
 
@@ -765,7 +765,8 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
             return Ok(None);
         }
 
-        let value = self.parse_interpolated_declaration_value(true, true, true, true, true)?;
+        let value =
+            self.parse_interpolated_declaration_value(true, true, true, true, true, true)?;
         self.expect_char(')')?;
 
         Ok(Some(AstSupportsCondition::Function { name, args: value }))
@@ -829,8 +830,9 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
                             buffer.add_char(')');
                         }
                     } else {
-                        let args =
-                            self.parse_interpolated_declaration_value(true, true, true, true, true);
+                        let args = self.parse_interpolated_declaration_value(
+                            true, true, true, true, true, true,
+                        );
 
                         buffer.add_char('(');
                         buffer.add_interpolation(args?);
@@ -1226,12 +1228,17 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
         let was_in_unknown_at_rule = self.flags().in_unknown_at_rule();
         self.flags_mut().set(ContextFlags::IN_UNKNOWN_AT_RULE, true);
 
-        let value: Option<Interpolation> =
-            if !self.toks_mut().next_char_is('!') && !self.at_end_of_statement() {
-                Some(self.almost_any_value(false, true)?)
-            } else {
-                None
-            };
+        // dart-sass reads the value with `_interpolatedDeclarationValue`,
+        // stopping at `{`. Unlike `almost_any_value`, that collapses each run
+        // of whitespace to one space: `@apply  (  --bar  )` is written
+        // `@apply ( --bar )` (libsass issue 1263).
+        let value: Option<Interpolation> = if !self.toks_mut().next_char_is('!')
+            && !self.at_end_of_statement()
+        {
+            Some(self.parse_interpolated_declaration_value(false, false, true, false, true, false)?)
+        } else {
+            None
+        };
 
         // `@function --a() {result: b}` reaches this method: a `--`-prefixed
         // name makes the rule a plain CSS custom function rather than a Sass
@@ -1326,8 +1333,8 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
             AstExpr::String(StringExpr(text, QuoteKind::None), ..)
                 if text.initial_plain().starts_with("--") =>
             {
-                let text =
-                    self.parse_interpolated_declaration_value(false, false, true, false, true)?;
+                let text = self
+                    .parse_interpolated_declaration_value(false, false, true, false, true, true)?;
                 AstExpr::String(
                     StringExpr(text, QuoteKind::None),
                     self.toks_mut().span_from(start),
@@ -1359,7 +1366,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
 
             if self.scan_char('(') {
                 let arguments =
-                    self.parse_interpolated_declaration_value(true, true, true, true, true)?;
+                    self.parse_interpolated_declaration_value(true, true, true, true, true, true)?;
                 self.expect_char(')')?;
                 return Ok(AstSupportsCondition::Function {
                     name: identifier,
@@ -1437,7 +1444,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
                 let mut contents = Interpolation::new();
                 contents.add_interpolation(identifier);
                 contents.add_interpolation(
-                    self.parse_interpolated_declaration_value(true, true, false, true, true)?,
+                    self.parse_interpolated_declaration_value(true, true, false, true, true, true)?,
                 );
 
                 if self.toks_mut().next_char_is(':') {
@@ -2208,6 +2215,12 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
         // starts with `--`. `supports_custom_property_drops_a_comment` in
         // `crates/lib/tests/supports.rs` pins the difference.
         silent_comments: bool,
+        // default=true
+        //
+        // When `false`, a top-level `{` ends the value instead of opening a
+        // bracket. An unknown at-rule passes `false`, as dart-sass's does, so
+        // `@foo bar {...}` stops before its body.
+        allow_open_brace: bool,
     ) -> SassResult<Interpolation> {
         let mut buffer = Interpolation::new();
 
@@ -2295,6 +2308,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
                     self.toks_mut().next();
                     wrote_newline = true;
                 }
+                '{' if !allow_open_brace => break,
                 '(' | '{' | '[' => {
                     self.toks_mut().next();
                     buffer.add_char(tok.kind);
@@ -2593,7 +2607,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
             let value = if self.at_end_of_statement() {
                 Interpolation::new()
             } else {
-                self.parse_interpolated_declaration_value(false, false, true, false, false)?
+                self.parse_interpolated_declaration_value(false, false, true, false, false, true)?
             };
             let value_span = self.toks_mut().span_from(value_start);
             self.expect_statement_separator(Some(if is_custom_property {
@@ -2665,7 +2679,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
                 }
 
                 self.toks_mut().set_cursor(before_decl);
-                let additional = self.almost_any_value(false, false)?;
+                let additional = self.almost_any_value(false)?;
                 if !self.is_indented() && self.toks_mut().next_char_is(';') {
                     return Err(e);
                 }
@@ -2950,24 +2964,18 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
         Ok(declaration)
     }
 
+    /// dart-sass's `almostAnyValue`: reads text such as a selector, keeping
+    /// its whitespace as written and not requiring brackets to balance at the
+    /// end.
+    ///
+    /// An unknown at-rule's value is read by
+    /// [`Self::parse_interpolated_declaration_value`] instead, as it is in
+    /// dart-sass, which collapses whitespace and ends the value at an
+    /// unmatched closer.
     fn almost_any_value(
         &mut self,
         // default=false
         omit_comments: bool,
-        // Whether a bracket still open when the value ends is an error.
-        //
-        // dart-sass reads an unknown at-rule's value with
-        // `_interpolatedDeclarationValue`, which ends with
-        // `if (brackets.isNotEmpty) scanner.expectChar(brackets.last)`. Its
-        // `almostAnyValue`, which reads selectors, has no such check. This
-        // parser uses one function for both, so the check is a parameter and
-        // only the at-rule call site passes `true`.
-        //
-        // Without it, `@foo (` in the indented syntax reads to the end of the
-        // file: the newline arm below ends the value only when no bracket is
-        // open, so every rule that follows is swallowed into the at-rule's
-        // value and disappears from the output.
-        expect_balanced_brackets: bool,
     ) -> SassResult<Interpolation> {
         let mut buffer = Interpolation::new();
 
@@ -3068,19 +3076,9 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
                     // The brackets have to balance in the text itself, so a
                     // closer that interpolation smuggled in cannot pair with
                     // an opener written outside it: `[a#{"]:is(b"})` reaches
-                    // here at the `)` with `]` still open.
-                    //
-                    // Deliberate divergence, in an unknown at-rule's value
-                    // only: a closer with nothing open raises `Unexpected
-                    // ")".` here, which is what dart-sass's `almostAnyValue`
-                    // does, while its `_interpolatedDeclarationValue` -- the
-                    // one an at-rule value actually goes through -- ends the
-                    // value instead and reports `expected ";".` from the
-                    // statement separator. Both reject `@foo a) b {c: d}` at
-                    // the same character; only the wording differs, and
-                    // wording is not held to parity. Closing that gap means
-                    // giving the at-rule value its own reader, which is a
-                    // change of its own.
+                    // here at the `)` with `]` still open. A closer with
+                    // nothing open raises `Unexpected ")".`, as dart-sass's
+                    // `almostAnyValue` does.
                     let Some(bracket) = brackets.pop() else {
                         return Err((
                             format!("Unexpected \"{}\".", tok.kind),
@@ -3100,10 +3098,6 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
                     }
                 }
             }
-        }
-
-        if expect_balanced_brackets && let Some(&last) = brackets.last() {
-            self.expect_char(last)?;
         }
 
         Ok(buffer)
