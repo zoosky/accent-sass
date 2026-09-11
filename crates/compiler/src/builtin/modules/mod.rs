@@ -630,44 +630,63 @@ impl Module {
     }
 }
 
+/// Gives each function registered in the builtin module `name` the parameter
+/// lists dart-sass declares for it, so a call is checked against them.
+///
+/// Attaching them here, once the module is declared, keeps the lists in one
+/// table rather than spread across every `insert_builtin` call.
+fn with_signatures(module: Module, name: &str) -> Module {
+    let functions = module.scope().functions;
+    for (ident, function) in functions.iter() {
+        if let SassFunction::Builtin(builtin, _) = function {
+            let signatures = crate::builtin::signatures::module(name, ident.as_str());
+            functions.insert(
+                ident,
+                SassFunction::Builtin(builtin.with_signatures(signatures), ident),
+            );
+        }
+    }
+    module
+}
+
 pub(crate) fn declare_module_color() -> Module {
     let mut module = Module::new_builtin();
     color::declare(&mut module);
-    module
+    with_signatures(module, "color")
 }
 
 pub(crate) fn declare_module_list() -> Module {
     let mut module = Module::new_builtin();
     list::declare(&mut module);
-    module
+    with_signatures(module, "list")
 }
 
 pub(crate) fn declare_module_map() -> Module {
     let mut module = Module::new_builtin();
     map::declare(&mut module);
-    module
+    with_signatures(module, "map")
 }
 
 pub(crate) fn declare_module_math() -> Module {
     let mut module = Module::new_builtin();
     math::declare(&mut module);
-    module
+    with_signatures(module, "math")
 }
 
 pub(crate) fn declare_module_meta() -> Module {
     let mut module = Module::new_builtin();
     meta::declare(&mut module);
-    module
+    with_signatures(module, "meta")
 }
 
 pub(crate) fn declare_module_selector() -> Module {
     let mut module = Module::new_builtin();
     selector::declare(&mut module);
-    module
+    with_signatures(module, "selector")
 }
 
 pub(crate) fn declare_module_string() -> Module {
     let mut module = Module::new_builtin();
     string::declare(&mut module);
-    module
+    with_signatures(module, "string")
 }

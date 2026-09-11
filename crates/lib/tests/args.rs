@@ -316,7 +316,7 @@ error!(
 );
 error!(
     keyword_arg_to_function_expecting_varargs,
-    "a {\n  color: zip(a, b, $a: c);\n}\n", "Error: No argument named $a."
+    "a {\n  color: zip(a, b, $a: c);\n}\n", "Error: No parameter named $a."
 );
 error!(
     too_many_keyword_args_passed_one_extra_arg,
@@ -327,7 +327,7 @@ error!(
     a {
         color: foo($a: red, $b: green);
     }",
-    "Error: No argument named $b."
+    "Error: No parameter named $b."
 );
 error!(
     too_many_keyword_args_passed_two_extra_args,
@@ -338,7 +338,7 @@ error!(
     a {
         color: foo($a: red, $b: green, $c: blue);
     }",
-    "Error: No arguments named $b or $c."
+    "Error: No parameters named $b or $c."
 );
 error!(
     too_many_keyword_args_passed_three_extra_args,
@@ -349,5 +349,5 @@ error!(
     a {
         color: foo($a: red, $b: green, $c: blue, $d: brown);
     }",
-    "Error: No arguments named $b, $c or $d."
+    "Error: No parameters named $b, $c or $d."
 );

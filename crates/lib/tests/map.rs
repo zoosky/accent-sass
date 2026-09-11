@@ -29,16 +29,13 @@ test!(
     "a {\n  color: map-get((a: (b: (c: d))), a, b, c);\n}\n",
     "a {\n  color: d;\n}\n"
 );
-// it's an odd thing to do, but the spec suggests that the user
-// can call the function like:
-//     map.get("key2", "key3", $map: $my-map, $key: "key1")
-// in this case we are to use the named argument $key as the
-// first key and use the positional arguments at the front as
-// $keys.  this test verifies this behavior.
-test!(
+// Positional arguments fill `$map` and `$key` first, so naming either of
+// them as well is an error. Verified against dart-sass 1.103.1. This once
+// expected `d`, reading the positional arguments as `$keys` instead.
+error!(
     map_get_nested_named_and_positional,
     "a {\n  color: map-get(b, c, $map: (a: (b: (c: d))), $key: a);\n}\n",
-    "a {\n  color: d;\n}\n"
+    "Error: Argument $map was passed both by position and by name."
 );
 test!(
     map_get_nested_key_does_not_exist,
@@ -50,9 +47,11 @@ test!(
     "a {\n  color: map-get((a: (b: c)), a, b, c, d);\n}\n",
     ""
 );
+// Verified against dart-sass 1.103.1: the first parameter missing is `$map`.
+// This once expected `$key`.
 error!(
     map_get_no_args,
-    "a {\n  color: map-get();\n}\n", "Error: Missing argument $key."
+    "a {\n  color: map-get();\n}\n", "Error: Missing argument $map."
 );
 error!(
     map_get_one_arg,

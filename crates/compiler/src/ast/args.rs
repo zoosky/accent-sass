@@ -96,37 +96,61 @@ impl ArgumentDeclaration {
                 unknown_names.remove(&arg.name);
             }
 
-            if unknown_names.len() == 1 {
-                return Err((
-                    format!(
-                        "No argument named ${}.",
-                        unknown_names.iter().next().unwrap()
-                    ),
-                    span,
-                )
-                    .into());
-            }
-
-            if unknown_names.len() > 1 {
-                return Err((
-                    format!(
-                        "No arguments named {}.",
-                        to_sentence(
-                            unknown_names
-                                .into_iter()
-                                .map(|name| format!("${name}", name = name))
-                                .collect(),
-                            "or"
-                        )
-                    ),
-                    span,
-                )
-                    .into());
+            if !unknown_names.is_empty() {
+                return no_parameters_named(unknown_names, span);
             }
         }
 
         Ok(())
     }
+
+    /// Whether a call with `num_positional` positional arguments and the named
+    /// arguments `names` fits this parameter list.
+    ///
+    /// This is [`Self::verify`] without the errors: a port of dart-sass
+    /// 1.103.1's `ParameterList.matches`, which picks the overload of a
+    /// builtin that a call uses.
+    pub fn matches<T>(&self, num_positional: usize, names: &BTreeMap<Identifier, T>) -> bool {
+        let mut named_used = 0;
+
+        for (i, argument) in self.args.iter().enumerate() {
+            if i < num_positional {
+                if names.contains_key(&argument.name) {
+                    return false;
+                }
+            } else if names.contains_key(&argument.name) {
+                named_used += 1;
+            } else if argument.default.is_none() {
+                return false;
+            }
+        }
+
+        if self.rest.is_some() {
+            return true;
+        }
+
+        num_positional <= self.args.len() && named_used >= names.len()
+    }
+}
+
+/// The error for named arguments that no parameter takes, in dart-sass's
+/// words: `No parameter named $a.`, or `No parameters named $a, $b or $c.`
+fn no_parameters_named<T>(
+    names: impl IntoIterator<Item = Identifier>,
+    span: Span,
+) -> SassResult<T> {
+    let names: Vec<String> = names.into_iter().map(|name| format!("${name}")).collect();
+    let noun = if names.len() == 1 {
+        "parameter"
+    } else {
+        "parameters"
+    };
+
+    Err((
+        format!("No {noun} named {}.", to_sentence(names, "or")),
+        span,
+    )
+        .into())
 }
 
 #[derive(Debug, Clone)]
@@ -169,6 +193,10 @@ pub struct ArgumentResult {
     pub(crate) span: Span,
     // todo: hack
     pub(crate) touched: BTreeSet<usize>,
+    /// Which of a builtin's overloads the call matched, as an index into its
+    /// parameter lists. It is 0 for a builtin with one list and for a call
+    /// that was never checked against one.
+    pub(crate) overload: usize,
 }
 
 impl ArgumentResult {
@@ -246,6 +274,19 @@ impl ArgumentResult {
             separator,
             span,
             touched: BTreeSet::new(),
+            overload: 0,
+        }
+    }
+
+    /// Raises dart-sass's error for named arguments that nothing read.
+    ///
+    /// dart-sass makes this check after a builtin with a rest parameter has
+    /// run, so an error the builtin raises itself comes first.
+    pub(crate) fn assert_named_consumed(&self) -> SassResult<()> {
+        if self.named.is_empty() {
+            Ok(())
+        } else {
+            no_parameters_named(self.named.keys().copied(), self.span)
         }
     }
 
@@ -313,9 +354,33 @@ impl ArgumentResult {
         }
     }
 
+    /// Moves named arguments into the positions `declaration` gives them.
+    ///
+    /// The builtins read their arguments by position, and one that reads a
+    /// rest-like tail -- `map.remove($map, $key, $keys...)` -- has no other
+    /// way to see `$key` passed by name. dart-sass fills every parameter
+    /// this way and evaluates defaults for the missing ones. This stops at
+    /// the first parameter that was not passed instead of inventing a value
+    /// for it: builtins tell a missing optional argument apart from a
+    /// passed one, and a named argument after the gap is still found by
+    /// name.
+    pub(crate) fn bind_to(&mut self, declaration: &ArgumentDeclaration) {
+        for argument in declaration.args.iter().skip(self.positional.len()) {
+            match self.named.remove(&argument.name) {
+                Some(value) => self.positional.push(value),
+                None => break,
+            }
+        }
+    }
+
+    /// The positional arguments no parameter took.
+    ///
+    /// A named argument still here was not read, so no parameter takes it;
+    /// that is dart-sass's check for a builtin with a rest parameter whose
+    /// keywords were never accessed.
     pub(crate) fn get_variadic(self) -> SassResult<Vec<Spanned<Value>>> {
-        if let Some((name, _)) = self.named.iter().next() {
-            return Err((format!("No argument named ${}.", name), self.span).into());
+        if !self.named.is_empty() {
+            return no_parameters_named(self.named.keys().copied(), self.span);
         }
 
         let Self {
