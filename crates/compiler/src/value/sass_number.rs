@@ -9,7 +9,7 @@ use crate::{
     Options,
     error::SassResult,
     serializer::{inspect_float, inspect_number},
-    unit::{UNIT_CONVERSION_TABLE, Unit, are_any_convertible, known_compatibilities_by_unit},
+    unit::{Unit, are_any_convertible, conversion_factor, known_compatibilities_by_unit},
 };
 
 use super::{Number, fuzzy_as_int};
@@ -19,14 +19,6 @@ pub struct SassNumber {
     pub num: Number,
     pub unit: Unit,
     pub as_slash: Option<Arc<(Self, Self)>>,
-}
-
-pub(crate) fn conversion_factor(from: &Unit, to: &Unit) -> Option<f64> {
-    if from == to {
-        return Some(1.0);
-    }
-
-    UNIT_CONVERSION_TABLE.get(to)?.get(from).copied()
 }
 
 impl SassNumber {

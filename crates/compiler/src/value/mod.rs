@@ -15,13 +15,13 @@ use crate::{
     utils::is_special_function,
 };
 
+pub(crate) use crate::unit::conversion_factor;
 pub use arglist::ArgList;
 pub use calculation::*;
 pub use map::SassMap;
 pub use number::*;
 pub use sass_function::{SassFunction, UserDefinedFunction};
 pub use sass_number::SassNumber;
-pub(crate) use sass_number::conversion_factor;
 
 mod arglist;
 mod calculation;
