@@ -109,6 +109,16 @@ pub struct ComplexUnit {
     pub denom: Vec<Unit>,
 }
 
+/// The factor that turns a value in the single unit `from` into `to`, or
+/// `None` if they do not convert. dart-sass's `conversionFactor(to, from)`.
+fn simple_factor(from: &Unit, to: &Unit) -> Option<f64> {
+    if from == to {
+        return Some(1.0);
+    }
+
+    UNIT_CONVERSION_TABLE.get(to)?.get(from).copied()
+}
+
 pub(crate) fn are_any_convertible(units1: &[Unit], units2: &[Unit]) -> bool {
     for unit1 in units1 {
         for unit2 in units2 {
@@ -164,14 +174,54 @@ impl Unit {
     }
 
     pub(crate) fn comparable(&self, other: &Unit) -> bool {
-        if other == &Unit::None {
+        // A unitless number combines with any unit, complex or not, so this
+        // comes before the complex check: `1 + 1px/1em` is `2px/em`.
+        if other == &Unit::None || self == &Unit::None {
             return true;
+        }
+        if matches!(self, Unit::Complex(..)) || matches!(other, Unit::Complex(..)) {
+            return self.factor_to(other).is_some();
         }
         match self.kind() {
             UnitKind::FontRelative | UnitKind::ViewportRelative | UnitKind::Other => self == other,
             UnitKind::None => true,
             u => other.kind() == u,
         }
+    }
+
+    /// The factor that turns a value in `self` into the same quantity in
+    /// `to`, or `None` if the units are incompatible.
+    ///
+    /// A port of dart-sass 1.103.1's `SassNumber._coerceOrConvertValue`,
+    /// without its unitless shortcut, which callers handle. Each unit in
+    /// `to`'s numerator is paired with the first convertible unit left in
+    /// `self`'s numerator, and likewise for the denominators. Any unit left
+    /// unpaired on either side makes them incompatible. So `in/fu` converts
+    /// to `cm/fu`, where comparing the complex units whole rejected it
+    /// (libsass `units/simple`).
+    pub(crate) fn factor_to(&self, to: &Unit) -> Option<f64> {
+        if self == to {
+            return Some(1.0);
+        }
+
+        let (mut old_numer, mut old_denom) = self.clone().numer_and_denom();
+        let (new_numer, new_denom) = to.clone().numer_and_denom();
+
+        let mut factor = 1.0;
+        for new in &new_numer {
+            let i = old_numer
+                .iter()
+                .position(|old| simple_factor(old, new).is_some())?;
+            factor *= simple_factor(&old_numer.remove(i), new)?;
+        }
+        for new in &new_denom {
+            let i = old_denom
+                .iter()
+                .position(|old| simple_factor(old, new).is_some())?;
+            factor /= simple_factor(&old_denom.remove(i), new)?;
+        }
+
+        (old_numer.is_empty() && old_denom.is_empty()).then_some(factor)
     }
 
     /// The one spelling that names this unit.
