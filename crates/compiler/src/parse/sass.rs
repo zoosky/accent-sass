@@ -111,7 +111,7 @@ impl<'a> StylesheetParser<'a> for SassParser<'a> {
         let mut buffer = Interpolation::new();
 
         loop {
-            buffer.add_interpolation(self.almost_any_value(true, false)?);
+            buffer.add_interpolation(self.almost_any_value(true)?);
             buffer.add_char('\n');
 
             if !(buffer.trailing_string().trim_end().ends_with(',') && self.scan_char('\n')) {
