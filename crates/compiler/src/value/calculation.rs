@@ -1185,9 +1185,20 @@ pub(crate) fn round_with_step(strategy: RoundStrategy, number: f64, step: f64) -
 /// no second pair. Matching Dart Sass 1.103.1, which parenthesizes
 /// `#{"1px/2"}` and `#{"a b"}` but leaves `#{"-1px"}`, `#{"a-"}`, `#{"1,2"}`,
 /// `#{"[a]"}` and `#{"(a)"}` alone.
+///
+/// Text that starts with a `var(` call also keeps its parentheses, as in
+/// dart-sass's `_needsParentheses`: a `var()` may expand to anything, so
+/// `calc(1 + calc(var(--c)))` is written `calc(1 + (var(--c)))`. The name is
+/// matched case-insensitively, and only with the `(` right after it.
 pub(crate) fn needs_parens(text: &str) -> bool {
-    text.chars()
-        .any(|c| c.is_whitespace() || matches!(c, '*' | '/'))
+    let bytes = text.as_bytes();
+    let is_var_call =
+        bytes.len() >= 4 && bytes[..3].eq_ignore_ascii_case(b"var") && bytes[3] == b'(';
+
+    is_var_call
+        || text
+            .chars()
+            .any(|c| c.is_whitespace() || matches!(c, '*' | '/'))
 }
 
 /// Whether `arg` is itself text Sass cannot resolve.
