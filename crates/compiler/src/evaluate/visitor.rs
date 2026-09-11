@@ -1721,7 +1721,16 @@ impl<'a> Visitor<'a> {
         Ok(None)
     }
 
-    fn trim_included(&self, nodes: &[CssTreeIdx]) -> CssTreeIdx {
+    /// Removes the trailing run of `nodes` that the current parents already
+    /// provide, and returns the innermost of them: the node the `@at-root`
+    /// body can go straight into.
+    ///
+    /// A port of dart-sass 1.103.1's `_trimIncluded`. `nodes` lists the
+    /// included parents from innermost to outermost. If a trailing run of
+    /// them is contiguous and ends directly under the root, that run is
+    /// removed, so only the parents left over need copies. Otherwise `nodes`
+    /// is left as it is and the root is returned.
+    fn trim_included(&self, nodes: &mut Vec<CssTreeIdx>) -> CssTreeIdx {
         if nodes.is_empty() {
             return CssTree::ROOT;
         }
@@ -1759,7 +1768,13 @@ impl<'a> Visitor<'a> {
             return CssTree::ROOT;
         }
 
-        nodes[innermost_contiguous.unwrap()]
+        // Without the removal the trimmed parents were copied anyway, which
+        // left the original empty beside its copy: `@fblthp {}` followed by
+        // `@fblthp {.bar {...}}` (libsass at-root test 140).
+        let innermost = innermost_contiguous.unwrap();
+        let root = nodes[innermost];
+        nodes.truncate(innermost);
+        root
     }
 
     fn visit_at_root_rule(&mut self, mut at_root_rule: AstAtRootRule) -> SassResult<Option<Value>> {
@@ -1795,7 +1810,7 @@ impl<'a> Visitor<'a> {
             current_parent_idx = grandparent_idx;
         }
 
-        let root = self.trim_included(&included);
+        let root = self.trim_included(&mut included);
 
         // If we didn't exclude any rules, we don't need to use the copies we might
         // have created.
@@ -1811,37 +1826,21 @@ impl<'a> Visitor<'a> {
             return Ok(None);
         }
 
-        let inner_copy = if !included.is_empty() {
-            let inner_copy = self
+        // Copy the included parents left after trimming, outermost first, as
+        // a chain under `root`, and put the body in the innermost copy. With
+        // none left the body goes straight into `root`, which dart-sass uses
+        // as is rather than copying. `None` stands for the document root.
+        let mut inner_copy = root;
+        for node in included.iter().rev() {
+            let copy = self
                 .css_tree
-                .get(*included.first().unwrap())
+                .get(*node)
                 .as_ref()
-                .map(CssStmt::copy_without_children);
-            let mut outer_copy = self.css_tree.add_stmt(inner_copy.unwrap(), None);
-
-            for node in &included[1..] {
-                let copy = self
-                    .css_tree
-                    .get(*node)
-                    .as_ref()
-                    .map(CssStmt::copy_without_children)
-                    .unwrap();
-
-                let copy_idx = self.css_tree.add_stmt(copy, None);
-                self.css_tree.link_child_to_parent(outer_copy, copy_idx);
-
-                outer_copy = copy_idx;
-            }
-
-            Some(outer_copy)
-        } else {
-            let inner_copy = self
-                .css_tree
-                .get(root)
-                .as_ref()
-                .map(CssStmt::copy_without_children);
-            inner_copy.map(|p| self.css_tree.add_stmt(p, None))
-        };
+                .map(CssStmt::copy_without_children)
+                .unwrap();
+            inner_copy = self.css_tree.add_child(copy, inner_copy);
+        }
+        let inner_copy = (inner_copy != CssTree::ROOT).then_some(inner_copy);
 
         let body = mem::take(&mut at_root_rule.body);
 
