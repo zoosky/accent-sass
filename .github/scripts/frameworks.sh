@@ -143,8 +143,11 @@ if ! "$ACCENT_SASS" "${probe_args[@]}" "$FOUNDATION_PROBE" > foundation-function
   echo "::error::accent-sass failed to compile the Foundation function probe"
   head -n 20 foundation-functions-accent-sass.err
   status=1
-elif ! "$SASS" --quiet --load-path=node_modules/foundation-sites/scss "$FOUNDATION_PROBE" > foundation-functions-sass.css 2>/dev/null; then
+elif ! "$SASS" --quiet --load-path=node_modules/foundation-sites/scss "$FOUNDATION_PROBE" > foundation-functions-sass.css 2>foundation-functions-sass.err; then
+  # A dart-sass or Foundation bump that drops a probed function lands here,
+  # so show why rather than only that it failed.
   echo "::error::dart-sass failed to compile the Foundation function probe"
+  head -n 20 foundation-functions-sass.err
   status=1
 else
   results=$(grep -c ': ' foundation-functions-sass.css)
