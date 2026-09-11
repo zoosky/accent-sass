@@ -351,3 +351,10 @@ error!(
     }",
     "Error: No parameters named $b, $c or $d."
 );
+// A global builtin is checked against its parameter list too. Verified
+// against dart-sass 1.103.1.
+error!(
+    global_variable_exists_rejects_unknown_name,
+    "a {\n  b: global-variable-exists(foo, $invalid: 1);\n}\n",
+    "Error: No parameter named $invalid."
+);

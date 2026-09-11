@@ -34,6 +34,7 @@ pub(crate) fn global(name: &str) -> Option<&'static [&'static str]> {
         "floor" => &["$number"],
         "function-exists" => &["$name, $module: null"],
         "get-function" => &["$name, $css: false, $module: null"],
+        "global-variable-exists" => &["$name, $module: null"],
         "grayscale" => &["$color"],
         "green" => &["$color"],
         "hsl" => &[
