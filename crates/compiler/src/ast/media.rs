@@ -86,7 +86,11 @@ impl MediaQuery {
         let conditions;
 
         if (this_modifier.as_deref() == Some("not")) != (other_modifier.as_deref() == Some("not")) {
-            if this_modifier == other_modifier {
+            // Exactly one query is negated, so the modifiers always differ
+            // here; dart-sass compares the types. Comparing the modifiers
+            // never matched, so `not screen` merged with `screen` fell through
+            // and came out as `screen` instead of empty or unrepresentable.
+            if this_type == other_type {
                 let negative_conditions = if this_modifier.as_deref() == Some("not") {
                     &self.conditions
                 } else {

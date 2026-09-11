@@ -163,6 +163,30 @@ impl CssTree {
         self.parent_to_child.get(&Self::ROOT).map_or(0, Vec::len)
     }
 
+    /// Whether `child` is the last node in its parent, visible or not.
+    ///
+    /// This is the test dart-sass's `_copyParentAfterSibling` makes before a
+    /// declaration, comment, childless at-rule or nested import: any node
+    /// written after the parent, even one that prints nothing, means the
+    /// child goes into a copy of the parent so source order survives. The
+    /// root counts as last, since it has no parent to copy into.
+    pub fn is_last_child(&self, child: CssTreeIdx) -> bool {
+        if child == Self::ROOT {
+            return true;
+        }
+
+        let parent_idx = self.child_to_parent.get(&child).unwrap();
+
+        self.parent_to_child.get(parent_idx).unwrap().last() == Some(&child)
+    }
+
+    /// Whether a visible node follows `child` in its parent.
+    ///
+    /// An invisible sibling does not count, as in dart-sass: an `@media` that
+    /// bubbled out of a style rule and turned out empty must not make the
+    /// rule's later children start a new copy of their parent. That split
+    /// `@media (min-width: 1px) {.a {x: y; @media (min-width: 2px) {}} .b {x: y}}`
+    /// into two blocks (libsass issue 2154).
     pub fn has_following_sibling(&self, child: CssTreeIdx) -> bool {
         if child == Self::ROOT {
             return false;
@@ -172,8 +196,41 @@ impl CssTree {
 
         let parent_children = self.parent_to_child.get(parent_idx).unwrap();
 
-        // todo: we shouldn't take into account children that are invisible
-        parent_children.last() != Some(&child)
+        parent_children
+            .iter()
+            .skip_while(|&&sibling| sibling != child)
+            .skip(1)
+            .any(|&sibling| !self.is_invisible(sibling))
+    }
+
+    /// Whether the node at `idx` would print nothing.
+    ///
+    /// This is [`CssStmt::is_invisible`] for a node still in the tree, where
+    /// its children live in `parent_to_child` rather than in its `body`. A
+    /// tombstoned node is invisible.
+    fn is_invisible(&self, idx: CssTreeIdx) -> bool {
+        let stmt = self.stmts[idx.0].borrow();
+        let Some(stmt) = stmt.as_ref() else {
+            return true;
+        };
+
+        let children_invisible = || {
+            self.parent_to_child
+                .get(&idx)
+                .is_none_or(|children| children.iter().all(|&child| self.is_invisible(child)))
+        };
+
+        match stmt {
+            CssStmt::RuleSet { selector, .. } if selector.is_invisible() => true,
+            CssStmt::RuleSet { .. }
+            | CssStmt::Media(..)
+            | CssStmt::Supports(..)
+            | CssStmt::KeyframesRuleSet(..) => stmt.is_invisible() && children_invisible(),
+            CssStmt::Style(..)
+            | CssStmt::UnknownAtRule(..)
+            | CssStmt::Import(..)
+            | CssStmt::Comment(..) => false,
+        }
     }
 
     pub fn add_stmt(&mut self, child: CssStmt, parent: Option<CssTreeIdx>) -> CssTreeIdx {
