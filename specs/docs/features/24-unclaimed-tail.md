@@ -97,6 +97,21 @@ These are the last of item 04's territory that item 04 does not cover, and
 they are genuinely fiddly; take them one at a time, and read
 `crates/compiler/src/selector/extend/` before assuming which pass is wrong.
 
+**Closed by `fix/extend-selector-set`.** The trimming pass was not wrong. The
+four came from three places where the port had drifted from dart-sass
+1.103.1:
+
+- `issue_1091`: `ComplexSelector::is_super_selector` was the pre-rewrite
+  algorithm. It rejected `.d > .e` as a superselector of `.b .d > .e`. It is
+  now a port of `complexIsSuperselector`, which also closes nine
+  `is_superselector/complex` fixtures.
+- `into_pseudo/extends_after`: `extend_complex` rebuilt a single-selector
+  path instead of returning it. That dropped the selector's identity, and with
+  it its place in `originals`.
+- `extend-loop` and `issue_2055`: `add_extension` copied the target's
+  extensions-by-extender list up front. dart-sass holds a live reference, so
+  an extender added in the same call is extended too.
+
 ## 4. `@extend` across media queries is not an error
 
 `libsass-closed-issues/issue_{673,712,1923}`

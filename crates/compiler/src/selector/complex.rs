@@ -139,110 +139,128 @@ impl ComplexSelector {
     ///
     /// That is, whether `self` matches every element that `other` matches, as well
     /// as possibly additional elements.
+    ///
+    /// A port of dart-sass 1.103.1's `complexIsSuperselector`. The walk
+    /// matches each compound of `self` against the earliest compound of
+    /// `other` it is a superselector of, then checks the combinators on both
+    /// sides of that match. Selectors with a leading or trailing combinator,
+    /// or with two combinators in a row, are never superselectors of anything
+    /// and never have one.
     pub fn is_super_selector(&self, other: &Self) -> bool {
-        if let Some(ComplexSelectorComponent::Combinator(..)) = self.components.last() {
+        let (Some(steps1), Some(steps2)) = (
+            SuperselectorStep::split(&self.components),
+            SuperselectorStep::split(&other.components),
+        ) else {
             return false;
+        };
+
+        // Selectors with trailing operators are neither superselectors nor
+        // subselectors.
+        match (steps1.last(), steps2.last()) {
+            (Some(last1), Some(last2))
+                if last1.combinators.is_empty() && last2.combinators.is_empty() => {}
+            _ => return false,
         }
-        if let Some(ComplexSelectorComponent::Combinator(..)) = other.components.last() {
-            return false;
-        }
+
+        // The components of `other` from step `from` up to, not including,
+        // step `to`, with the combinators that follow each one: the parents a
+        // selector pseudo in `self` may need to see. dart-sass passes them
+        // only to compounds whose superselector semantics depend on them.
+        let parents = |compound1: &CompoundSelector, from: usize, to: usize| {
+            compound1
+                .has_complicated_superselector_semantics()
+                .then(|| other.components[steps2[from].start..steps2[to].start].to_vec())
+        };
 
         let mut i1 = 0;
         let mut i2 = 0;
+        let mut previous_combinator: Option<Combinator> = None;
 
         loop {
-            let remaining1 = self.components.len() - i1;
-            let remaining2 = other.components.len() - i2;
-
-            if remaining1 == 0 || remaining2 == 0 || remaining1 > remaining2 {
+            let remaining1 = steps1.len() - i1;
+            let remaining2 = steps2.len() - i2;
+            if remaining1 == 0 || remaining2 == 0 {
                 return false;
             }
 
-            let compound1 = match self.components.get(i1) {
-                Some(ComplexSelectorComponent::Compound(c)) => c,
-                Some(ComplexSelectorComponent::Combinator(..)) => return false,
-                None => unreachable!(),
-            };
+            // More complex selectors are never superselectors of less complex
+            // ones.
+            if remaining1 > remaining2 {
+                return false;
+            }
 
-            if let ComplexSelectorComponent::Combinator(..) = other.components[i2] {
+            let component1 = &steps1[i1];
+            if component1.combinators.len() > 1 {
                 return false;
             }
 
             if remaining1 == 1 {
-                let parents = other
-                    .components
-                    .iter()
-                    .take(other.components.len() - 1)
-                    .skip(i2)
-                    .cloned()
-                    .collect();
-                return compound1.is_super_selector(
-                    other.components.last().unwrap().as_compound(),
-                    &Some(parents),
+                if steps2.iter().any(|parent| parent.combinators.len() > 1) {
+                    return false;
+                }
+                let last = steps2.len() - 1;
+                return component1.compound.is_super_selector(
+                    steps2[last].compound,
+                    &parents(component1.compound, i2, last),
                 );
             }
 
-            let mut after_super_selector = i2 + 1;
-            while after_super_selector < other.components.len() {
-                if let Some(ComplexSelectorComponent::Compound(compound2)) =
-                    other.components.get(after_super_selector - 1)
-                    && compound1.is_super_selector(
-                        compound2,
-                        &Some(
-                            other
-                                .components
-                                .iter()
-                                .take(after_super_selector - 1)
-                                .skip(i2 + 1)
-                                .cloned()
-                                .collect(),
-                        ),
-                    )
+            // Find the first step `end` of `other` such that the steps from
+            // `i2` through `end` are a subselector of `component1`.
+            let mut end = i2;
+            loop {
+                let component2 = &steps2[end];
+                if component2.combinators.len() > 1 {
+                    return false;
+                }
+                if component1
+                    .compound
+                    .is_super_selector(component2.compound, &parents(component1.compound, i2, end))
                 {
                     break;
                 }
 
-                after_super_selector += 1;
+                end += 1;
+                if end == steps2.len() - 1 {
+                    // Stop before the superselector would encompass all of
+                    // `other`: `self` has more than one step left, and
+                    // consuming all of `other` would leave nothing for the
+                    // rest of it to match.
+                    return false;
+                }
             }
 
-            if after_super_selector == other.components.len() {
+            if !compatible_with_previous_combinator(previous_combinator, &steps2[i2..end]) {
                 return false;
             }
 
-            if let Some(ComplexSelectorComponent::Combinator(combinator1)) =
-                self.components.get(i1 + 1)
-            {
-                let combinator2 = match other.components.get(after_super_selector) {
-                    Some(ComplexSelectorComponent::Combinator(c)) => c,
-                    Some(ComplexSelectorComponent::Compound(..)) => return false,
-                    None => unreachable!(),
-                };
+            let combinator1 = component1.combinators.first().copied();
+            let combinator2 = steps2[end].combinators.first().copied();
+            if !is_supercombinator(combinator1, combinator2) {
+                return false;
+            }
 
-                if combinator1 == &Combinator::FollowingSibling {
-                    if combinator2 == &Combinator::Child {
-                        return false;
+            i1 += 1;
+            i2 = end + 1;
+            previous_combinator = combinator1;
+
+            if steps1.len() - i1 == 1 {
+                let rejected = match combinator1 {
+                    // `.foo ~ .bar` is only a superselector of selectors that
+                    // *exclusively* contain subcombinators of `~`.
+                    Some(Combinator::FollowingSibling) => {
+                        !steps2[i2..steps2.len() - 1].iter().all(|component| {
+                            is_supercombinator(combinator1, component.combinators.first().copied())
+                        })
                     }
-                } else if combinator1 != combinator2 {
+                    // `.foo > .bar` and `.foo + .bar` aren't superselectors of
+                    // any selectors with more than one combinator.
+                    Some(_) => steps2.len() - i2 > 1,
+                    None => false,
+                };
+                if rejected {
                     return false;
                 }
-
-                if remaining1 == 3 && remaining2 > 3 {
-                    return false;
-                }
-
-                i1 += 2;
-                i2 = after_super_selector + 1;
-            } else if let Some(ComplexSelectorComponent::Combinator(combinator2)) =
-                other.components.get(after_super_selector)
-            {
-                if combinator2 != &Combinator::Child {
-                    return false;
-                }
-                i1 += 1;
-                i2 = after_super_selector + 1;
-            } else {
-                i1 += 1;
-                i2 = after_super_selector;
             }
         }
     }
@@ -293,6 +311,79 @@ impl ComplexSelector {
             }
         })
     }
+}
+
+/// One compound selector of a complex selector with the combinators written
+/// after it.
+///
+/// This is the unit dart-sass's `ComplexSelectorComponent` holds, and the one
+/// its superselector algorithm walks. This compiler stores compounds and
+/// combinators interleaved instead, so [`ComplexSelector::is_super_selector`]
+/// regroups them rather than rewriting the algorithm around the difference.
+struct SuperselectorStep<'a> {
+    compound: &'a CompoundSelector,
+    combinators: Vec<Combinator>,
+    /// The index of `compound` in the interleaved components, so a run of
+    /// steps can be sliced back out of them.
+    start: usize,
+}
+
+impl<'a> SuperselectorStep<'a> {
+    /// Groups `components` into steps.
+    ///
+    /// Returns `None` when `components` begins with a combinator: dart-sass
+    /// never treats a selector with leading combinators as a superselector or
+    /// a subselector.
+    fn split(components: &'a [ComplexSelectorComponent]) -> Option<Vec<Self>> {
+        let mut steps: Vec<Self> = Vec::new();
+        for (start, component) in components.iter().enumerate() {
+            match component {
+                ComplexSelectorComponent::Compound(compound) => steps.push(Self {
+                    compound,
+                    combinators: Vec::new(),
+                    start,
+                }),
+                ComplexSelectorComponent::Combinator(combinator) => {
+                    steps.last_mut()?.combinators.push(*combinator);
+                }
+            }
+        }
+        Some(steps)
+    }
+}
+
+/// Whether a match that skipped the steps `parents` can follow a previous
+/// match joined to it by `previous`.
+///
+/// The child and next-sibling combinators need the *immediately* following
+/// compound to match, so nothing may be skipped after them. The following
+/// sibling combinator allows skipped compounds, but only siblings.
+fn compatible_with_previous_combinator(
+    previous: Option<Combinator>,
+    parents: &[SuperselectorStep<'_>],
+) -> bool {
+    if parents.is_empty() {
+        return true;
+    }
+    match previous {
+        None => true,
+        Some(Combinator::FollowingSibling) => parents.iter().all(|component| {
+            matches!(
+                component.combinators.first(),
+                Some(Combinator::FollowingSibling | Combinator::NextSibling)
+            )
+        }),
+        Some(_) => false,
+    }
+}
+
+/// Whether `combinator1` matches everything `combinator2` does, where `None`
+/// is the descendant combinator.
+fn is_supercombinator(combinator1: Option<Combinator>, combinator2: Option<Combinator>) -> bool {
+    combinator1 == combinator2
+        || (combinator1.is_none() && combinator2 == Some(Combinator::Child))
+        || (combinator1 == Some(Combinator::FollowingSibling)
+            && combinator2 == Some(Combinator::NextSibling))
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Copy, Hash)]

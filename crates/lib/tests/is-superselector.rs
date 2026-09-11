@@ -474,6 +474,43 @@ test!(
     "a {\n  color: is-superselector(\"a > b\", \"a >\");\n}\n",
     "a {\n  color: false;\n}\n"
 );
+// The combinator checks below follow dart-sass 1.103.1's
+// `complexIsSuperselector`; each expectation was checked against it.
+test!(
+    child_combinator_with_extra_ancestor,
+    "a {\n  color: is-superselector(\"a > b\", \"x a > b\");\n}\n",
+    "a {\n  color: true;\n}\n"
+);
+test!(
+    following_sibling_over_trailing_next_sibling,
+    "a {\n  color: is-superselector(\"a ~ b\", \"a ~ c + b\");\n}\n",
+    "a {\n  color: true;\n}\n"
+);
+test!(
+    next_sibling_does_not_skip_a_sibling,
+    "a {\n  color: is-superselector(\"a + b\", \"a + c + b\");\n}\n",
+    "a {\n  color: false;\n}\n"
+);
+test!(
+    child_combinator_does_not_skip_a_compound,
+    "a {\n  color: is-superselector(\"a > b c\", \"a > x b c\");\n}\n",
+    "a {\n  color: false;\n}\n"
+);
+test!(
+    following_sibling_skips_a_sibling,
+    "a {\n  color: is-superselector(\"a ~ b c\", \"a ~ x ~ b c\");\n}\n",
+    "a {\n  color: true;\n}\n"
+);
+test!(
+    following_sibling_chain_skips_siblings,
+    "a {\n  color: is-superselector(\"a ~ b ~ c\", \"a ~ b + x ~ c\");\n}\n",
+    "a {\n  color: true;\n}\n"
+);
+test!(
+    is_with_child_combinator_sees_parents,
+    "a {\n  color: is-superselector(\":is(c > d)\", \"e c > d\");\n}\n",
+    "a {\n  color: true;\n}\n"
+);
 
 // todo: /spec/core_functions/selector/is_superselector/simple/pseudo/selector_arg/
 // :not, :matches, :nth-child, :nth-last-child
