@@ -888,19 +888,21 @@ test!(
     ",
     ".baz .foo, .baz foo + bar {\n  a: b;\n}\n"
 );
+// A useless selector can't be an extender, so it is not woven in. Verified
+// against dart-sass 1.104.0; sass-spec `extend-tests/129` and `130`.
 test!(
     complex_extender_with_hacky_selector_1,
     ".baz .foo {a: b}
     foo + > > + bar {@extend .foo}
     ",
-    ".baz .foo, .baz foo + > > + bar, foo .baz + > > + bar {\n  a: b;\n}\n"
+    ".baz .foo {\n  a: b;\n}\n"
 );
 test!(
     complex_extender_with_hacky_selector_2,
     ".baz .foo {a: b}
     > > bar {@extend .foo}
     ",
-    ".baz .foo, > > .baz bar {\n  a: b;\n}\n"
+    ".baz .foo {\n  a: b;\n}\n"
 );
 test!(
     complex_extender_merges_with_the_same_selector,
@@ -918,54 +920,57 @@ test!(
     ",
     ".foo > .bar .baz, .foo > .bar .bang {\n  a: b;\n}\n"
 );
+// Two combinators in a row make a selector useless: a rule with one is
+// omitted, and one can't be an extender. Verified against dart-sass 1.104.0;
+// sass-spec `extend-tests/133` to `139`.
 test!(
     combinator_unification_for_hacky_combinators_1,
     ".a > + x {a: b}
     .b y {@extend x}
     ",
-    ".a > + x, .a .b > + y, .b .a > + y {\n  a: b;\n}\n"
+    ""
 );
 test!(
     combinator_unification_for_hacky_combinators_2,
     ".a x {a: b}
     .b > + y {@extend x}
     ",
-    ".a x, .a .b > + y, .b .a > + y {\n  a: b;\n}\n"
+    ".a x {\n  a: b;\n}\n"
 );
 test!(
     combinator_unification_for_hacky_combinators_3,
     ".a > + x {a: b}
     .b > + y {@extend x}
     ",
-    ".a > + x, .a .b > + y, .b .a > + y {\n  a: b;\n}\n"
+    ""
 );
 test!(
     combinator_unification_for_hacky_combinators_4,
     ".a ~ > + x {a: b}
     .b > + y {@extend x}
     ",
-    ".a ~ > + x, .a .b ~ > + y, .b .a ~ > + y {\n  a: b;\n}\n"
+    ""
 );
 test!(
     combinator_unification_for_hacky_combinators_5,
     ".a + > x {a: b}
     .b > + y {@extend x}
     ",
-    ".a + > x {\n  a: b;\n}\n"
+    ""
 );
 test!(
     combinator_unification_for_hacky_combinators_6,
     ".a + > x {a: b}
     .b > + y {@extend x}
     ",
-    ".a + > x {\n  a: b;\n}\n"
+    ""
 );
 test!(
     combinator_unification_for_hacky_combinators_7,
     ".a ~ > + .b > x {a: b}
     .c > + .d > y {@extend x}
     ",
-    ".a ~ > + .b > x, .a .c ~ > + .b.d > y, .c .a ~ > + .b.d > y {\n  a: b;\n}\n"
+    ""
 );
 test!(
     combinator_unification_double_tilde_1,
@@ -1869,13 +1874,15 @@ test!(
     }",
     "foo, a:current(foo),\n:current(foo) {\n  color: black;\n}\n"
 );
+// A trailing combinator inside `:has()` is bogus, which makes the whole
+// selector invisible. Verified against dart-sass 1.104.0.
 test!(
     extend_pseudo_selector_class_containing_combinator_without_rhs_selector,
     ":has(a >) b {
         @extend b;
         color: red;
     }",
-    ":has(a >) b, :has(a >) :has(a >) :has(a >) b, :has(a >) :has(a >) :has(a >) b {\n  color: red;\n}\n"
+    ""
 );
 test!(
     extend_after_target,

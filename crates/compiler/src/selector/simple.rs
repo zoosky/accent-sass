@@ -127,20 +127,51 @@ impl SimpleSelector {
         }
     }
 
-    pub fn is_invisible(&self) -> bool {
+    /// Whether this hides the complex selector it is in: see
+    /// [`ComplexSelector::is_invisible_with`].
+    pub(crate) fn is_invisible_with(&self, include_bogus: bool) -> bool {
         match self {
             Self::Universal(..)
             | Self::Type(..)
             | Self::Id(..)
             | Self::Class(..)
             | Self::Attribute(..) => false,
-            Self::Pseudo(Pseudo { name, selector, .. }) => {
-                name != "not" && selector.as_ref().is_some_and(|sel| sel.is_invisible())
-            }
+            // `:not(%a)` means "does not match a selector that matches
+            // nothing", which is every element, so it stays visible. A bogus
+            // argument is different: dart-sass omits `:not(.a + ~ .b)`.
+            Self::Pseudo(Pseudo { name, selector, .. }) => selector.as_ref().is_some_and(|sel| {
+                if name == "not" {
+                    include_bogus && sel.is_bogus()
+                } else {
+                    sel.is_invisible_with(include_bogus)
+                }
+            }),
             Self::Placeholder(..) => true,
             // Unresolved in plain CSS, where it selects the enclosing rule and
             // is therefore always visible.
             Self::Parent(..) => false,
+        }
+    }
+
+    /// Whether this is a selector pseudo whose argument is bogus: see
+    /// [`ComplexSelector::is_bogus`].
+    ///
+    /// CSS allows a leading combinator in `:has()`, so `:has(> a)` is fine
+    /// while `:is(> a)` is bogus. Every other simple selector is never bogus.
+    pub fn is_bogus(&self) -> bool {
+        match self {
+            Self::Pseudo(Pseudo {
+                name,
+                selector: Some(selector),
+                ..
+            }) => {
+                if name == "has" {
+                    selector.is_bogus_other_than_leading_combinator()
+                } else {
+                    selector.is_bogus()
+                }
+            }
+            _ => false,
         }
     }
 
@@ -646,6 +677,11 @@ impl Pseudo {
                 .components
                 .iter()
                 .all(|complex| {
+                    // A bogus selector inside `:not()` is never a
+                    // superselector of anything, as in dart-sass 1.104.0.
+                    if complex.is_bogus() {
+                        return false;
+                    }
                     compound.components.iter().any(|simple2| {
                         if let SimpleSelector::Type(..) = simple2 {
                             let compound1 = complex.components.last();

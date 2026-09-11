@@ -62,8 +62,12 @@ impl CompoundSelector {
         Specificity::new(min, max)
     }
 
-    pub fn is_invisible(&self) -> bool {
-        self.components.iter().any(SimpleSelector::is_invisible)
+    /// Whether any simple selector here hides the complex selector it is in:
+    /// see [`super::ComplexSelector::is_invisible_with`].
+    pub(crate) fn is_invisible_with(&self, include_bogus: bool) -> bool {
+        self.components
+            .iter()
+            .any(|simple| simple.is_invisible_with(include_bogus))
     }
 
     /// Whether deciding if this is a superselector needs more than comparing

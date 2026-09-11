@@ -474,10 +474,12 @@ test!(
     "\\! {\n  color: red;\n}\n",
     "\\! {\n  color: red;\n}\n"
 );
+// More than one leading combinator can never match, so dart-sass 1.104.0
+// omits the rule; sass-spec `non_conformant/scss/css_selector_hacks`.
 test!(
     multiple_consecutive_immediate_child,
     "> > foo {\n  color: foo;\n}\n",
-    "> > foo {\n  color: foo;\n}\n"
+    ""
 );
 error!(
     modifier_on_any_attr,
@@ -657,11 +659,9 @@ test!(
     "ℓ {\n  color: red;\n}\n",
     "@charset \"UTF-8\";\nℓ {\n  color: red;\n}\n"
 );
-test!(
-    plus_in_selector,
-    "+ {\n  color: &;\n}\n",
-    "+ {\n  color: +;\n}\n"
-);
+// A selector that is only a combinator is bogus, so dart-sass 1.104.0 omits
+// the rule.
+test!(plus_in_selector, "+ {\n  color: &;\n}\n", "");
 test!(
     invalid_chars_in_pseudo_parens,
     ":c(@#$) {\n  color: &;\n}\n",

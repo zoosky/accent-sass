@@ -3,13 +3,20 @@
 use std::collections::VecDeque;
 
 use super::super::{
-    Combinator, ComplexSelector, ComplexSelectorComponent, CompoundSelector, Pseudo, SimpleSelector,
+    Combinator, ComplexSelector, ComplexSelectorComponent, CompoundSelector, Pseudo,
+    SimpleSelector, complex::components_are_useless,
 };
 
 /// Returns the contents of a `SelectorList` that matches only elements that are
 /// matched by both `complex_one` and `complex_two`.
 ///
 /// If no such list can be produced, returns `None`.
+///
+/// A port of dart-sass 1.104.0's `unifyComplex`. The base is each selector's
+/// last compound. A combinator after it, as in `.e >`, is carried onto the
+/// unified base, and so is the leading combinator of a selector that is a
+/// single compound, as in `> .e`; two different combinators in the same
+/// position cannot unify. A useless selector unifies with nothing.
 pub(crate) fn unify_complex(
     complexes: Vec<Vec<ComplexSelectorComponent>>,
 ) -> Option<Vec<Vec<ComplexSelectorComponent>>> {
@@ -20,45 +27,79 @@ pub(crate) fn unify_complex(
     }
 
     let mut unified_base: Option<Vec<SimpleSelector>> = None;
+    let mut leading_combinator: Option<Combinator> = None;
+    let mut trailing_combinator: Option<Combinator> = None;
+    let mut base_indices = Vec::with_capacity(complexes.len());
 
     for complex in &complexes {
-        let base = complex.last()?;
-
-        if let ComplexSelectorComponent::Compound(base) = base {
-            unified_base = Some(match unified_base {
-                // Going through `CompoundSelector::unify` rather than folding
-                // the simple selectors by hand keeps the pseudo-element tail
-                // rule, which only that function knows about.
-                Some(accumulated) => {
-                    CompoundSelector {
-                        components: accumulated,
-                    }
-                    .unify(base.clone())?
-                    .components
-                }
-                None => base.components.clone(),
-            });
-        } else {
+        if components_are_useless(complex) {
             return None;
         }
+
+        let base_index = complex
+            .iter()
+            .rposition(ComplexSelectorComponent::is_compound)?;
+
+        // One combinator before the only compound.
+        if base_index == 1
+            && let ComplexSelectorComponent::Combinator(new_leading) = complex[0]
+        {
+            match leading_combinator {
+                None => leading_combinator = Some(new_leading),
+                Some(leading) if leading != new_leading => return None,
+                Some(_) => {}
+            }
+        }
+
+        if let [ComplexSelectorComponent::Combinator(new_trailing)] = complex[base_index + 1..] {
+            if trailing_combinator.is_some_and(|trailing| trailing != new_trailing) {
+                return None;
+            }
+            trailing_combinator = Some(new_trailing);
+        }
+
+        let base = complex[base_index].as_compound();
+        unified_base = Some(match unified_base {
+            // Going through `CompoundSelector::unify` rather than folding
+            // the simple selectors by hand keeps the pseudo-element tail
+            // rule, which only that function knows about.
+            Some(accumulated) => {
+                CompoundSelector {
+                    components: accumulated,
+                }
+                .unify(base.clone())?
+                .components
+            }
+            None => base.components.clone(),
+        });
+        base_indices.push(base_index);
     }
 
-    let mut complexes_without_bases: Vec<Vec<ComplexSelectorComponent>> = complexes
+    // The parents of each base, with the combinator that joins them to it.
+    // A selector that is only its base contributes nothing here.
+    let mut without_bases: Vec<Vec<ComplexSelectorComponent>> = complexes
         .into_iter()
-        .map(|mut complex| {
-            complex.pop();
+        .zip(base_indices)
+        .filter(|(complex, _)| complex.iter().filter(|c| c.is_compound()).count() > 1)
+        .map(|(mut complex, base_index)| {
+            complex.truncate(base_index);
             complex
         })
         .collect();
 
-    complexes_without_bases
-        .last_mut()
-        .unwrap()
-        .push(ComplexSelectorComponent::Compound(CompoundSelector {
-            components: unified_base?,
-        }));
+    let mut base: Vec<ComplexSelectorComponent> = Vec::new();
+    base.extend(leading_combinator.map(ComplexSelectorComponent::Combinator));
+    base.push(ComplexSelectorComponent::Compound(CompoundSelector {
+        components: unified_base?,
+    }));
+    base.extend(trailing_combinator.map(ComplexSelectorComponent::Combinator));
 
-    Some(weave(complexes_without_bases))
+    match without_bases.last_mut() {
+        Some(last) => last.extend(base),
+        None => without_bases.push(base),
+    }
+
+    Some(weave(without_bases))
 }
 
 /// Expands "parenthesized selectors" in `complexes`.
