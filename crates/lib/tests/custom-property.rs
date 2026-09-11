@@ -84,7 +84,7 @@ error!(
             }
         }
     }",
-    r#"Error: Declarations whose names begin with "--" may not be nested"#
+    r#"Error: Declarations whose names begin with "--" may not be nested."#
 );
 error!(
     // NOTE: https://github.com/sass/dart-sass/issues/1857
@@ -96,7 +96,7 @@ error!(
             }
         }
     }",
-    r#"Error: Declarations whose names begin with "--" may not be nested"#
+    r#"Error: Declarations whose names begin with "--" may not be nested."#
 );
 // As above: an interpolation that resolves to nothing leaves the custom
 // property with an empty value rather than raising an error.
@@ -122,4 +122,39 @@ test!(
     silent_comment_with_following_line,
     "e {--a: b //c\n d}\n",
     "e {\n  --a: b //c d;\n}\n"
+);
+
+// A custom property's value is raw text, which cannot be spliced into an
+// enclosing declaration's name, so a `--` name nested beneath another
+// declaration is an error whatever follows the colon. An ordinary
+// declaration nested there is fine, and a `--` name at the top of a style
+// rule is an ordinary custom property. dart-sass 1.103.1 produced every
+// expectation; the fixtures are
+// `spec/css/propset/error/custom_property/{simple,nested/complex}`.
+error!(
+    custom_property_nested_in_a_declaration_is_an_error,
+    "a { b: { --d: e } }\n",
+    r#"Error: Declarations whose names begin with "--" may not be nested."#
+);
+error!(
+    custom_property_nested_in_a_declaration_with_a_block_is_an_error,
+    "a { b: { --d: e {--f: g} } }\n",
+    r#"Error: Declarations whose names begin with "--" may not be nested."#
+);
+// It reaches the visitor too, when the declaration arrives through a mixin
+// rather than being written in place.
+error!(
+    custom_property_included_into_a_declaration_is_an_error,
+    "@mixin m { --a: b }\nc { d: { @include m } }\n",
+    r#"Error: Declarations whose names begin with "--" may not be nested."#
+);
+test!(
+    an_ordinary_declaration_may_still_be_nested,
+    "a { b: { c: d } }\n",
+    "a {\n  b-c: d;\n}\n"
+);
+test!(
+    a_custom_property_at_the_top_of_a_rule_is_unaffected,
+    "a { --d: {e: f} }\n",
+    "a {\n  --d: {e: f} ;\n}\n"
 );

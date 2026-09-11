@@ -12,7 +12,7 @@ use codemap::{Span, Spanned};
 use crate::{
     ContextFlags, Options, Token,
     ast::*,
-    common::{Identifier, QuoteKind, unvendor},
+    common::{CSS_MIXIN_NAME_ERROR, Identifier, QuoteKind, unvendor},
     error::SassResult,
     lexer::Lexer,
     utils::{is_name, is_name_start, is_plain_css_import, opposite_bracket},
@@ -41,7 +41,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
     const IDENTIFIER_LIKE: Option<fn(&mut Self) -> SassResult<Spanned<AstExpr>>> = None;
 
     fn parse_style_rule_selector(&mut self) -> SassResult<Interpolation> {
-        self.almost_any_value(false)
+        self.almost_any_value(false, false)
     }
 
     fn expect_statement_separator(&mut self, _name: Option<&str>) -> SassResult<()> {
@@ -449,7 +449,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
 
     fn parse_disallowed_at_rule(&mut self, start: usize) -> SassResult<AstStmt> {
         self.whitespace(false)?;
-        self.almost_any_value(false)?;
+        self.almost_any_value(false, false)?;
         Err((
             "This at-rule is not allowed here.",
             self.toks_mut().span_from(start),
@@ -481,7 +481,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
                 .into());
         }
 
-        let value = self.almost_any_value(false)?;
+        let value = self.almost_any_value(false, false)?;
 
         let is_optional = self.scan_char('!');
 
@@ -1008,9 +1008,14 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
                 span: namespace_span,
             });
             name = self.parse_public_identifier()?;
-        } else {
-            name = name.replace('_', "-");
         }
+
+        // The spelling, before `Identifier` normalizes `_` to `-`. `@include
+        // __a` reaches the same mixin as `@include --a` and is allowed; only
+        // the `--` spelling is reserved for plain CSS mixins. The explicit
+        // `_` replacement that used to stand here was redundant, since
+        // `Identifier::from` does it.
+        let name_starts_with_dashes = name.starts_with("--");
 
         let name = Identifier::from(name);
         let name_span = self.toks_mut().span_from(name_start);
@@ -1057,6 +1062,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
                 node: name,
                 span: name_span,
             },
+            name_starts_with_dashes,
             args,
             content: content_block,
             span: name_span,
@@ -1155,7 +1161,17 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
     fn parse_mixin_rule(&mut self, start: usize) -> SassResult<AstStmt> {
         self.whitespace(true)?;
 
-        let name = Identifier::from(self.parse_identifier(true, false)?);
+        // The name is read without normalizing underscores, because the check
+        // below is on the spelling: `@mixin __a` is allowed and names the same
+        // mixin as `@mixin --a`, which is not. `Identifier` normalizes.
+        let name_start = self.toks().cursor();
+        let raw_name = self.parse_identifier(false, false)?;
+
+        if raw_name.starts_with("--") {
+            return Err((CSS_MIXIN_NAME_ERROR, self.toks_mut().span_from(name_start)).into());
+        }
+
+        let name = Identifier::from(raw_name);
         self.whitespace(false)?;
         let args = if self.toks_mut().next_char_is('(') {
             self.parse_argument_declaration()?
@@ -1212,7 +1228,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
 
         let value: Option<Interpolation> =
             if !self.toks_mut().next_char_is('!') && !self.at_end_of_statement() {
-                Some(self.almost_any_value(false)?)
+                Some(self.almost_any_value(false, true)?)
             } else {
                 None
             };
@@ -1915,11 +1931,14 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
         }
     }
 
-    fn parse_property_or_variable_declaration(
-        &mut self,
-        // default=true
-        parse_custom_properties: bool,
-    ) -> SassResult<AstStmt> {
+    /// Consumes a property declaration nested beneath another declaration, or
+    /// a variable declaration written there.
+    ///
+    /// This is the nested case only; a declaration written directly in a style
+    /// rule goes through `parse_declaration_or_buffer`, which is where custom
+    /// properties are handled. Nothing here may be a custom property, which is
+    /// what the check below says.
+    fn parse_property_or_variable_declaration(&mut self) -> SassResult<AstStmt> {
         let start = self.toks().cursor();
 
         let name = if matches!(
@@ -1952,20 +1971,17 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
         self.whitespace(false)?;
         self.expect_char(':')?;
 
-        if parse_custom_properties && name.initial_plain().starts_with("--") {
-            let interpolation =
-                self.parse_interpolated_declaration_value(false, false, true, false, false)?;
-            let value_span = self.toks_mut().span_from(start);
-            let value = AstExpr::String(StringExpr(interpolation, QuoteKind::None), value_span)
-                .span(value_span);
-            self.expect_statement_separator(Some("custom property"))?;
-            return Ok(AstStmt::Style(AstStyle {
-                name,
-                value: Some(value),
-                body: Vec::new(),
-                span: value_span,
-                parsed_as_sass_script: false,
-            }));
+        // A custom property's value is raw text, which cannot be spliced into
+        // the enclosing declaration's name, so a `--` name is refused here
+        // whatever follows the colon. The two checks that used to stand in the
+        // `looking_at_children` branches below covered only part of this and
+        // never reached a value that is not a block.
+        if name.initial_plain().starts_with("--") {
+            return Err((
+                "Declarations whose names begin with \"--\" may not be nested.",
+                self.toks_mut().span_from(start),
+            )
+                .into());
         }
 
         self.whitespace(false)?;
@@ -1975,14 +1991,6 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
                 return Err((
                     "Nested declarations aren't allowed in plain CSS.",
                     self.toks().current_span(),
-                )
-                    .into());
-            }
-
-            if name.initial_plain().starts_with("--") {
-                return Err((
-                    "Declarations whose names begin with \"--\" may not be nested",
-                    self.toks_mut().span_from(start),
                 )
                     .into());
             }
@@ -2004,15 +2012,6 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
                 return Err((
                     "Nested declarations aren't allowed in plain CSS.",
                     self.toks().current_span(),
-                )
-                    .into());
-            }
-
-            if name.initial_plain().starts_with("--") && !matches!(value.node, AstExpr::String(..))
-            {
-                return Err((
-                    "Declarations whose names begin with \"--\" may not be nested",
-                    self.toks_mut().span_from(start),
                 )
                     .into());
             }
@@ -2666,7 +2665,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
                 }
 
                 self.toks_mut().set_cursor(before_decl);
-                let additional = self.almost_any_value(false)?;
+                let additional = self.almost_any_value(false, false)?;
                 if !self.is_indented() && self.toks_mut().next_char_is(';') {
                     return Err(e);
                 }
@@ -2721,7 +2720,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
         if self.toks_mut().next_char_is('@') {
             self.parse_declaration_at_rule(start)
         } else {
-            self.parse_property_or_variable_declaration(false)
+            self.parse_property_or_variable_declaration()
         }
     }
 
@@ -2955,8 +2954,24 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
         &mut self,
         // default=false
         omit_comments: bool,
+        // Whether a bracket still open when the value ends is an error.
+        //
+        // dart-sass reads an unknown at-rule's value with
+        // `_interpolatedDeclarationValue`, which ends with
+        // `if (brackets.isNotEmpty) scanner.expectChar(brackets.last)`. Its
+        // `almostAnyValue`, which reads selectors, has no such check. This
+        // parser uses one function for both, so the check is a parameter and
+        // only the at-rule call site passes `true`.
+        //
+        // Without it, `@foo (` in the indented syntax reads to the end of the
+        // file: the newline arm below ends the value only when no bracket is
+        // open, so every rule that follows is swallowed into the at-rule's
+        // value and disappears from the output.
+        expect_balanced_brackets: bool,
     ) -> SassResult<Interpolation> {
         let mut buffer = Interpolation::new();
+
+        let mut brackets = Vec::new();
 
         while let Some(tok) = self.toks().peek() {
             match tok.kind {
@@ -3003,7 +3018,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
                     }
                 }
                 '\r' | '\n' => {
-                    if self.is_indented() {
+                    if self.is_indented() && brackets.is_empty() {
                         break;
                     }
                     buffer.add_char(self.toks_mut().next().unwrap().kind);
@@ -3044,6 +3059,39 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
                         }
                     }
                 }
+                '(' | '[' => {
+                    let bracket = self.toks_mut().next().unwrap().kind;
+                    buffer.add_char(bracket);
+                    brackets.push(opposite_bracket(bracket));
+                }
+                ')' | ']' => {
+                    // The brackets have to balance in the text itself, so a
+                    // closer that interpolation smuggled in cannot pair with
+                    // an opener written outside it: `[a#{"]:is(b"})` reaches
+                    // here at the `)` with `]` still open.
+                    //
+                    // Deliberate divergence, in an unknown at-rule's value
+                    // only: a closer with nothing open raises `Unexpected
+                    // ")".` here, which is what dart-sass's `almostAnyValue`
+                    // does, while its `_interpolatedDeclarationValue` -- the
+                    // one an at-rule value actually goes through -- ends the
+                    // value instead and reports `expected ";".` from the
+                    // statement separator. Both reject `@foo a) b {c: d}` at
+                    // the same character; only the wording differs, and
+                    // wording is not held to parity. Closing that gap means
+                    // giving the at-rule value its own reader, which is a
+                    // change of its own.
+                    let Some(bracket) = brackets.pop() else {
+                        return Err((
+                            format!("Unexpected \"{}\".", tok.kind),
+                            self.toks().current_span(),
+                        )
+                            .into());
+                    };
+
+                    self.expect_char(bracket)?;
+                    buffer.add_char(bracket);
+                }
                 _ => {
                     if self.looking_at_identifier() {
                         buffer.add_string(self.parse_identifier(false, false)?);
@@ -3052,6 +3100,10 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
                     }
                 }
             }
+        }
+
+        if expect_balanced_brackets && let Some(&last) = brackets.last() {
+            self.expect_char(last)?;
         }
 
         Ok(buffer)

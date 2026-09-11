@@ -88,7 +88,11 @@ error!(
     "{ {color: red;}", "Error: expected \"}\"."
 );
 error!(toplevel_open_paren, "(", "Error: expected \"{\".");
-error!(toplevel_close_paren, ")", "Error: expected \"{\".");
+// A closing bracket with nothing open is rejected where it stands, rather
+// than being swept into a selector that then fails to find a `{`. dart-sass
+// 1.103.1 gives both of these.
+error!(toplevel_close_paren, ")", "Error: Unexpected \")\".");
+error!(toplevel_close_bracket, "]", "Error: Unexpected \"]\".");
 error!(
     backtick_in_value,
     "a {color:`red;}", "Error: Expected expression."

@@ -1097,3 +1097,44 @@ error!(
     nth_child_loud_comment_between_n_and_of,
     ":nth-child(n/**/of a) {\n  color: &;\n}\n", "Error: expected \")\"."
 );
+
+// A selector's brackets have to balance in the text itself, so a closer that
+// interpolation smuggled in cannot pair with an opener written outside it.
+// dart-sass 1.103.1 gives `expected "]"` for both syntaxes; the fixtures are
+// `spec/parser/interpolation/error/partial_bracket/{scss,sass}`.
+error!(
+    interpolated_closing_bracket_does_not_close_a_selector_bracket,
+    r#"[a#{"]:is(b"}) {c:d}"#, r#"Error: expected "]"."#
+);
+error!(
+    interpolated_closing_bracket_does_not_close_a_selector_bracket_sass,
+    "[a#{\"]:is(b\"})\n  c: d\n",
+    r#"Error: expected "]"."#,
+    accent_sass::Options::default().input_syntax(accent_sass::InputSyntax::Sass)
+);
+// Tracking the brackets also means a newline inside one no longer ends the
+// selector in the indented syntax, whatever the second line's indentation.
+test!(
+    an_attribute_selector_may_span_lines_in_the_indented_syntax,
+    "a[\n  b]\n  c: d\n",
+    "a[b] {\n  c: d;\n}\n",
+    accent_sass::Options::default().input_syntax(accent_sass::InputSyntax::Sass)
+);
+test!(
+    a_selector_bracket_may_close_on_a_later_line,
+    "a[b\n  ]\n    c: d\n",
+    "a[b] {\n  c: d;\n}\n",
+    accent_sass::Options::default().input_syntax(accent_sass::InputSyntax::Sass)
+);
+test!(
+    a_pseudo_selector_may_span_lines_in_the_indented_syntax,
+    "a:not(\n  b)\n  c: d\n",
+    "a:not(b) {\n  c: d;\n}\n",
+    accent_sass::Options::default().input_syntax(accent_sass::InputSyntax::Sass)
+);
+test!(
+    a_continuation_line_may_be_indented_any_amount,
+    "a[\nb]\n  c: d;\n",
+    "a[b] {\n  c: d;\n}\n",
+    accent_sass::Options::default().input_syntax(accent_sass::InputSyntax::Sass)
+);
