@@ -1,6 +1,6 @@
 use codemap::Span;
 
-use crate::ast::CssMediaQuery;
+use crate::{ast::CssMediaQuery, error::SassError};
 
 use super::{ComplexSelector, SimpleSelector};
 
@@ -59,18 +59,40 @@ impl Extension {
         }
     }
 
-    /// Asserts that the `media_context` for a selector is compatible with the
-    /// query context for this extender.
-    // todo: this should return a `Result`. it currently does not because the cascade effect
-    // from this returning a `Result` will make some code returning `Option`s much uglier (we can't
-    // use `?` to return both `Option` and `Result` from the same function)
-    #[allow(clippy::needless_return)]
-    pub fn assert_compatible_media_context(&self, media_context: &Option<Vec<CssMediaQuery>>) {
-        if &self.media_context == media_context {
-            return;
+    /// Checks that `media_context` -- the media query context of the selector
+    /// being extended -- is compatible with the context this extension was
+    /// written in.
+    ///
+    /// An extension written at the top level applies anywhere, because the
+    /// rule it came from is not itself inside a query. One written inside a
+    /// query may only extend a selector in the identical query: extending
+    /// across queries would need the extended rule to exist in a context it
+    /// was never written for.
+    ///
+    /// Optionality does not enter into it. `!optional` says the extension
+    /// need not match anything; it does not permit a match that would be
+    /// wrong.
+    ///
+    /// Returns the error rather than raising it, because the extend machinery
+    /// returns `Option` to mean "extension did not apply" and cannot carry a
+    /// `Result` out of the middle of that. See `ExtensionStore::defer_error`.
+    pub fn check_media_context(
+        &self,
+        media_context: &Option<Vec<CssMediaQuery>>,
+    ) -> Option<Box<SassError>> {
+        let expected = self.media_context.as_ref()?;
+
+        if media_context.as_ref() == Some(expected) {
+            return None;
         }
 
-        // Err(("You may not @extend selectors across media queries.", self.span).into())
+        Some(
+            (
+                "You may not @extend selectors across media queries.",
+                self.span,
+            )
+                .into(),
+        )
     }
 
     #[allow(clippy::missing_const_for_fn)]

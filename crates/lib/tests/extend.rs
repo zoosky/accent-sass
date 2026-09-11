@@ -2029,3 +2029,62 @@ fn escaped_selector_extends_deterministically() {
         assert_eq!(expected, &output, "diverged on iteration {iteration}");
     }
 }
+
+// An `@extend` written inside a media query may only extend a selector in the
+// identical query. Extending across queries would need the extended rule to
+// exist in a context it was never written for, so dart-sass raises
+// `You may not @extend selectors across media queries.` -- and this compiler
+// extended silently. The error's span differs from dart-sass's, which reports
+// the extended selector's position; the message is what parity covers. The
+// fixtures are `libsass-closed-issues/issue_{673,712,1923}`.
+error!(
+    extend_from_inside_a_media_query_to_the_top_level_is_an_error,
+    ".foo {\n  content: 'foo';\n}\n\n@media print {\n  .bar {\n    @extend .foo;\n  }\n}\n",
+    "Error: You may not @extend selectors across media queries."
+);
+// The selector may be written after the `@extend`; the check happens whenever
+// the two meet.
+error!(
+    extend_across_media_queries_is_an_error_in_either_order,
+    "@media print { .bar { @extend .foo } }\n.foo { content: 'x' }\n",
+    "Error: You may not @extend selectors across media queries."
+);
+error!(
+    extend_between_two_different_media_queries_is_an_error,
+    "@media screen and (min-width: 100px) { .foo { a: b } }\n@media screen and (max-width: 100px) { .bar { @extend .foo } }\n",
+    "Error: You may not @extend selectors across media queries."
+);
+error!(
+    extend_from_a_nested_media_query_to_its_parent_is_an_error,
+    "@media screen {\n  .foo { a: b }\n  @media (min-width: 100px) { .bar { @extend .foo } }\n}\n",
+    "Error: You may not @extend selectors across media queries."
+);
+error!(
+    extend_across_media_queries_reaches_a_placeholder_too,
+    "@media print { .bar { @extend %foo } }\n@media screen { %foo { content: 'x' } }\n",
+    "Error: You may not @extend selectors across media queries."
+);
+// `!optional` says the extension need not match anything. It does not permit
+// a match that would be wrong, so it does not silence this.
+error!(
+    optional_does_not_permit_extending_across_media_queries,
+    "@media print { .bar { @extend .foo !optional } }\n.foo { content: 'x' }\n",
+    "Error: You may not @extend selectors across media queries."
+);
+// An extension written at the top level applies anywhere, because the rule it
+// came from is not itself inside a query.
+test!(
+    extend_from_the_top_level_into_a_media_query_is_allowed,
+    "@media print { .foo { content: 'x' } }\n.bar { @extend .foo }\n",
+    "@media print {\n  .foo, .bar {\n    content: \"x\";\n  }\n}\n"
+);
+test!(
+    optional_extend_from_the_top_level_into_a_media_query_is_allowed,
+    "@media screen { .foo { a: b } }\n.bar { @extend .foo !optional }\n",
+    "@media screen {\n  .foo, .bar {\n    a: b;\n  }\n}\n"
+);
+test!(
+    extend_within_one_media_query_is_allowed,
+    "@media print {\n  .foo { content: 'x' }\n  .bar { @extend .foo }\n}\n",
+    "@media print {\n  .foo, .bar {\n    content: \"x\";\n  }\n}\n"
+);

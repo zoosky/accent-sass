@@ -1103,7 +1103,7 @@ impl<'a> Visitor<'a> {
             false,
         )?;
 
-        Ok(self.extender.add_selector(resolved, &self.media_queries))
+        self.extender.add_selector(resolved, &self.media_queries)
     }
 
     /// The way a path reads in an error message: relative to the working
@@ -1976,7 +1976,7 @@ impl<'a> Visitor<'a> {
                 },
                 &self.media_queries,
                 extend_rule.span,
-            );
+            )?;
         }
 
         Ok(None)
@@ -4247,7 +4247,7 @@ impl<'a> Visitor<'a> {
         // todo: _mediaQueries
         let selector = self
             .extender
-            .add_selector(parsed_selector, &self.media_queries);
+            .add_selector(parsed_selector, &self.media_queries)?;
 
         let rule = CssStmt::RuleSet {
             selector: selector.clone(),
