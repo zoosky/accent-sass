@@ -2,6 +2,8 @@
 *.css
 !input.scss
 !crates/static/_index.scss
+# ...and the stylesheets CI scripts compile, such as the Foundation probe.
+!.github/scripts/*.scss
 
 # devops
 /target

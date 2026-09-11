@@ -12,6 +12,10 @@
 # long-standing behaviour, and canonicalising both sides (see NORMALISE below)
 # shows they do not change what the stylesheet means.
 #
+# It also compiles `foundation-functions.scss`, beside this script, which calls
+# every public Sass function Foundation documents directly. Each line of its
+# output is one function's result, so any difference there fails the run.
+#
 # Usage: .github/scripts/frameworks.sh
 #   ACCENT_SASS  path to the accent-sass binary (default ./target/release/accent-sass)
 #   SASS         path to the dart-sass binary   (default ./dart-sass/sass)
@@ -44,6 +48,7 @@ abspath() {
 }
 ACCENT_SASS=$(abspath "$ACCENT_SASS")
 SASS=$(abspath "$SASS")
+FOUNDATION_PROBE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/foundation-functions.scss
 if [ -n "$NORMALISE" ]; then
   NORMALISE=$(abspath "$NORMALISE")
 fi
@@ -128,6 +133,33 @@ for entry in "${FRAMEWORKS[@]}"; do
     status=1
   fi
 done
+
+# Foundation's documented functions, called one by one. Unlike a whole
+# framework, this output has no rule grouping or ordering to tolerate: each
+# line is a single function's result, so every differing line is a real
+# divergence and fails the run.
+probe_args=(-I node_modules/foundation-sites/scss)
+if ! "$ACCENT_SASS" "${probe_args[@]}" "$FOUNDATION_PROBE" > foundation-functions-accent-sass.css 2>foundation-functions-accent-sass.err; then
+  echo "::error::accent-sass failed to compile the Foundation function probe"
+  head -n 20 foundation-functions-accent-sass.err
+  status=1
+elif ! "$SASS" --quiet --load-path=node_modules/foundation-sites/scss "$FOUNDATION_PROBE" > foundation-functions-sass.css 2>foundation-functions-sass.err; then
+  # A dart-sass or Foundation bump that drops a probed function lands here,
+  # so show why rather than only that it failed.
+  echo "::error::dart-sass failed to compile the Foundation function probe"
+  head -n 20 foundation-functions-sass.err
+  status=1
+else
+  results=$(grep -c ': ' foundation-functions-sass.css)
+  probe_differing=$(diff foundation-functions-accent-sass.css foundation-functions-sass.css | grep -c '^[<>]')
+  echo "foundation functions: $probe_differing differing lines across $results results"
+  summary="$summary| \`foundation\` functions | $probe_differing | - | - |"$'\n'
+  if [ "$probe_differing" -ne 0 ]; then
+    echo "::error::Foundation function results diverge from dart-sass (< accent-sass, > dart-sass)"
+    diff foundation-functions-accent-sass.css foundation-functions-sass.css | grep '^[<>]' | head -n 20
+    status=1
+  fi
+fi
 
 if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
   {
