@@ -16,20 +16,25 @@ test!(
     "a {\n  color: #FfFfFf;\n}\n",
     "a {\n  color: #FfFfFf;\n}\n"
 );
+// A hex color keeps its source spelling only in the three- and six-digit
+// forms. Four- and eight-digit hex is not yet well-supported in browsers, so
+// dart-sass drops the original text as soon as an alpha channel is written --
+// even when that channel is `ff` and the color is opaque, in which case the
+// six-digit form comes back. Every expectation below is dart-sass 1.103.1's.
 test!(
-    preserves_hex_8_val_10000000,
+    eight_digit_hex_becomes_rgba_10000000,
     "a {\n  color: #10000000;\n}\n",
-    "a {\n  color: #10000000;\n}\n"
+    "a {\n  color: rgba(16, 0, 0, 0);\n}\n"
 );
 test!(
-    preserves_hex_8_val_12312312,
+    eight_digit_hex_becomes_rgba_12312312,
     "a {\n  color: #12312312;\n}\n",
-    "a {\n  color: #12312312;\n}\n"
+    "a {\n  color: rgba(18, 49, 35, 0.0705882353);\n}\n"
 );
 test!(
-    preserves_hex_8_val_ab234cff,
+    opaque_eight_digit_hex_becomes_six_digit_hex,
     "a {\n  color: #ab234cff;\n}\n",
-    "a {\n  color: #ab234cff;\n}\n"
+    "a {\n  color: #ab234c;\n}\n"
 );
 test!(
     preserves_hex_6_val_000000,
@@ -47,19 +52,19 @@ test!(
     "a {\n  color: #ab234c;\n}\n"
 );
 test!(
-    preserves_hex_4_val_0000,
+    four_digit_hex_becomes_rgba_0000,
     "a {\n  color: #0000;\n}\n",
-    "a {\n  color: #0000;\n}\n"
+    "a {\n  color: rgba(0, 0, 0, 0);\n}\n"
 );
 test!(
-    preserves_hex_4_val_123a,
+    four_digit_hex_becomes_rgba_123a,
     "a {\n  color: #123a;\n}\n",
-    "a {\n  color: #123a;\n}\n"
+    "a {\n  color: rgba(17, 34, 51, 0.6666666667);\n}\n"
 );
 test!(
-    preserves_hex_4_val_ab2f,
+    opaque_four_digit_hex_becomes_six_digit_hex,
     "a {\n  color: #ab2f;\n}\n",
-    "a {\n  color: #ab2f;\n}\n"
+    "a {\n  color: #aabb22;\n}\n"
 );
 test!(
     preserves_hex_3_val_000,
@@ -473,15 +478,18 @@ test!(
     "a {\n  color: #ffffffffff;\n}\n",
     "a {\n  color: #ffffffffff;\n}\n"
 );
+// The color stops at eight digits and what follows is a separate value. The
+// eight-digit color still loses its spelling, so the two print as an `rgba()`
+// and an identifier.
 test!(
     more_than_8_hex_chars_after_hash_starts_with_number,
     "a {\n  color: #0000000000;\n}\n",
-    "a {\n  color: #00000000 0;\n}\n"
+    "a {\n  color: rgba(0, 0, 0, 0) 0;\n}\n"
 );
 test!(
     more_than_8_hex_chars_after_hash_starts_with_number_contains_hex_char,
     "a {\n  color: #00000000f00;\n}\n",
-    "a {\n  color: #00000000 f00;\n}\n"
+    "a {\n  color: rgba(0, 0, 0, 0) f00;\n}\n"
 );
 test!(
     all_three_rgb_channels_have_decimal,
@@ -849,4 +857,25 @@ error!(
     truncated_calc_is_not_a_special_function,
     "@use \"sass:string\";\na {b: rgb(string.unquote(\"calc(\") 1 2)}\n",
     "Error: $channels: Expected red channel to be a number, was calc(."
+);
+
+// The two `spec/values/colors/alpha_hex/` fixtures. Dropping the source
+// spelling must not disturb the channels themselves, which the fixtures read
+// back to check. dart-sass 1.103.1 produced every expectation.
+test!(
+    alpha_hex_keeps_its_channels,
+    "@use \"sass:color\";\na {\n  red: color.channel(#0123, \"red\", $space: rgb);\n  green: color.channel(#0123, \"green\", $space: rgb);\n  blue: color.channel(#0123, \"blue\", $space: rgb);\n  alpha: color.alpha(#0123);\n}\n",
+    "a {\n  red: 0;\n  green: 17;\n  blue: 34;\n  alpha: 0.2;\n}\n"
+);
+test!(
+    alpha_hex_initial_letter_becomes_rgba,
+    "a {\n  four: #AbCd;\n  eight: #aBcDeF12;\n}\n",
+    "a {\n  four: rgba(170, 187, 204, 0.8666666667);\n  eight: rgba(171, 205, 239, 0.0705882353);\n}\n"
+);
+// Interpolation produces a string, not a color, so it keeps its text whatever
+// the digit count.
+test!(
+    interpolated_alpha_hex_stays_a_string,
+    "a {\n  b: #{\"#0123\"};\n}\n",
+    "a {\n  b: #0123;\n}\n"
 );

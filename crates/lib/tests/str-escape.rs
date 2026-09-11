@@ -1,3 +1,5 @@
+use accent_sass_compiler::OutputStyle;
+
 #[macro_use]
 mod macros;
 
@@ -198,4 +200,72 @@ test!(
 error!(
     newline_after_escape,
     "a {\n  color: \\\n", "Error: Expected escape sequence."
+);
+
+// In expanded mode dart-sass writes every character in a Unicode Private Use
+// Area back as an escape, because there is no useful way to render one and a
+// reader of a glyph font's stylesheet needs to tell them apart. Compressed
+// mode writes the character itself, since nobody reads that output. The
+// ranges are `U+E000..=U+F8FF` and `U+F0000..=U+10FFFF`; dart-sass 1.103.1
+// produced every expectation below.
+test!(
+    private_use_character_is_escaped_in_a_quoted_string,
+    "a {\n  b: \"\\e600\";\n}\n",
+    "a {\n  b: \"\\e600\";\n}\n"
+);
+test!(
+    private_use_character_is_escaped_in_an_unquoted_string,
+    "a {\n  b: \\e600;\n}\n",
+    "a {\n  b: \\e600;\n}\n"
+);
+// `libsass-closed-issues/issue_1231`: the escape reaches the output through
+// interpolation and string concatenation, so it is the serializer that has to
+// put it back, not the parser that has to keep it.
+test!(
+    private_use_character_survives_interpolation,
+    "div::before {\n  content: #{\"\\\"\"+\\e600+\"\\\"\"};\n}\n",
+    "div::before {\n  content: \"\\e600\";\n}\n"
+);
+// Escaping the character keeps the output ASCII, so no `@charset` is needed.
+test!(
+    private_use_character_does_not_force_a_charset,
+    "a {\n  b: \"\\e600\";\n}\n",
+    "a {\n  b: \"\\e600\";\n}\n"
+);
+// A supplementary private-use character is one character, not a surrogate
+// pair, and escapes as its full code point.
+test!(
+    supplementary_private_use_character_is_escaped,
+    "a {\n  b: \"\\f0000\";\n  c: \"\\10fffd\";\n}\n",
+    "a {\n  b: \"\\f0000\";\n  c: \"\\10fffd\";\n}\n"
+);
+// One past each end of the Basic Multilingual Plane's area, and one past the
+// end of the plane below the supplementary areas. `\dfff` is a surrogate and
+// so not a code point at all, which is why it arrives as U+FFFD.
+test!(
+    characters_outside_the_private_use_areas_are_written_as_themselves,
+    "a {\n  b: \"\\dfff\";\n  c: \"\\f900\";\n  d: \"\\effff\";\n}\n",
+    "@charset \"UTF-8\";\na {\n  b: \"\u{fffd}\";\n  c: \"\u{f900}\";\n  d: \"\u{effff}\";\n}\n"
+);
+// An escape ends at the first character that cannot continue it, so a hex
+// digit, space or tab after one needs a space to keep it out.
+test!(
+    private_use_escape_takes_a_space_before_a_hex_digit,
+    "a {\n  b: \"\\e600 abc\";\n  c: \"\\e600zzz\";\n  d: \"\\e600  x\";\n}\n",
+    "a {\n  b: \"\\e600 abc\";\n  c: \"\\e600zzz\";\n  d: \"\\e600  x\";\n}\n"
+);
+// `core_functions/string/split/private_use_character`: escaping is a
+// serialization concern, so the string still holds one character.
+test!(
+    private_use_character_is_one_character_to_string_functions,
+    "@use \"sass:string\";\na {b: string.split(\"\\E000\", \"\")}\n",
+    "a {\n  b: [\"\\e000\"];\n}\n"
+);
+test!(
+    private_use_character_is_not_escaped_when_compressed,
+    "a {\n  b: \"\\e600\";\n}\n",
+    "a{b:\"\u{e600}\"}",
+    accent_sass::Options::default()
+        .allows_charset(false)
+        .style(OutputStyle::Compressed)
 );

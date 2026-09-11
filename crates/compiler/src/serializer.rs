@@ -22,6 +22,50 @@ use crate::{
     },
 };
 
+/// Whether `c` is in a Unicode Private Use Area.
+///
+/// The Basic Multilingual Plane's area is `U+E000..=U+F8FF`; the two
+/// supplementary areas together cover `U+F0000..=U+10FFFF`. dart-sass tests
+/// the same two ranges, though it phrases the second as the UTF-16 high
+/// surrogates `0xDB80..=0xDBFF` that encode it.
+///
+/// See <https://en.wikipedia.org/wiki/Private_Use_Areas>.
+fn is_private_use(c: char) -> bool {
+    matches!(c as u32, 0xE000..=0xF8FF | 0xF0000..=0x10FFFF)
+}
+
+/// Appends `c`'s UTF-8 encoding to `buffer`.
+fn push_char(buffer: &mut Vec<u8>, c: char) {
+    buffer.extend_from_slice(c.encode_utf8(&mut [0; 4]).as_bytes());
+}
+
+/// Writes `c` to `buffer` as a hexadecimal escape sequence.
+///
+/// `next` is the character that follows in the string being written. CSS ends
+/// an escape at the first character that cannot continue it, so a following
+/// hex digit, space or tab needs a space of its own to keep it out of the
+/// escape.
+fn write_escape(buffer: &mut Vec<u8>, c: char, next: Option<char>) {
+    buffer.push(b'\\');
+
+    let mut code_point = c as u32;
+    let mut digits = [0u8; 6];
+    let mut len = 0;
+    while {
+        digits[len] = hex_char_for(code_point & 0xF) as u8;
+        len += 1;
+        code_point >>= 4;
+        code_point > 0
+    } {}
+    for i in (0..len).rev() {
+        buffer.push(digits[i]);
+    }
+
+    if matches!(next, Some(next) if next.is_ascii_hexdigit() || next == ' ' || next == '\t') {
+        buffer.push(b' ');
+    }
+}
+
 pub(crate) fn serialize_selector_list(
     list: &SelectorList,
     options: &Options,
@@ -1241,25 +1285,27 @@ impl<'a> Serializer<'a> {
     }
 
     fn elem_needs_parens(sep: ListSeparator, elem: &Value) -> bool {
-        match elem {
-            Value::List(elems, sep2, brackets) => {
-                if elems.len() < 2 {
-                    return false;
-                }
+        // An arglist is a list, so it takes parentheses on the same terms. In
+        // dart-sass `SassArgumentList` extends `SassList` and
+        // `_elementNeedsParens` covers both without saying so; here the two
+        // are separate variants, and only the map-value rule had been carried
+        // across.
+        let (len, elem_sep, brackets) = match elem {
+            Value::List(elems, elem_sep, brackets) => (elems.len(), *elem_sep, *brackets),
+            Value::ArgList(arglist) => (arglist.elems.len(), arglist.separator, Brackets::None),
+            _ => return false,
+        };
 
-                if *brackets == Brackets::Bracketed {
-                    return false;
-                }
+        if len < 2 || brackets == Brackets::Bracketed {
+            return false;
+        }
 
-                match sep {
-                    ListSeparator::Comma => *sep2 == ListSeparator::Comma,
-                    ListSeparator::Slash => {
-                        *sep2 == ListSeparator::Comma || *sep2 == ListSeparator::Slash
-                    }
-                    _ => *sep2 != ListSeparator::Undecided,
-                }
+        match sep {
+            ListSeparator::Comma => elem_sep == ListSeparator::Comma,
+            ListSeparator::Slash => {
+                elem_sep == ListSeparator::Comma || elem_sep == ListSeparator::Slash
             }
-            _ => false,
+            _ => elem_sep != ListSeparator::Undecided,
         }
     }
 
@@ -1341,13 +1387,15 @@ impl<'a> Serializer<'a> {
     }
 
     fn write_map_element(&mut self, value: &Value, span: Span) -> SassResult<()> {
-        // An argument list is a comma-separated list too, so it needs the same
-        // parentheses to keep the map unambiguous: `(positional: (1, 2))`, not
-        // `(positional: 1, 2)`.
-        let needs_parens = matches!(
-            value,
-            Value::List(_, ListSeparator::Comma, Brackets::None) | Value::ArgList(..)
-        );
+        // A comma-separated list needs parentheses to keep the map
+        // unambiguous: `(positional: (1, 2))`, not `(positional: 1, 2)`. An
+        // argument list is a list too, and needs them on the same condition
+        // -- which is its own separator, not always a comma.
+        let needs_parens = match value {
+            Value::List(_, separator, Brackets::None) => *separator == ListSeparator::Comma,
+            Value::ArgList(arglist) => arglist.separator == ListSeparator::Comma,
+            _ => false,
+        };
 
         if needs_parens {
             self.buffer.push(b'(');
@@ -1396,20 +1444,29 @@ impl<'a> Serializer<'a> {
         let mut after_newline = false;
         self.buffer.reserve(string.len());
 
-        for c in string.bytes() {
+        let mut chars = string.chars().peekable();
+
+        while let Some(c) = chars.next() {
             match c {
-                b'\n' => {
+                '\n' => {
                     self.buffer.push(b' ');
                     after_newline = true;
                 }
-                b' ' => {
+                ' ' => {
                     if !after_newline {
                         self.buffer.push(b' ');
                     }
                 }
                 _ => {
-                    self.buffer.push(c);
                     after_newline = false;
+
+                    if is_private_use(c) && !self.options.is_compressed() {
+                        let mut escaped = Vec::new();
+                        write_escape(&mut escaped, c, chars.peek().copied());
+                        self.buffer.extend_from_slice(&escaped);
+                    } else {
+                        push_char(&mut self.buffer, c);
+                    }
                 }
             }
         }
@@ -1424,10 +1481,10 @@ impl<'a> Serializer<'a> {
         if force_double_quote {
             buffer.push(b'"');
         }
-        let mut iter = string.as_bytes().iter().copied().peekable();
+        let mut iter = string.chars().peekable();
         while let Some(c) = iter.next() {
             match c {
-                b'\'' => {
+                '\'' => {
                     if force_double_quote {
                         buffer.push(b'\'');
                     } else if has_double_quote {
@@ -1438,7 +1495,7 @@ impl<'a> Serializer<'a> {
                         buffer.push(b'\'');
                     }
                 }
-                b'"' => {
+                '"' => {
                     if force_double_quote {
                         buffer.push(b'\\');
                         buffer.push(b'"');
@@ -1450,27 +1507,20 @@ impl<'a> Serializer<'a> {
                         buffer.push(b'"');
                     }
                 }
-                b'\x00'..=b'\x08' | b'\x0A'..=b'\x1F' => {
-                    buffer.push(b'\\');
-                    if c as u32 > 0xF {
-                        buffer.push(hex_char_for(c as u32 >> 4) as u8);
-                    }
-                    buffer.push(hex_char_for(c as u32 & 0xF) as u8);
-
-                    let next = match iter.peek() {
-                        Some(v) => *v,
-                        None => break,
-                    };
-
-                    if next.is_ascii_hexdigit() || next == b' ' || next == b'\t' {
-                        buffer.push(b' ');
-                    }
+                '\x00'..='\x08' | '\x0A'..='\x1F' => {
+                    write_escape(&mut buffer, c, iter.peek().copied());
                 }
-                b'\\' => {
+                '\\' => {
                     buffer.push(b'\\');
                     buffer.push(b'\\');
                 }
-                _ => buffer.push(c),
+                _ => {
+                    if is_private_use(c) && !self.options.is_compressed() {
+                        write_escape(&mut buffer, c, iter.peek().copied());
+                    } else {
+                        push_char(&mut buffer, c);
+                    }
+                }
             }
         }
 
@@ -1526,7 +1576,10 @@ impl<'a> Serializer<'a> {
     }
 
     fn visit_arglist(&mut self, arglist: &ArgList, span: Span) -> SassResult<()> {
-        self.visit_list(&arglist.elems, ListSeparator::Comma, Brackets::None, span)
+        // An arglist carries the separator of the list splatted into it, or a
+        // comma when nothing decided one, so it writes like the list it came
+        // from rather than always with commas.
+        self.visit_list(&arglist.elems, arglist.separator, Brackets::None, span)
     }
 
     fn visit_value(&mut self, value: &Value, span: Span) -> SassResult<()> {

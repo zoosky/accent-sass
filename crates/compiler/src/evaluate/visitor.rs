@@ -114,6 +114,19 @@ pub(crate) struct CallableContentBlock {
     env: Environment,
 }
 
+/// One argument to a macro such as `if()`, which evaluates only the branch it
+/// takes.
+///
+/// Arguments written in the call stay unevaluated, so the branch not taken
+/// never runs. Arguments that arrive through a rest argument have already
+/// been evaluated -- splatting a list is what produced them -- and so carry a
+/// value instead.
+#[derive(Debug, Clone)]
+enum MacroArg {
+    Unevaled(AstExpr),
+    Evaled(Value),
+}
+
 /// A CSS statement a module emitted, recorded with its children so a later
 /// `@import` or `meta.load-css` of the module can emit a copy of it.
 ///
@@ -187,7 +200,18 @@ pub struct Visitor<'a> {
     css_tree: CssTree,
     parent: Option<CssTreeIdx>,
     configuration: Rc<RefCell<Configuration>>,
+    /// Plain CSS imports written after the top of the document, which move
+    /// back into the `@import` block at [`Self::end_of_imports`] when the
+    /// tree is finished.
     import_nodes: Vec<CssStmt>,
+    /// How many top-level statements belong to the `@import` block.
+    ///
+    /// CSS requires `@import` to come before any rule, so an import written
+    /// later is moved up. Comments are allowed between imports, so a comment
+    /// written while the block is still open extends it rather than closing
+    /// it -- otherwise a comment above an import would be left behind when
+    /// the import moved.
+    end_of_imports: usize,
     pub options: &'a Options<'a>,
     pub(crate) map: &'a mut CodeMap,
     // todo: remove
@@ -230,6 +254,7 @@ impl<'a> Visitor<'a> {
             configuration: Rc::new(RefCell::new(Configuration::empty())),
             is_plain_css: false,
             import_nodes: Vec::new(),
+            end_of_imports: 0,
             modules: BTreeMap::new(),
             module_configurations: BTreeMap::new(),
             current_upstream: Vec::new(),
@@ -268,11 +293,18 @@ impl<'a> Visitor<'a> {
 
         let mut finished_tree = self.css_tree.finish();
         if self.import_nodes.is_empty() {
-            Ok(finished_tree)
-        } else {
-            self.import_nodes.append(&mut finished_tree);
-            Ok(self.import_nodes)
+            return Ok(finished_tree);
         }
+
+        // The out-of-order imports go at the end of the `@import` block, not
+        // at the top of the document: the comments the block contains were
+        // written above them and stay there.
+        debug_assert!(self.end_of_imports <= finished_tree.len());
+        let mut rest = finished_tree.split_off(self.end_of_imports.min(finished_tree.len()));
+        finished_tree.append(&mut self.import_nodes);
+        finished_tree.append(&mut rest);
+
+        Ok(finished_tree)
     }
 
     /// Applies each module's extensions to the modules it loaded, and errors
@@ -1074,7 +1106,7 @@ impl<'a> Visitor<'a> {
             false,
         )?;
 
-        Ok(self.extender.add_selector(resolved, &self.media_queries))
+        self.extender.add_selector(resolved, &self.media_queries)
     }
 
     /// The way a path reads in an error message: relative to the working
@@ -1635,8 +1667,17 @@ impl<'a> Visitor<'a> {
         let node = CssStmt::Import(import, modifiers);
 
         if self.parent.is_some() && self.parent != Some(CssTree::ROOT) {
-            self.css_tree.add_stmt(node, self.parent);
+            // Nested, so it stays where it was written -- through `add_child`
+            // for the reason `visit_style` gives, since an import holds its
+            // place among the rule's other children.
+            self.add_child(node, Some(|_: &CssStmt| false));
+        } else if self.end_of_imports == self.css_tree.root_child_count() {
+            // Still inside the `@import` block, so it can stay in the tree.
+            self.css_tree.add_stmt(node, Some(CssTree::ROOT));
+            self.end_of_imports += 1;
         } else {
+            // A rule has been written since, so this import has to move back
+            // into the block when the tree is finished.
             self.import_nodes.push(node);
         }
 
@@ -1938,7 +1979,7 @@ impl<'a> Visitor<'a> {
                 },
                 &self.media_queries,
                 extend_rule.span,
-            );
+            )?;
         }
 
         Ok(None)
@@ -2146,7 +2187,13 @@ impl<'a> Visitor<'a> {
                 false,
             );
 
-            self.css_tree.add_stmt(stmt, self.parent);
+            // Route through `add_child` for the same reason a style
+            // declaration does (see `visit_style`): a childless at-rule holds
+            // its place in source order, so a nested rule written above it
+            // splits the enclosing rule rather than letting the at-rule hoist
+            // back up beside the rule's earlier children. dart-sass calls
+            // `_copyParentAfterSibling` here for exactly this.
+            self.add_child(stmt, Some(|_: &CssStmt| false));
 
             return Ok(None);
         }
@@ -2717,10 +2764,15 @@ impl<'a> Visitor<'a> {
             return Ok(None);
         }
 
-        // todo: Comments are allowed to appear between CSS imports
-        // if (_parent == _root && _endOfImports == _root.children.length) {
-        //   _endOfImports++;
-        // }
+        // Comments are allowed to appear between CSS imports, so one written
+        // while the `@import` block is still open belongs to it. Without
+        // this, a comment above an import would be left behind when a later
+        // import moved back into the block.
+        if (self.parent.is_none() || self.parent == Some(CssTree::ROOT))
+            && self.end_of_imports == self.css_tree.root_child_count()
+        {
+            self.end_of_imports += 1;
+        }
 
         let comment = CssStmt::Comment(
             self.perform_interpolation(comment.text, false)?,
@@ -2944,7 +2996,7 @@ impl<'a> Visitor<'a> {
             return Ok(ArgumentResult {
                 positional,
                 named,
-                separator: ListSeparator::Undecided,
+                separator,
                 span: arguments.span,
                 touched: BTreeSet::new(),
             });
@@ -3070,6 +3122,11 @@ impl<'a> Visitor<'a> {
                         Vec::new()
                     };
 
+                    // The arglist takes the separator of the list that was
+                    // splatted into it, so `foo(1, 2, (3 4 5)...)` gives
+                    // `$b: 2 3 4 5` rather than `2, 3, 4, 5`. A call with no
+                    // splat, or one whose splatted value has no separator of
+                    // its own, leaves it undecided and falls back to a comma.
                     let arg_list = Value::ArgList(ArgList::new(
                         rest,
                         Rc::clone(&were_keywords_accessed),
@@ -3078,7 +3135,7 @@ impl<'a> Visitor<'a> {
                         if evaluated.separator == ListSeparator::Undecided {
                             ListSeparator::Comma
                         } else {
-                            ListSeparator::Space
+                            evaluated.separator
                         },
                     ));
 
@@ -3824,10 +3881,10 @@ impl<'a> Visitor<'a> {
     }
 
     fn visit_ternary(&mut self, if_expr: Ternary) -> SassResult<Value> {
-        if_arguments().verify(if_expr.0.positional.len(), &if_expr.0.named, if_expr.0.span)?;
+        let span = if_expr.0.span;
+        let (mut positional, mut named) = self.evaluate_macro_arguments(if_expr.0)?;
 
-        let mut positional = if_expr.0.positional;
-        let mut named = if_expr.0.named;
+        if_arguments().verify(positional.len(), &named, span)?;
 
         let condition = if positional.is_empty() {
             named.remove(&Identifier::from("condition")).unwrap()
@@ -3847,13 +3904,113 @@ impl<'a> Visitor<'a> {
             positional.remove(0)
         };
 
-        let value = if self.visit_expr(condition)?.is_truthy() {
-            self.visit_expr(if_true)?
+        let branch = if self.visit_macro_arg(condition)?.is_truthy() {
+            if_true
         } else {
-            self.visit_expr(if_false)?
+            if_false
         };
 
+        let value = self.visit_macro_arg(branch)?;
+
         Ok(self.without_slash(value))
+    }
+
+    /// Evaluates one argument of a macro, which is a value already if it
+    /// reached the call through a rest argument and an expression otherwise.
+    fn visit_macro_arg(&mut self, arg: MacroArg) -> SassResult<Value> {
+        match arg {
+            MacroArg::Unevaled(expr) => self.visit_expr(expr),
+            MacroArg::Evaled(value) => Ok(value),
+        }
+    }
+
+    /// Evaluates `arguments` only as far as it takes to tell positional
+    /// arguments from named ones, expanding a rest argument in place.
+    ///
+    /// `if()` is a macro: it evaluates only the branch it takes, so its
+    /// arguments cannot go through [`Self::eval_args`], which evaluates every
+    /// one of them. A rest argument must still be expanded before the call
+    /// can be verified, because `if(true, b, c...)` supplies `$if-false`
+    /// through `c...`, and counting the rest as a single positional argument
+    /// rejects the call as missing one.
+    ///
+    /// Mirrors dart-sass's `_evaluateMacroArguments`. The values a rest
+    /// argument contributes are already evaluated, so unlike the arguments
+    /// written in the call they carry no laziness: splatting a list evaluates
+    /// it, including the branch not taken.
+    fn evaluate_macro_arguments(
+        &mut self,
+        arguments: ArgumentInvocation,
+    ) -> SassResult<(Vec<MacroArg>, BTreeMap<Identifier, MacroArg>)> {
+        let mut positional = arguments
+            .positional
+            .into_iter()
+            .map(MacroArg::Unevaled)
+            .collect::<Vec<_>>();
+
+        let mut named = arguments
+            .named
+            .into_iter()
+            .map(|(name, expr)| (name, MacroArg::Unevaled(expr)))
+            .collect::<BTreeMap<_, _>>();
+
+        let Some(rest) = arguments.rest else {
+            return Ok((positional, named));
+        };
+
+        // `add_rest_map` fills a map of values, so the names a rest argument
+        // contributes are collected separately and folded in at the end.
+        let mut rest_named = BTreeMap::new();
+
+        match self.visit_expr(rest)? {
+            Value::Map(rest) => self.add_rest_map(&mut rest_named, rest)?,
+            Value::List(elems, ..) => {
+                for elem in elems {
+                    let elem = self.without_slash(elem);
+                    positional.push(MacroArg::Evaled(elem));
+                }
+            }
+            Value::ArgList(arglist) => {
+                // todo: superfluous clone
+                for (&key, value) in arglist.keywords() {
+                    let value = self.without_slash(value.clone());
+                    rest_named.insert(key, value);
+                }
+
+                for elem in arglist.elems {
+                    let elem = self.without_slash(elem);
+                    positional.push(MacroArg::Evaled(elem));
+                }
+            }
+            rest => {
+                let rest = self.without_slash(rest);
+                positional.push(MacroArg::Evaled(rest));
+            }
+        }
+
+        if let Some(keyword_rest) = arguments.keyword_rest {
+            match self.visit_expr(keyword_rest)? {
+                Value::Map(keyword_rest) => self.add_rest_map(&mut rest_named, keyword_rest)?,
+                v => {
+                    return Err((
+                        format!(
+                            "Variable keyword arguments must be a map (was {}).",
+                            v.inspect(arguments.span)?
+                        ),
+                        arguments.span,
+                    )
+                        .into());
+                }
+            }
+        }
+
+        named.extend(
+            rest_named
+                .into_iter()
+                .map(|(name, value)| (name, MacroArg::Evaled(value))),
+        );
+
+        Ok((positional, named))
     }
 
     fn visit_string(&mut self, mut text: Interpolation, quote: QuoteKind) -> SassResult<Value> {
@@ -4124,7 +4281,7 @@ impl<'a> Visitor<'a> {
         // todo: _mediaQueries
         let selector = self
             .extender
-            .add_selector(parsed_selector, &self.media_queries);
+            .add_selector(parsed_selector, &self.media_queries)?;
 
         let rule = CssStmt::RuleSet {
             selector: selector.clone(),
