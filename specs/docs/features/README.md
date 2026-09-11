@@ -159,15 +159,16 @@ than its 128 unclaimed, so no number on this page double-counts them.
 `spec/values/calculation/calc/operator/var/calculation` sat in an area two
 documents claim and belonged to neither; item 24 recorded it outside its count
 of 39, and #79 closed it. Ten failures are like it now: they sit in areas that
-landed items claim, and no document names their cause. Eight are in
-`spec/css/comment`, item 05's area: five loud comments in the indented syntax
+landed items claim, and no document gives their cause. Eight are in
+`spec/css/comment`, and item 05 lists them among its residue, saying none
+has been read for a cause: five loud comments in the indented syntax
 (`block/loud/sass/content_after_close/{loud_comment,silent_comment}`,
 `block/loud/sass/trailing_whitespace` and
 `error/loud/sass/content_after_close/{multi_line,single_line}`) and three
 `sourcemap` comments (`between_loads`, `sourcemappingurl` and `sourceurl`).
-The other two are `directives/import/css/unquoted`, in item 06's area, and
-`expressions/if/syntax/newline/in_css_function`, in item 02's. They are
-counted as residue below, but nobody has read them for a cause.
+The other two are in no document: `directives/import/css/unquoted`, in item
+06's area, and `expressions/if/syntax/newline/in_css_function`, in item 02's.
+All ten are counted as residue below.
 
 ### What the areas look like now
 
