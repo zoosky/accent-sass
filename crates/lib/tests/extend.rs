@@ -1905,8 +1905,11 @@ test!(
     }",
     "a, b {\n  color: a;\n}\n"
 );
+// `c b` is a superselector of `c > b`, but both are selectors of style rules
+// in the document, and trimming never drops an original selector. Verified
+// against dart-sass 1.103.1, which prints both; this once expected `c b` alone.
 test!(
-    complex_selector_with_combinator_removed_by_complex_selector_without_combinator,
+    complex_selector_with_combinator_kept_beside_complex_selector_without_combinator,
     "c b {
       @extend %d;
     }
@@ -1918,7 +1921,7 @@ test!(
     %d {
       color: red;
     }",
-    "c b {\n  color: red;\n}\n"
+    "c b, c > b {\n  color: red;\n}\n"
 );
 test!(
     unification_subselector_of_target_where,
@@ -2087,4 +2090,33 @@ test!(
     extend_within_one_media_query_is_allowed,
     "@media print {\n  .foo { content: 'x' }\n  .bar { @extend .foo }\n}\n",
     "@media print {\n  .foo, .bar {\n    content: \"x\";\n  }\n}\n"
+);
+// libsass issue 1091: `.b .d > .e` is trimmed because `.d > .e` is a
+// superselector of it.
+test!(
+    extension_trimmed_by_child_combinator_superselector,
+    ".a {top: 0}\n.b .c {@extend .a}\n.d > .e {@extend .a; @extend .c}\n",
+    ".a, .d > .e, .b .c {\n  top: 0;\n}\n"
+);
+// sass/dart-sass#1297: `:is(.m)` is a selector of a style rule, so it stays
+// beside the `:is(.m, .d)` it is extended into.
+test!(
+    original_extender_kept_after_it_is_extended,
+    ":is(.m) {@extend .u}\n.d {@extend .m}\n.u {a: b}\n",
+    ".u, :is(.m), :is(.m, .d) {\n  a: b;\n}\n"
+);
+// An extension loop closes only when an extender added by an `@extend` is
+// itself extended by that `@extend`: `.z.x.y.c` extends `.c`, so it becomes
+// `.z.x.y.b`.
+test!(
+    extension_loop_extends_its_own_new_extenders,
+    ".x.y.a {x: y; @extend .b}\n.c {x: y; @extend .a}\n.z.b {x: y; @extend .c}\n",
+    ".x.y.a, .x.y.c, .x.y.z.b {\n  x: y;\n}\n\n.c, .z.b, .z.x.y.a, .z.x.y.c, .z.x.y.b {\n  x: y;\n}\n\n.z.b, .z.x.y.a, .z.x.y.c, .z.x.y.b {\n  x: y;\n}\n"
+);
+// The shape of libsass issue 2055, smaller: an extender that contains the
+// target it extends, through `:not()`.
+test!(
+    extender_containing_its_own_target_in_not,
+    ".t {x: y}\n:not(.t.q) {@extend .t}\n.z:not(.t.q) {@extend .t}\n",
+    ".t, .z:not(.t.q):not(.q:not(.t.q)), :not(.t.q):not(.q.z:not(.t.q):not(.q:not(.t.q))), .z:not(.t.q):not(.q.z:not(.t.q):not(.q:not(.t.q))):not(.q:not(.t.q):not(.q.z:not(.t.q):not(.q:not(.t.q)))), :not(.t.q):not(.q:not(.t.q):not(.q.z:not(.t.q):not(.q:not(.t.q)))) {\n  x: y;\n}\n"
 );
