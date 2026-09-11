@@ -175,3 +175,44 @@ test!(
     "l {\n  @#{\"font-face\"} {\n    m: n;\n  }\n}\n",
     "@font-face {\n  m: n;\n}\n"
 );
+
+// A childless at-rule holds its place among the rule's other children, the
+// way a declaration does. When a nested rule is written above it, the
+// enclosing rule splits so that source order -- and so the cascade -- is
+// preserved. dart-sass 1.103.1 calls `_copyParentAfterSibling` for exactly
+// this; every expectation below came from that binary. The fixtures are
+// `spec/css/unknown_directive/semicolon.hrx`, `nested/interleaved/*`.
+test!(
+    childless_at_rule_after_a_nested_rule_splits_the_rule,
+    "a {\n  b {c: d}\n  @e f;\n}\n",
+    "a b {\n  c: d;\n}\na {\n  @e f;\n}\n"
+);
+test!(
+    childless_at_rule_between_two_nested_rules_splits_the_rule,
+    "a {\n  b {c: d}\n  @e f;\n  g {h: i}\n}\n",
+    "a b {\n  c: d;\n}\na {\n  @e f;\n}\na g {\n  h: i;\n}\n"
+);
+test!(
+    declaration_after_a_split_joins_the_at_rule_s_copy,
+    "a {\n  b {c: d}\n  @e f;\n  g: h\n}\n",
+    "a b {\n  c: d;\n}\na {\n  @e f;\n  g: h;\n}\n"
+);
+// No interstitial sibling, so no split: the at-rule stays in the original.
+test!(
+    childless_at_rule_before_a_nested_rule_does_not_split_the_rule,
+    "a {\n  @e f;\n  b {c: d}\n}\n",
+    "a {\n  @e f;\n}\na b {\n  c: d;\n}\n"
+);
+// Two at-rules after the same nested rule share one copy rather than making
+// one apiece.
+test!(
+    two_childless_at_rules_after_a_nested_rule_share_one_copy,
+    "a {\n  b {c: d}\n  @e f;\n  @g h;\n}\n",
+    "a b {\n  c: d;\n}\na {\n  @e f;\n  @g h;\n}\n"
+);
+// The split happens wherever the rule is, not only at the top level.
+test!(
+    childless_at_rule_splits_a_rule_inside_a_media_query,
+    "@media screen {\n  a {\n    b {c: d}\n    @e f;\n  }\n}\n",
+    "@media screen {\n  a b {\n    c: d;\n  }\n  a {\n    @e f;\n  }\n}\n"
+);
