@@ -1,0 +1,156 @@
+// Every public Sass function Foundation for Sites 6.9.0 documents at
+// https://get.foundation/sites/docs/sass-functions.html, plus `nth-root` and
+// the function form of `breakpoint()`, which its source also exposes.
+//
+// `.github/scripts/frameworks.sh` compiles this against Foundation's own
+// `scss/` with both engines and fails on any difference. Compiling the whole
+// framework only exercises the functions its default build happens to call,
+// with the arguments it happens to pass; this calls each one directly, with
+// several argument shapes taken from the functions' own documentation in
+// the source (`util/_*.scss`). Each value goes through `inspect()`, so a
+// string, list or map is compared exactly, not as it would serialise into a
+// declaration.
+//
+// Add a case here when a Foundation function is found to diverge, and check
+// the expected value against dart-sass 1.103.1 before relying on it.
+
+@import 'foundation';
+
+.color {
+  lum-primary: inspect(color-luminance(#1779ba));
+  lum-white: inspect(color-luminance($white));
+  lum-black: inspect(color-luminance($black));
+  lum-alert: inspect(color-luminance(#cc4b37));
+  contrast-primary-white: inspect(color-contrast(#1779ba, $white));
+  contrast-black-white: inspect(color-contrast($black, $white));
+  contrast-warning-black: inspect(color-contrast(#ffae00, $black));
+  pick-primary: inspect(color-pick-contrast(#1779ba));
+  pick-warning: inspect(color-pick-contrast(#ffae00));
+  pick-list: inspect(color-pick-contrast($white, (red, blue, green)));
+  pick-tolerance: inspect(color-pick-contrast(#777777, ($white, $black), 3));
+  scale-primary: inspect(smart-scale(#1779ba));
+  scale-white: inspect(smart-scale($white));
+  scale-black: inspect(smart-scale($black, 10%));
+  scale-gray-threshold: inspect(smart-scale(#767676, 5%, 60%));
+  get-primary: inspect(get-color(primary));
+  get-alert: inspect(get-color(alert));
+}
+
+.direction {
+  top: inspect(direction-opposite(top));
+  right: inspect(direction-opposite(right));
+  bottom: inspect(direction-opposite(bottom));
+  left: inspect(direction-opposite(left));
+}
+
+.math {
+  gcd-12-18: inspect(gcd(12, 18));
+  gcd-7-5: inspect(gcd(7, 5));
+  gcd-100-75: inspect(gcd(100, 75));
+  pow-2-10: inspect(pow(2, 10));
+  pow-2-half: inspect(pow(2, 0.5));
+  pow-10-neg2: inspect(pow(10, -2));
+  pow-prec: inspect(pow(1.5, 2.5, 8));
+  pow-unit: inspect(pow(3px, 2));
+  root-27-3: inspect(nth-root(27, 3));
+  root-2: inspect(nth-root(2));
+  ratio-16-9: inspect(ratio-to-percentage(16 by 9));
+  ratio-4-3: inspect(ratio-to-percentage(4 by 3));
+  divide-10-3: inspect(divide(10, 3));
+  divide-prec: inspect(divide(1, 3, 2));
+  divide-unit: inspect(divide(10px, 4));
+  divide-neg: inspect(divide(-7, 2));
+}
+
+.fraction {
+  parse-percent: inspect(zf-parse-fraction(50%));
+  parse-decimal: inspect(zf-parse-fraction(0.25));
+  parse-of: inspect(zf-parse-fraction(1 of 3));
+  parse-bare: inspect(zf-parse-fraction(50));
+  parse-string: inspect(zf-parse-fraction(abc));
+  is-of: inspect(zf-is-fraction(1 of 2));
+  is-decimal: inspect(zf-is-fraction(0.5));
+  is-bare: inspect(zf-is-fraction(6));
+  is-bare-allowed: inspect(zf-is-fraction(6, true));
+  pct-of: inspect(fraction-to-percentage(1 of 3));
+  pct-percent: inspect(fraction-to-percentage(40%));
+  pct-decimal: inspect(fraction-to-percentage(0.25));
+  pct-bare: inspect(fraction-to-percentage(3, 12));
+}
+
+.selector {
+  inputs-all: inspect(text-inputs());
+  inputs-some: inspect(text-inputs((text, email)));
+  inputs-focus: inspect(text-inputs((text, password), ':focus'));
+}
+
+.typography {
+  georgia: inspect(font-stack('georgia'));
+  system: inspect(font-stack('system'));
+  monospace: inspect(font-stack('monospace'));
+}
+
+.unit {
+  strip-px: inspect(strip-unit(20px));
+  strip-em: inspect(strip-unit(1.5em));
+  strip-none: inspect(strip-unit(3));
+  rem-16: inspect(rem-calc(16));
+  rem-24px: inspect(rem-calc(24px));
+  rem-list: inspect(rem-calc(10 20 30));
+  rem-base: inspect(rem-calc(18, 20px));
+  rem-zero: inspect(rem-calc(0));
+  rem-already: inspect(rem-calc(2rem));
+  unitless-24px: inspect(unitless-calc(24px));
+  unitless-base: inspect(unitless-calc(20px, 16px));
+  unitless-rem: inspect(unitless-calc(1.5rem));
+}
+
+.value {
+  has-zero: inspect(has-value(0));
+  has-null: inspect(has-value(null));
+  has-none: inspect(has-value(none));
+  has-false: inspect(has-value(false));
+  has-border: inspect(has-value(1px solid red));
+  has-zero-px: inspect(has-value(0px));
+  side-top: inspect(get-side(1px 2px 3px 4px, top));
+  side-right: inspect(get-side(1px 2px 3px 4px, right));
+  side-bottom: inspect(get-side(1px 2px 3px 4px, bottom));
+  side-left: inspect(get-side(1px 2px 3px 4px, left));
+  side-two-left: inspect(get-side(10px 20px, left));
+  side-three-bottom: inspect(get-side(1px 2px 3px, bottom));
+  side-one: inspect(get-side(5px, bottom));
+  border-width: inspect(get-border-value(1px solid red, width));
+  border-style: inspect(get-border-value(1px solid red, style));
+  border-color: inspect(get-border-value(1px solid red, color));
+  border-reordered: inspect(get-border-value(solid blue 2px, color));
+  border-missing: inspect(get-border-value(dashed, width));
+}
+
+.map {
+  deep: inspect(map-deep-get((a: (b: (c: d))), a, b, c));
+  deep-partial: inspect(map-deep-get((a: (b: (c: d))), a, b));
+  deep-missing: inspect(map-deep-get((a: (b: 1)), a, x));
+  list-both: inspect(map-to-list((a: 1, b: 2)));
+  list-keys: inspect(map-to-list((a: 1, b: 2), keys));
+  list-values: inspect(map-to-list((a: 1, b: 2), values));
+  safe: inspect(map-safe-get((a: 1), a));
+}
+
+.string {
+  join-delim: inspect(zf-str-join('a', 'b', '-'));
+  join-no-second: inspect(zf-str-join('a', null, '-'));
+  join-empty-first: inspect(zf-str-join('', 'b'));
+  join-no-delim: inspect(zf-str-join('a', 'b'));
+}
+
+.breakpoint {
+  small: inspect(breakpoint(small));
+  medium: inspect(breakpoint(medium));
+  large-down: inspect(breakpoint(large down));
+  medium-only: inspect(breakpoint(medium only));
+  xxlarge-only: inspect(breakpoint(xxlarge only));
+  px: inspect(breakpoint(640px));
+  px-down: inspect(breakpoint(1000px down));
+  landscape: inspect(breakpoint(landscape));
+  retina: inspect(breakpoint(retina));
+}

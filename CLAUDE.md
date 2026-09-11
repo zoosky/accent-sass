@@ -132,11 +132,11 @@ CI jobs in `.github/workflows/tests.yml`:
 | `clippy` | yes | the command above, on **both** the MSRV and stable |
 | `wasi` | yes | builds both `wasm32-wasip1` artifacts and runs them: the command module under wasmtime, the library module through a Node host that calls its C ABI |
 | `bootstrap` | advisory | compiles Bootstrap 5.0.2 with both engines; fails only on a colour-value difference |
-| `frameworks` | yes | compiles Bulma, Pico, Foundation and USWDS with both engines via `.github/scripts/frameworks.sh`; fails on a colour-value difference |
+| `frameworks` | yes | compiles Bulma, Pico, Foundation and USWDS with both engines via `.github/scripts/frameworks.sh`; fails on a colour-value difference. It also compiles `.github/scripts/foundation-functions.scss`, which calls every Sass function Foundation documents, and fails on any difference in those results |
 | `sass-spec` | advisory | runs the official spec suite and publishes the tallies |
 
-`.gitignore` ignores `*.sh` repository-wide, with an exception for
-`.github/scripts/*.sh`.
+`.gitignore` ignores `*.sh` and `*.s[ac]ss` repository-wide, with
+exceptions for `.github/scripts/*.sh` and `.github/scripts/*.scss`.
 
 ## Testing conventions
 
