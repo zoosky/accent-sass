@@ -77,6 +77,15 @@ impl PartialEq for Value {
                     }
                 }
                 Value::Map(map2) => list1.is_empty() && map2.is_empty(),
+                // An arglist is a list, so the comparison is the same one:
+                // separator, brackets, then elements. An arglist never has
+                // brackets.
+                Value::ArgList(list2) => {
+                    *sep1 == list2.separator
+                        && *brackets1 == Brackets::None
+                        && list1.len() == list2.elems.len()
+                        && list1.iter().zip(&list2.elems).all(|(a, b)| a == b)
+                }
                 _ => false,
             },
             Value::Null => matches!(other, Value::Null),
@@ -120,18 +129,15 @@ impl PartialEq for Value {
             Value::ArgList(list1) => match other {
                 Value::ArgList(list2) => list1 == list2,
                 Value::Map(map2) => list1.elems.is_empty() && map2.is_empty(),
-                Value::List(list2, ListSeparator::Comma, ..) => {
-                    if list1.len() != list2.len() {
-                        return false;
-                    }
-
-                    for (el1, el2) in list1.elems.iter().zip(list2) {
-                        if el1 != el2 {
-                            return false;
-                        }
-                    }
-
-                    true
+                // The mirror of the arm above: an arglist equals a list with
+                // the same separator, no brackets, and equal elements. It is
+                // the separator that makes `args() == ()` false -- an empty
+                // arglist is comma-separated and `()` is undecided.
+                Value::List(list2, sep2, brackets2) => {
+                    list1.separator == *sep2
+                        && *brackets2 == Brackets::None
+                        && list1.len() == list2.len()
+                        && list1.elems.iter().zip(list2).all(|(a, b)| a == b)
                 }
                 _ => false,
             },
@@ -503,7 +509,10 @@ impl Value {
             // that joining it with a list takes the other list's separator
             // rather than forcing a comma.
             Value::Map(map) if map.is_empty() => ListSeparator::Undecided,
-            Value::Map(..) | Value::ArgList(..) => ListSeparator::Comma,
+            Value::Map(..) => ListSeparator::Comma,
+            // An arglist carries the separator of the list splatted into it,
+            // and a comma when nothing decided one.
+            Value::ArgList(arglist) => arglist.separator,
             _ => ListSeparator::Space,
         }
     }

@@ -1285,25 +1285,27 @@ impl<'a> Serializer<'a> {
     }
 
     fn elem_needs_parens(sep: ListSeparator, elem: &Value) -> bool {
-        match elem {
-            Value::List(elems, sep2, brackets) => {
-                if elems.len() < 2 {
-                    return false;
-                }
+        // An arglist is a list, so it takes parentheses on the same terms. In
+        // dart-sass `SassArgumentList` extends `SassList` and
+        // `_elementNeedsParens` covers both without saying so; here the two
+        // are separate variants, and only the map-value rule had been carried
+        // across.
+        let (len, elem_sep, brackets) = match elem {
+            Value::List(elems, elem_sep, brackets) => (elems.len(), *elem_sep, *brackets),
+            Value::ArgList(arglist) => (arglist.elems.len(), arglist.separator, Brackets::None),
+            _ => return false,
+        };
 
-                if *brackets == Brackets::Bracketed {
-                    return false;
-                }
+        if len < 2 || brackets == Brackets::Bracketed {
+            return false;
+        }
 
-                match sep {
-                    ListSeparator::Comma => *sep2 == ListSeparator::Comma,
-                    ListSeparator::Slash => {
-                        *sep2 == ListSeparator::Comma || *sep2 == ListSeparator::Slash
-                    }
-                    _ => *sep2 != ListSeparator::Undecided,
-                }
+        match sep {
+            ListSeparator::Comma => elem_sep == ListSeparator::Comma,
+            ListSeparator::Slash => {
+                elem_sep == ListSeparator::Comma || elem_sep == ListSeparator::Slash
             }
-            _ => false,
+            _ => elem_sep != ListSeparator::Undecided,
         }
     }
 
@@ -1385,13 +1387,15 @@ impl<'a> Serializer<'a> {
     }
 
     fn write_map_element(&mut self, value: &Value, span: Span) -> SassResult<()> {
-        // An argument list is a comma-separated list too, so it needs the same
-        // parentheses to keep the map unambiguous: `(positional: (1, 2))`, not
-        // `(positional: 1, 2)`.
-        let needs_parens = matches!(
-            value,
-            Value::List(_, ListSeparator::Comma, Brackets::None) | Value::ArgList(..)
-        );
+        // A comma-separated list needs parentheses to keep the map
+        // unambiguous: `(positional: (1, 2))`, not `(positional: 1, 2)`. An
+        // argument list is a list too, and needs them on the same condition
+        // -- which is its own separator, not always a comma.
+        let needs_parens = match value {
+            Value::List(_, separator, Brackets::None) => *separator == ListSeparator::Comma,
+            Value::ArgList(arglist) => arglist.separator == ListSeparator::Comma,
+            _ => false,
+        };
 
         if needs_parens {
             self.buffer.push(b'(');
@@ -1572,7 +1576,10 @@ impl<'a> Serializer<'a> {
     }
 
     fn visit_arglist(&mut self, arglist: &ArgList, span: Span) -> SassResult<()> {
-        self.visit_list(&arglist.elems, ListSeparator::Comma, Brackets::None, span)
+        // An arglist carries the separator of the list splatted into it, or a
+        // comma when nothing decided one, so it writes like the list it came
+        // from rather than always with commas.
+        self.visit_list(&arglist.elems, arglist.separator, Brackets::None, span)
     }
 
     fn visit_value(&mut self, value: &Value, span: Span) -> SassResult<()> {
