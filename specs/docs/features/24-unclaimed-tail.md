@@ -296,17 +296,17 @@ Several turned out to be something other than the table above guessed:
 ## One more, outside the 39
 
 `values/calculation/calc/operator/var/calculation` is in an area items 07
-and 08 claim, and belongs to neither: `calc(1 + (var(--c)))` prints as
-`calc(1 + var(--c))` here, dropping the parentheses dart-sass keeps around
-an unevaluated operand. It is recorded here because "claimed" is measured
-by area on the roadmap's front page, and an area being claimed does not
-mean every fixture in it is. It is not counted in the 39 above, which would
-make the front page's arithmetic disagree with itself.
+and 08 claim, and belongs to neither. Before #79, `calc(1 + calc(var(--c)))`
+printed as `calc(1 + var(--c))` here, dropping the parentheses dart-sass
+keeps when it inlines the inner `calc()`: `calc(1 + (var(--c)))`. It is
+recorded here because "claimed" is measured by area on the roadmap's front
+page, and an area being claimed does not mean every fixture in it is. It is
+not counted in the 39 above, which would make the front page's arithmetic
+disagree with itself.
 
-**Closed by #79.** It is not a precedence rule. dart-sass's
-`_needsParentheses` keeps parentheses around an inlined `calc()` whose text
-starts with a `var(` call, since the variable may expand to anything.
-`needs_parens` lacked that rule.
+**Closed by #79.** dart-sass's `_needsParentheses` keeps parentheses around
+an inlined `calc()` whose text starts with a `var(` call, since the variable
+may expand to anything. `needs_parens` lacked that rule.
 
 ## Testing
 
