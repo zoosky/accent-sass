@@ -145,12 +145,32 @@ impl Eq for Color {}
 
 /// Dart Sass's `_normalizeHue`: wraps a hue to `0..360`, rotating it by
 /// 180 degrees when `invert` is set (for a negative saturation or chroma).
+///
+/// A zero (either sign), `NaN` or infinite hue becomes `0` without the
+/// rotation, as CSS Color 4 specifies for degenerate hues and as dart-sass
+/// does from 1.104.0 on.
 fn normalize_hue(hue: Option<f64>, invert: bool) -> Option<f64> {
     hue.map(|hue| {
+        if hue == 0.0 || !hue.is_finite() {
+            return 0.0;
+        }
         dart_mod(
             dart_mod(hue, 360.0) + 360.0 + if invert { 180.0 } else { 0.0 },
             360.0,
         )
+    })
+}
+
+/// Dart Sass's `_normalizeLinear`: a channel that is `NaN` or negative zero
+/// becomes `0`, as CSS Color 4 specifies and as dart-sass does from 1.104.0
+/// on. A missing channel stays missing.
+fn normalize_linear(channel: Option<f64>) -> Option<f64> {
+    channel.map(|channel| {
+        if channel == 0.0 || channel.is_nan() {
+            0.0
+        } else {
+            channel
+        }
     })
 }
 
@@ -160,7 +180,9 @@ impl Color {
     ///
     /// Hues are normalized to `0..360`. A negative saturation or chroma is
     /// folded into the hue by rotating it 180 degrees, as CSS Color 4
-    /// specifies. Alpha is clamped to `0..1`.
+    /// specifies. Alpha is clamped to `0..1`. No channel comes out `NaN` or
+    /// negative zero, and no hue comes out infinite: see [`normalize_hue`]
+    /// and [`normalize_linear`].
     pub(crate) fn for_space(
         space: ColorSpace,
         channel0: Option<f64>,
@@ -173,28 +195,58 @@ impl Color {
             "a color is never in the lms space"
         );
 
-        let alpha = alpha.map(|alpha| clamp_like_css(alpha, 0.0, 1.0));
+        let alpha = normalize_linear(alpha.map(|alpha| clamp_like_css(alpha, 0.0, 1.0)));
         let negative = |channel: Option<f64>| channel.is_some_and(|c| fuzzy_less_than(c, 0.0));
 
         let channels = match space {
             ColorSpace::Hsl => [
                 normalize_hue(channel0, negative(channel1)),
-                channel1.map(f64::abs),
-                channel2,
+                normalize_linear(channel1.map(f64::abs)),
+                normalize_linear(channel2),
             ],
-            ColorSpace::Hwb => [normalize_hue(channel0, false), channel1, channel2],
+            ColorSpace::Hwb => [
+                normalize_hue(channel0, false),
+                normalize_linear(channel1),
+                normalize_linear(channel2),
+            ],
             ColorSpace::Lch | ColorSpace::Oklch => [
-                channel0,
-                channel1.map(f64::abs),
+                normalize_linear(channel0),
+                normalize_linear(channel1.map(f64::abs)),
                 normalize_hue(channel2, negative(channel1)),
             ],
-            _ => [channel0, channel1, channel2],
+            _ => [
+                normalize_linear(channel0),
+                normalize_linear(channel1),
+                normalize_linear(channel2),
+            ],
         };
 
         Color {
             space,
             channels,
             alpha,
+            format: ColorFormat::Infer,
+        }
+    }
+
+    /// Builds an rgb color without normalizing its channels (Dart Sass's
+    /// `SassColor.rgbInternal`, which skips `forSpaceInternal`).
+    ///
+    /// `NaN` and negative zero survive here, as they do in dart-sass:
+    /// `color.change(#123456, $red: -0)` keeps a red of `-0`, and a `NaN` red
+    /// serializes through hsl as `hsl(0, 0%, 0%)`. Converting the color to
+    /// another space goes through [`Color::for_space`], which normalizes them.
+    /// Alpha is clamped to `0..1`, as it is there.
+    pub(crate) fn rgb_internal(
+        red: Option<f64>,
+        green: Option<f64>,
+        blue: Option<f64>,
+        alpha: Option<f64>,
+    ) -> Color {
+        Color {
+            space: ColorSpace::Rgb,
+            channels: [red, green, blue],
+            alpha: alpha.map(|alpha| clamp_like_css(alpha, 0.0, 1.0)),
             format: ColorFormat::Infer,
         }
     }
@@ -223,14 +275,8 @@ impl Color {
         alpha: Number,
         format: ColorFormat,
     ) -> Color {
-        Color::for_space(
-            ColorSpace::Rgb,
-            Some(red.0),
-            Some(green.0),
-            Some(blue.0),
-            Some(alpha.0),
-        )
-        .with_format(format)
+        Color::rgb_internal(Some(red.0), Some(green.0), Some(blue.0), Some(alpha.0))
+            .with_format(format)
     }
 
     /// Sets the serialization format. Only an rgb-space color has one.
@@ -390,8 +436,8 @@ impl Color {
         let weight1 = (combined_weight1 + 1.0) / 2.0;
         let weight2 = 1.0 - weight1;
 
-        Color::for_space(
-            ColorSpace::Rgb,
+        // Dart Sass's `_mixLegacy` builds the result with `SassColor.rgb`.
+        Color::rgb_internal(
             Some(rgb1.channel0() * weight1 + rgb2.channel0() * weight2),
             Some(rgb1.channel1() * weight1 + rgb2.channel1() * weight2),
             Some(rgb1.channel2() * weight1 + rgb2.channel2() * weight2),

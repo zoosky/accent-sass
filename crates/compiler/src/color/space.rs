@@ -605,8 +605,26 @@ impl ColorSpace {
                 let red = red.unwrap_or(0.0);
                 let green = green.unwrap_or(0.0);
                 let blue = blue.unwrap_or(0.0);
-                let max = red.max(green).max(blue);
-                let min = red.min(green).min(blue);
+                // Dart's `math.max` and `math.min` return `NaN` when either
+                // side is `NaN`, where Rust's return the other side. An rgb
+                // color can hold a `NaN` channel (see `Color::rgb_internal`),
+                // and dart-sass then converts it to `hsl(0, 0%, 0%)`.
+                let max_nan = |a: f64, b: f64| {
+                    if a.is_nan() || b.is_nan() {
+                        f64::NAN
+                    } else {
+                        a.max(b)
+                    }
+                };
+                let min_nan = |a: f64, b: f64| {
+                    if a.is_nan() || b.is_nan() {
+                        f64::NAN
+                    } else {
+                        a.min(b)
+                    }
+                };
+                let max = max_nan(max_nan(red, green), blue);
+                let min = min_nan(min_nan(red, green), blue);
                 let delta = max - min;
 
                 let mut hue = if max == min {
@@ -624,7 +642,7 @@ impl ColorSpace {
                     let mut saturation = if lightness == 0.0 || lightness == 1.0 {
                         0.0
                     } else {
-                        100.0 * (max - lightness) / lightness.min(1.0 - lightness)
+                        100.0 * (max - lightness) / min_nan(lightness, 1.0 - lightness)
                     };
                     if saturation < 0.0 {
                         hue += 180.0;

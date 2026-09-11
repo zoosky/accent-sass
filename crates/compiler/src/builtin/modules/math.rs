@@ -231,11 +231,11 @@ fn log(mut args: ArgumentResult, _: &mut Visitor) -> SassResult<Value> {
     // ordinary -27.63.
     Ok(Value::Dimension(SassNumber::new_unitless(
         if let Some(base) = base {
-            if base.0 == 0.0 {
-                Number::zero()
-            } else {
-                number.log(base)
-            }
+            // Dart Sass divides the two natural logarithms, and so does
+            // `Number::log`. A base of zero gives `ln(number) / -infinity`:
+            // `-0` for `math.log(2, 0)`, `0` for `math.log(0.5, 0)` and `NaN`
+            // for `math.log(0, 0)`.
+            number.log(base)
         } else if number.is_negative() && number.0 != 0.0 {
             Number(f64::NAN)
         } else if number.0 == 0.0 {
@@ -360,8 +360,9 @@ fn asin(mut args: ArgumentResult, _: &mut Visitor) -> SassResult<Value> {
             as_slash: None,
         }));
     } else if number.0 == 0.0 {
+        // The zero keeps its sign: `math.asin(-0.0)` is `-0deg`.
         return Ok(Value::Dimension(SassNumber {
-            num: Number::zero(),
+            num: number,
             unit: Unit::Deg,
             as_slash: None,
         }));
@@ -385,8 +386,9 @@ fn atan(mut args: ArgumentResult, _: &mut Visitor) -> SassResult<Value> {
     number.assert_no_units("number", span)?;
 
     if number.num.0 == 0.0 {
+        // The zero keeps its sign: `math.atan(-0.0)` is `-0deg`.
         return Ok(Value::Dimension(SassNumber {
-            num: (Number::zero()),
+            num: number.num,
             unit: Unit::Deg,
             as_slash: None,
         }));

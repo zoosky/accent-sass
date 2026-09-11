@@ -23,10 +23,12 @@ test!(
     "a {\n  color: -0.9999999999999999;\n}\n",
     "a {\n  color: -1;\n}\n"
 );
+// dart-sass prints negative zero as `-0` from 1.104.0 on; 1.103.1 printed
+// `0`. See negative-zero.rs for the cases that still print `0`.
 test!(
     negative_zero,
     "a {\n  color: -0;\n}\n",
-    "a {\n  color: 0;\n}\n"
+    "a {\n  color: -0;\n}\n"
 );
 test!(
     decimal_is_zero,

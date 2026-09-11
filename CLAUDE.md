@@ -143,7 +143,7 @@ exceptions for `.github/scripts/*.sh` and `.github/scripts/*.scss`.
 Tests live in `crates/lib/tests/` and use the `test!` and `error!` macros: an
 input string and the exact expected output or first error line.
 
-**dart-sass is the reference implementation, currently 1.103.1.** When a
+**dart-sass is the reference implementation, currently 1.104.0.** When a
 change alters existing expectations, verify each one against the real
 dart-sass binary before updating it. Re-baselining a test to whatever the new
 code prints turns a regression into a passing test; that is how wrong

@@ -13,6 +13,18 @@ at `0.13.4` and below are upstream's and are kept for lineage.
 
 ## [Unreleased]
 
+### Changed
+
+- the reference implementation is dart-sass 1.104.0, and both of its changes
+  are followed. Exact negative zero prints as `-0` rather than `0`, so it
+  keeps its sign when used in a CSS calculation; `math.round`, `math.ceil`,
+  `math.floor` and the calculation `round()` still return `0`, because
+  dart-sass rounds to an integer. A colour channel that is `NaN` or negative
+  zero becomes `0`, and so does a hue that is infinite:
+  `hsl(math.div(1, 0), 50%, 50%)` is now `hsl(0, 50%, 50%)` rather than
+  `hsl(calc(NaN), 50%, 50%)`. As in dart-sass, `color.change()` on an rgb
+  colour keeps such a channel until the colour is converted to another space
+
 ### Fixed
 
 - unit names are case-sensitive, as they are in dart-sass. Only the canonical

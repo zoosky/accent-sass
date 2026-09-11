@@ -449,15 +449,18 @@ test!(
     "@use \"sass:math\";\na {\n  color: lab(50% math.div(1, 0) 20);\n}\n",
     "a {\n  color: lab(50% calc(infinity) 20);\n}\n"
 );
+// A `NaN` channel becomes `0` from dart-sass 1.104.0 on, which follows CSS
+// Color 4's rule for degenerate values; 1.103.1 printed `calc(NaN)`. An
+// infinite linear channel, as in `lab_infinite_a` above, is kept.
 test!(
     color_nan_channel,
     "@use \"sass:math\";\na {\n  color: color(srgb math.div(0, 0) 0 0);\n}\n",
-    "a {\n  color: color(srgb calc(NaN) 0 0);\n}\n"
+    "a {\n  color: color(srgb 0 0 0);\n}\n"
 );
 test!(
     lab_nan_alpha,
     "@use \"sass:math\";\na {\n  color: lab(50% 10 20 / math.div(0, 0));\n}\n",
-    "a {\n  color: lab(50% 10 calc(NaN));\n}\n"
+    "a {\n  color: lab(50% 10 0);\n}\n"
 );
 
 // ---------------------------------------------------------------------------
