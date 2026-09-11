@@ -154,6 +154,15 @@ impl CssTree {
         self.child_to_parent.insert(child_idx, parent_idx);
     }
 
+    /// The number of statements at the top level of the document.
+    ///
+    /// This is where the `@import` block ends: an import written while every
+    /// root statement so far is part of that block joins it, and one written
+    /// after anything else has to be moved back into it.
+    pub fn root_child_count(&self) -> usize {
+        self.parent_to_child.get(&Self::ROOT).map_or(0, Vec::len)
+    }
+
     pub fn has_following_sibling(&self, child: CssTreeIdx) -> bool {
         if child == Self::ROOT {
             return false;
