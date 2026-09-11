@@ -1547,8 +1547,15 @@ impl<'a> Serializer<'a> {
                 .into());
         }
 
+        // A plain function keeps the spelling it was given, as dart-sass
+        // prints it: `get-function("file_join")`, not `file-join`.
+        let name = match func {
+            SassFunction::Plain { name } => name.clone(),
+            _ => func.name().to_string(),
+        };
+
         self.buffer.extend_from_slice(b"get-function(");
-        self.visit_quoted_string(false, func.name().as_str());
+        self.visit_quoted_string(false, &name);
         self.buffer.push(b')');
 
         Ok(())

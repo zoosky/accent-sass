@@ -3336,7 +3336,9 @@ impl<'a> Visitor<'a> {
                         return Err((message, span).into());
                     }
 
-                    SassFunction::Plain { name }
+                    SassFunction::Plain {
+                        name: func_call.original_name.clone(),
+                    }
                 }
             }
         };
@@ -3855,6 +3857,7 @@ impl<'a> Visitor<'a> {
         let func_call = FunctionCallExpr {
             namespace: None,
             name: Identifier::from(name.as_str()),
+            original_name: name.as_str().to_owned(),
             arguments: Arc::new(ArgumentInvocation {
                 positional: args,
                 named: BTreeMap::new(),
