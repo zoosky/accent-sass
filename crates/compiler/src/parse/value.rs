@@ -1688,7 +1688,7 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
         }
 
         let mut contents =
-            parser.parse_interpolated_declaration_value(false, true, true, false, true)?;
+            parser.parse_interpolated_declaration_value(false, true, true, false, true, true)?;
         // An interpolated calc() reaches this raw-string fallback, but Dart
         // Sass serializes it without the source's leading/trailing whitespace
         // inside the parentheses (`calc( #{x} )` becomes `calc(x)`).
@@ -1797,8 +1797,8 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
     ) -> SassResult<Option<AstExpr>> {
         Ok(
             if ValueParser::contains_calculation_interpolation(parser)? {
-                let mut contents =
-                    parser.parse_interpolated_declaration_value(false, false, true, false, true)?;
+                let mut contents = parser
+                    .parse_interpolated_declaration_value(false, false, true, false, true, true)?;
                 // Dart Sass serializes an interpolated calculation without the
                 // source's leading/trailing whitespace inside the parentheses
                 // (`calc( x )` becomes `calc(x)`).
