@@ -405,10 +405,12 @@ test!(
     "@use 'sass:math';\na {\n  color: math.log(2, -1);\n}\n",
     "a {\n  color: calc(NaN);\n}\n"
 );
+// `ln(2) / ln(0)` is `-0`, which dart-sass prints as `-0` from 1.104.0 on;
+// 1.103.1 printed `0`.
 test!(
     log_base_zero,
     "@use 'sass:math';\na {\n  color: math.log(2, 0);\n}\n",
-    "a {\n  color: 0;\n}\n"
+    "a {\n  color: -0;\n}\n"
 );
 test!(
     log_base_point_five,
@@ -680,11 +682,12 @@ test!(
     "@use 'sass:math';\na {\n  plain: math.log(0.000000000001);\n  base: math.log(2, 0.000000000001);\n}\n",
     "a {\n  plain: -27.6310211159;\n  base: -0.025085833;\n}\n"
 );
-// The degenerate cases themselves are unchanged.
+// The degenerate cases themselves are unchanged, except that `math.log(2, 0)`
+// is `-0`, which dart-sass prints as `-0` from 1.104.0 on.
 test!(
     log_of_exactly_zero,
     "@use 'sass:math';\na {\n  plain: math.log(0);\n  base: math.log(2, 0);\n}\n",
-    "a {\n  plain: calc(-infinity);\n  base: 0;\n}\n"
+    "a {\n  plain: calc(-infinity);\n  base: -0;\n}\n"
 );
 // Dart's `double.minPositive` is the smallest subnormal, not the smallest
 // normal double. Multiplied up so the serializer cannot round it away.

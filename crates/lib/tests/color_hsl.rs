@@ -297,15 +297,17 @@ test!(
     "a {\n  color: hsl(8grad, 25%, 50%);\n}\n",
     "a {\n  color: hsl(7.2, 25%, 50%);\n}\n"
 );
+// A `NaN` hue becomes `0` from dart-sass 1.104.0 on; 1.103.1 printed
+// `hsl(calc(NaN), 50%, 50%)` and `calc(NaN * 1deg)`.
 test!(
     adjust_hue_nan,
     "a {\n  color: adjust-hue(hsla(200, 50%, 50%), (0/0));\n}\n",
-    "a {\n  color: hsl(calc(NaN), 50%, 50%);\n}\n"
+    "a {\n  color: hsl(0, 50%, 50%);\n}\n"
 );
 test!(
     adjust_hue_nan_get_hue,
     "a {\n  color: hue(adjust-hue(hsla(200, 50%, 50%), (0/0)));\n}\n",
-    "a {\n  color: calc(NaN * 1deg);\n}\n"
+    "a {\n  color: 0deg;\n}\n"
 );
 test!(
     hsl_special_two_arg_var_first,

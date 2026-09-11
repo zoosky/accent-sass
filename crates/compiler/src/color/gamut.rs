@@ -42,11 +42,18 @@ const JND: f64 = 0.02;
 const EPSILON: f64 = 0.0001;
 
 /// `clampLikeCss`: NaN clamps to the lower bound.
+///
+/// Dart's `clamp` compares with `compareTo`, which orders `-0.0` before
+/// `0.0`, so negative zero clamps to a lower bound of `0` and comes out
+/// positive: `rgb(-0, 10, 20)` has a red of `0`. Rust's `f64::clamp` would
+/// keep `-0.0`; `total_cmp` has Dart's ordering.
 pub(crate) fn clamp_like_css(number: f64, lower: f64, upper: f64) -> f64 {
-    if number.is_nan() {
+    if number.is_nan() || number.total_cmp(&lower).is_lt() {
         lower
+    } else if number.total_cmp(&upper).is_gt() {
+        upper
     } else {
-        number.clamp(lower, upper)
+        number
     }
 }
 

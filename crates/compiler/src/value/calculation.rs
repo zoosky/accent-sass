@@ -1168,7 +1168,11 @@ pub(crate) fn round_with_step(strategy: RoundStrategy, number: f64, step: f64) -
         }
     };
 
-    multiple * step
+    // Dart rounds the quotient to an integer, which has no negative zero, and
+    // then multiplies by the step: `round(down, -0.5, 1)` is `-1`, and
+    // `round(to-zero, -0.5, 1)` is `0` rather than `-0`. A negative step can
+    // still make the product `-0`, as it does in Dart.
+    (multiple + 0.0) * step
 }
 
 /// Whether inlining `text` into an enclosing calculation needs parentheses to

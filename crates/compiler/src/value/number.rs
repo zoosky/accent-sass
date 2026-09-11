@@ -68,7 +68,7 @@ pub(crate) fn fuzzy_round(number: f64) -> f64 {
     // way (`fuzzy_round(-1.3)` would be -2).
     let fraction = number.rem_euclid(1.0);
 
-    if number > 0.0 {
+    let rounded = if number > 0.0 {
         if fuzzy_less_than(fraction, 0.5) {
             number.floor()
         } else {
@@ -78,7 +78,10 @@ pub(crate) fn fuzzy_round(number: f64) -> f64 {
         number.floor()
     } else {
         number.ceil()
-    }
+    };
+
+    // Dart's `fuzzyRound` returns an integer, which has no negative zero.
+    rounded + 0.0
 }
 
 /// Rounds down, treating a value within epsilon of the next integer as that
@@ -143,16 +146,20 @@ impl Number {
         }
     }
 
+    // Dart's `round`, `ceil` and `floor` return an integer, which has no
+    // negative zero, so `math.round(-0.4)` is `0` there. Adding `0.0` turns
+    // Rust's `-0.0` into `0.0` and leaves every other value alone.
+
     pub fn round(self) -> Self {
-        Self(self.0.round())
+        Self(self.0.round() + 0.0)
     }
 
     pub fn ceil(self) -> Self {
-        Self(self.0.ceil())
+        Self(self.0.ceil() + 0.0)
     }
 
     pub fn floor(self) -> Self {
-        Self(self.0.floor())
+        Self(self.0.floor() + 0.0)
     }
 
     pub fn abs(self) -> Self {
@@ -299,6 +306,13 @@ impl Number {
             return "Infinity".to_owned();
         }
 
+        // Exact negative zero keeps its sign, as in the serializer's
+        // `write_float`; the check below still folds a value that only
+        // rounds to zero into `0`.
+        if self.0 == 0.0 && self.0.is_sign_negative() {
+            return "-0".to_owned();
+        }
+
         let mut buffer = String::with_capacity(3);
 
         if self.0 < 0.0 {
@@ -416,20 +430,16 @@ fn real_mod(n1: f64, n2: f64) -> f64 {
 fn modulo(n1: f64, n2: f64) -> f64 {
     // Sass uses floored-division modulo, and defines the infinite cases
     // explicitly: an infinite dividend is always NaN, and an infinite divisor
-    // keeps the dividend when the two share a sign (counting -0 as negative)
-    // and is NaN otherwise.
+    // keeps the dividend when the two share a sign and is NaN otherwise.
     if n1.is_infinite() {
         return f64::NAN;
     }
 
     if n2.is_infinite() {
-        // Zero counts as negative here, which is what Dart Sass 1.103.1 does
-        // (`0 % infinity` is NaN while `0 % -infinity` is 0). dart-sass master
-        // has since changed the positive-zero case; this matches the released
-        // reference implementation.
-        let is_negative = |n: f64| n.is_sign_negative() || n == 0.0;
-
-        return if is_negative(n1) == is_negative(n2) {
+        // Dart Sass compares `signIncludingZero`, which counts only negative
+        // zero as negative: `0 % infinity` is `0` and `0 % -infinity` is NaN.
+        // A NaN dividend gives NaN on either branch.
+        return if n1.is_sign_negative() == n2.is_sign_negative() {
             n1
         } else {
             f64::NAN

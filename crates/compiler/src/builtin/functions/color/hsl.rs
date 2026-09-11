@@ -426,8 +426,9 @@ fn invert_inner(
             let rgb = color.to_space(ColorSpace::Rgb, true);
             let channels = ColorSpace::Rgb.channels();
             let [red, green, blue] = rgb.channels_or_none();
-            let inverse = Color::for_space(
-                ColorSpace::Rgb,
+            // Dart Sass builds the inverse with `SassColor.rgb`, which does not
+            // normalize its channels.
+            let inverse = Color::rgb_internal(
                 Some(invert_channel(&rgb, &channels[0], red, span)?),
                 Some(invert_channel(&rgb, &channels[1], green, span)?),
                 Some(invert_channel(&rgb, &channels[2], blue, span)?),

@@ -177,7 +177,12 @@ pub(crate) fn legacy_channel_function(
 
     let mut value = color.legacy_channel(space, index);
     if round {
-        value = value.round();
+        // Dart Sass's `SassColor.red` and its siblings call `round()`, which
+        // returns an integer: a `-0` channel, which `color.change()` can
+        // leave, reads back as `0`. Adding `0.0` does the same for Rust's
+        // `-0.0`. The rounding itself is not fuzzy, so 229.49999999999997
+        // is 229.
+        value = value.round() + 0.0;
     }
 
     Ok(Value::Dimension(SassNumber {

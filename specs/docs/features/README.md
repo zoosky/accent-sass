@@ -1,8 +1,10 @@
 # Spec conformance roadmap
 
 This directory holds one implementation document per work item that closes
-the gap between this project and dart-sass 1.103.1, ranked by the number of
-sass-spec tests each item unlocks.
+the gap between this project and dart-sass, ranked by the number of
+sass-spec tests each item unlocks. The reference is 1.104.0 since
+[item 25](25-baseline-before-dart-sass-1-104.md); the ranking below was drawn
+up against 1.103.1.
 
 It also holds a second kind of item, added 2026-09-08: **delivery items**,
 which unlock no fixtures at all. Items 12, 13 and 14 are the WebAssembly
@@ -223,6 +225,15 @@ builds, and put it on pull requests. That is the reason item 13's acceptance
 criteria insist on *running* the artifact: for a target nothing exercises, a
 green build says very little.
 
+### Reference moves -- no ranking impact
+
+Moving to a new dart-sass release changes what the suite expects rather than
+closing a gap the ranking counts, so these are kept out of it as well.
+
+| Doc | What it is | State |
+|---|---|---|
+| [25-baseline-before-dart-sass-1-104.md](25-baseline-before-dart-sass-1-104.md) | 1.103.1 to 1.104.0: negative zero prints as `-0`, and degenerate colour channels become `0`. Also records the baseline measured before the move | landed |
+
 ### Landed -- residue only
 
 The residues here sum to 155, re-measured on `3b831b7`: the 152 left in the
@@ -288,9 +299,9 @@ fails now.
 
 ## Ground rules for every item
 
-- dart-sass 1.103.1 is the reference. Verify every new or changed
-  expectation against the real binary before committing it; never
-  re-baseline a test to whatever the new code prints.
+- dart-sass 1.104.0 is the reference (1.103.1 before item 25). Verify
+  every new or changed expectation against the real binary before
+  committing it; never re-baseline a test to whatever the new code prints.
 - Add regression tests to `crates/lib/tests/` using the `test!` and
   `error!` macros alongside the spec run.
 - Run the quality gates before committing. Clippy runs on **two** toolchains

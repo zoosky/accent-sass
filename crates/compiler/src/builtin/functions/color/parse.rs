@@ -398,8 +398,9 @@ pub(crate) fn color_from_channels(
                 alpha,
             )
         }
-        _ => Color::for_space(
-            space,
+        // Dart Sass builds rgb through `SassColor.rgbInternal`, which keeps a
+        // `NaN` or negative-zero channel; every other space normalizes it.
+        ColorSpace::Rgb => Color::rgb_internal(
             channel_from_value(&channels[0], channel0.as_ref(), clamp, span)?,
             channel_from_value(&channels[1], channel1.as_ref(), clamp, span)?,
             channel_from_value(&channels[2], channel2.as_ref(), clamp, span)?,
@@ -410,6 +411,13 @@ pub(crate) fn color_from_channels(
         } else {
             ColorFormat::Infer
         }),
+        _ => Color::for_space(
+            space,
+            channel_from_value(&channels[0], channel0.as_ref(), clamp, span)?,
+            channel_from_value(&channels[1], channel1.as_ref(), clamp, span)?,
+            channel_from_value(&channels[2], channel2.as_ref(), clamp, span)?,
+            alpha,
+        ),
     };
 
     Ok(color)

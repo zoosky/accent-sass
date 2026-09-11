@@ -336,10 +336,13 @@ test!(
     "@use \"sass:color\";\na {\n  color: color.mix(#cc0f35, #12ab34, 100%, hsl);\n}\n",
     "a {\n  color: #cc0f35;\n}\n"
 );
+// Mixing two fully transparent colors divides by a zero alpha. dart-sass
+// 1.103.1 printed the `NaN` channels as `hsla(calc(NaN), ...)`; from 1.104.0
+// on they become `0`, and the black that leaves is printed as rgb.
 test!(
-    mix_fully_transparent_colors_give_nan_channels,
+    mix_fully_transparent_colors_give_zero_channels,
     "@use \"sass:color\";\na {\n  color: color.mix(rgba(200, 10, 50, 0), rgba(18, 171, 52, 0), $method: hsl);\n}\n",
-    "a {\n  color: hsla(calc(NaN), calc(NaN * 1%), calc(NaN * 1%), 0);\n}\n"
+    "a {\n  color: rgba(0, 0, 0, 0);\n}\n"
 );
 test!(
     mix_out_of_gamut_hsl,

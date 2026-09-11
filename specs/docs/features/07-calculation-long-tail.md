@@ -21,6 +21,15 @@ item; nobody recorded which, and it is not reconstructed here. The area
 holds one other failure, `calc/operator/var/calculation`, which is not one
 of this item's three -- see [24-unclaimed-tail.md](24-unclaimed-tail.md).
 
+**Section 1 closed 2026-09-11 by
+[item 25](25-baseline-before-dart-sass-1-104.md) (#83), so this item is
+done.** `modulo()` now compares the operands' signs with `is_sign_negative()`,
+and `crates/lib/tests/negative-zero.rs` covers `%` and `mod()`. The table
+below is the native binary's output and still holds; 1.104.0 gives the same.
+The JavaScript build does not: `npx sass@1.103.1` counts positive zero as
+negative, as this compiler did, which is likely how the 1.103.1 comment below
+came to be written. dart-sass 1.104.0 made the two builds agree.
+
 ## 1. Positive zero against an infinite divisor
 
 `spec/values/calculation/mod/nan/zero_and_negative_infinity`

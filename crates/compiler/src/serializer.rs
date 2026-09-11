@@ -1059,6 +1059,10 @@ impl<'a> Serializer<'a> {
     /// rounded to ten decimal places by decimal digit. Compressed output
     /// drops the zero before the decimal point (`.5`), except on a short
     /// negative number, which Dart Sass leaves alone (`-0.5`).
+    ///
+    /// Exact negative zero is written as `-0`, as dart-sass does from 1.104.0
+    /// on, so it keeps its sign when used in a CSS calculation. A value that
+    /// merely rounds to zero, such as `-0.00000000001`, is still written `0`.
     fn write_float(&mut self, float: f64) {
         if float.is_infinite() && float.is_sign_negative() {
             self.buffer.extend_from_slice(b"-Infinity");
@@ -1068,6 +1072,9 @@ impl<'a> Serializer<'a> {
             return;
         } else if float.is_nan() {
             self.buffer.extend_from_slice(b"NaN");
+            return;
+        } else if float == 0.0 && float.is_sign_negative() {
+            self.buffer.extend_from_slice(b"-0");
             return;
         }
 

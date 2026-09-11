@@ -162,10 +162,10 @@ jobs:
       # The version this fork targets; see README.md. The colour pipeline
       # deliberately matches 1.79+ semantics, so comparing against the old
       # 1.54.3 binary reports differences that are intended.
-      - name: Install dart-sass 1.103.1
+      - name: Install dart-sass 1.104.0
         run: |
-          wget -q https://github.com/sass/dart-sass/releases/download/1.103.1/dart-sass-1.103.1-linux-x64.tar.gz
-          tar -xzf dart-sass-1.103.1-linux-x64.tar.gz
+          wget -q https://github.com/sass/dart-sass/releases/download/1.104.0/dart-sass-1.104.0-linux-x64.tar.gz
+          tar -xzf dart-sass-1.104.0-linux-x64.tar.gz
 
       - name: Install bootstrap
         run: git clone --depth=1 --branch v5.0.2 https://github.com/twbs/bootstrap.git
@@ -180,7 +180,7 @@ jobs:
             | grep '^[<>]' | grep -cE 'rgb\(|hsl\(|#[0-9a-fA-F]{3,8}\b' || true)
 
           {
-            echo "### Bootstrap 5.0.2 vs dart-sass 1.103.1"
+            echo "### Bootstrap 5.0.2 vs dart-sass 1.104.0"
             echo
             echo "- differing lines: $differing"
             echo "- of which carry a colour value: $colours"
@@ -219,10 +219,10 @@ jobs:
       - name: Build binary
         run: cargo build --release
 
-      - name: Install dart-sass 1.103.1
+      - name: Install dart-sass 1.104.0
         run: |
-          wget -q https://github.com/sass/dart-sass/releases/download/1.103.1/dart-sass-1.103.1-linux-x64.tar.gz
-          tar -xzf dart-sass-1.103.1-linux-x64.tar.gz
+          wget -q https://github.com/sass/dart-sass/releases/download/1.104.0/dart-sass-1.104.0-linux-x64.tar.gz
+          tar -xzf dart-sass-1.104.0-linux-x64.tar.gz
 
       - name: Install lightningcss
         run: npm install -g lightningcss-cli
