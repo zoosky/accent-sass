@@ -14,7 +14,7 @@ use crate::{
 
 use super::{
     ComplexSelector, ComplexSelectorComponent, ComplexSelectorHashSet, CompoundSelector, Pseudo,
-    SelectorList, SimpleSelector,
+    SelectorList, SimpleSelector, complex::components_are_useless,
 };
 
 pub(crate) use extended_selector::ExtendedSelector;
@@ -372,7 +372,17 @@ impl ExtensionStore {
             extender.originals.extend(selector.components.iter());
         }
 
-        Ok(extender.extend_list(selector, Some(&extensions), &None))
+        let result = extender.extend_list(selector, Some(&extensions), &None);
+
+        // A replacement that unifies with nothing, or leaves only useless
+        // selectors, can empty the whole list. dart-sass fails constructing
+        // it; complex selectors that survive elsewhere in the list keep it
+        // alive, so `selector.replace("a.b, d", ".b", "c")` is `d`.
+        if result.components.is_empty() {
+            return Err(("Invalid argument(s): components may not be empty.", span).into());
+        }
+
+        Ok(result)
     }
 
     fn with_mode(mode: ExtendMode, span: Span) -> Self {
@@ -450,15 +460,39 @@ impl ExtensionStore {
         // any allocations in the common case where no extends apply.
         let mut extended_not_expanded: Option<Vec<Vec<ComplexSelector>>> = None;
 
+        // More than one leading combinator makes a selector useless, and
+        // dart-sass does not extend one.
+        if complex
+            .components
+            .iter()
+            .take_while(|component| component.is_combinator())
+            .count()
+            > 1
+        {
+            return None;
+        }
+
         let complex_has_line_break = complex.line_break;
 
         let is_original = self.originals.contains(&complex);
 
         for (i, component) in complex.components.iter().enumerate() {
             if let ComplexSelectorComponent::Compound(component) = component {
-                if let Some(extended) =
-                    self.extend_compound(component, extensions, media_query_context, is_original)
-                {
+                // The combinators written after this compound, up to the
+                // next compound. dart-sass stores them on the compound.
+                let trailing_end = complex.components[i + 1..]
+                    .iter()
+                    .position(|next| !next.is_combinator())
+                    .map_or(complex.components.len(), |offset| i + 1 + offset);
+                let trailing = &complex.components[i + 1..trailing_end];
+
+                if let Some(extended) = self.extend_compound(
+                    component,
+                    trailing,
+                    extensions,
+                    media_query_context,
+                    is_original,
+                ) {
                     if extended_not_expanded.is_none() {
                         extended_not_expanded = Some(
                             complex
@@ -554,9 +588,15 @@ impl ExtensionStore {
     ///
     /// The `in_original` parameter indicates whether this is in an original
     /// complex selector, meaning that `compound` should not be trimmed out.
+    ///
+    /// `trailing` holds the combinators written after `compound` in its
+    /// complex selector. An extension that would be useless once they are
+    /// appended, such as `.e` in `.c ~ ~ .d`, is dropped; when every option
+    /// is dropped, `compound` is left as it was.
     fn extend_compound(
         &mut self,
         compound: &CompoundSelector,
+        trailing: &[ComplexSelectorComponent],
         extensions: Option<&HashMap<SimpleSelector, IndexMap<ComplexSelector, Extension>>>,
         media_query_context: &Option<Vec<CssMediaQuery>>,
         in_original: bool,
@@ -619,10 +659,12 @@ impl ExtensionStore {
             for state in options.first()?.clone() {
                 let error = state.check_media_context(media_query_context);
                 self.defer_error(error);
-                extenders.push(state.extender);
+                if !is_useless_with(&state.extender.components, trailing) {
+                    extenders.push(state.extender);
+                }
             }
 
-            return Some(extenders);
+            return (!extenders.is_empty()).then_some(extenders);
         }
 
         // Find all paths through `options`. In this case, each path represents a
@@ -694,6 +736,9 @@ impl ExtensionStore {
                 }
 
                 unify_complex(Vec::from(to_unify))?
+                    .into_iter()
+                    .filter(|components| !is_useless_with(components, trailing))
+                    .collect()
             };
 
             let mut line_break = false;
@@ -991,6 +1036,12 @@ impl ExtensionStore {
         // sequences should limit the quadratic behavior. We iterate from last to
         // first and reverse the result so that, if two selectors are identical, we
         // keep the first one.
+        // `selector.replace` can leave nothing, as when no replacement
+        // unifies; the loop below assumes at least one selector.
+        if selectors.is_empty() {
+            return selectors;
+        }
+
         let mut result: VecDeque<ComplexSelector> = VecDeque::new();
         let mut num_originals = 0;
 
@@ -1179,6 +1230,15 @@ impl ExtensionStore {
         let mut new_extensions: Option<IndexMap<ComplexSelector, Extension>> = None;
 
         for complex in extender.components {
+            // A useless selector such as `.b > + y` can never match, so
+            // dart-sass refuses it as an extender rather than weaving it into
+            // the selectors it extends. It is not an error: the target need
+            // not exist either. A selector that is only bogus, such as `> d`
+            // or `d +`, still extends.
+            if complex.is_useless() {
+                continue;
+            }
+
             let state = Extension {
                 specificity: complex.max_specificity(),
                 extender: complex.clone(),
@@ -1393,6 +1453,24 @@ impl ExtensionStore {
             self.register_selector(selector_as_selector, &selector);
         }
     }
+}
+
+/// Whether `components` would be a useless selector once `trailing`, the
+/// combinators after the compound it replaces, were appended to it.
+///
+/// This is dart-sass's `withAdditionalCombinators(...).isUseless` on an
+/// extension result. This compiler keeps those combinators in the complex
+/// selector rather than on the compound, so they are passed in separately.
+fn is_useless_with(
+    components: &[ComplexSelectorComponent],
+    trailing: &[ComplexSelectorComponent],
+) -> bool {
+    if trailing.is_empty() {
+        return components_are_useless(components);
+    }
+    let mut joined = components.to_vec();
+    joined.extend_from_slice(trailing);
+    components_are_useless(&joined)
 }
 
 /// Rotates the element in list from `start` (inclusive) to `end` (exclusive)

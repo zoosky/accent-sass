@@ -1,5 +1,22 @@
 # Bogus combinators
 
+**Landed. The suite went from 173 failures to 111.** Sixty-two fixtures
+closed, not the eighteen counted below. All eighteen of this item's pass,
+and so do all 24 `spec/css/selector/combinator/` failures and all 20
+`spec/core_functions/selector` failures with `combinator` in their path --
+the residue item 04 counts that [Testing](#testing) asked about. Nothing
+regressed, and "Expected test to fail but it did not" stayed at 16, so no
+leniency paid for the omissions. Measured on master (`7763e204`) against
+sass-spec `b39c32768` and dart-sass 1.104.0, native binary.
+
+`css/selector` is down from 25 to 1 (`attribute/empty_namespace`) and
+`core_functions/selector` from 25 to 5; none of the six left has a
+combinator in its path. `.github/scripts/frameworks.sh`, run locally
+against the same native binary, reports the same counts before and after
+-- 5, 0, 0 and 903 differing lines for Bulma, Pico, Foundation and USWDS,
+none colour-bearing -- so no rule in those four was dropped. [How it landed](#how-it-landed) records where the
+work differed from the instructions below.
+
 18 sass-spec failures, the deepest cause in the unclaimed residue, spread
 over five areas that no document claims. Every one of them is the same
 divergence: dart-sass drops a selector whose combinators cannot match
@@ -128,3 +145,65 @@ without the warning closes every one of these tests.
   with no colour-value difference. A rule that drops selectors is the kind
   that goes too far quietly, and those four are the broadest check there
   is that it has not.
+
+## How it landed
+
+The rules were ported from the dart-sass 1.104.0 source rather than
+inferred from its output: `Selector.isBogus`, `isBogusOtherThanLeadingCombinator`
+and `isUseless` in `lib/src/ast/selector.dart`, and their call sites in
+`lib/src/extend/` and `lib/src/visitor/`. Three things in this document
+turned out to be imprecise.
+
+**The omission is invisibility, not a check in `visit_style_rule`.**
+dart-sass keeps the rule in the tree. Its serializer skips any complex
+selector that is `isBogusOtherThanLeadingCombinator`, through the same
+`isInvisible` that hides placeholders, and a rule with nothing visible left
+disappears. `ComplexSelector::is_invisible` now includes that clause, so the
+omission works per complex selector: `.a + ~ b, .c {p: 1}` prints `.c`.
+
+**A trailing combinator is always invisible.** Step 4 reads as if `.b >`
+were dropped or kept depending on its children. It is always dropped; in
+`.b > {c {p: 2}}` the rule that prints is the nested `.b > c`, which has no
+trailing combinator. The children only decide which warning dart-sass
+emits.
+
+**The extend work is three rules, not one.** `add_extension` skips a
+useless extender, which is what the nine `extend-tests` fixtures need.
+`selector.extend()` does not pass through it, so the per-compound check had
+to be ported too: an extension that becomes useless once the compound's
+trailing combinators are appended is dropped, which is why
+`selector.extend(".c ~ ~ .d", ".c", ".e")` returns only `.c ~ ~ .d`. And
+`unify_complex` now carries a leading or trailing combinator onto the
+unified base as dart-sass's `unifyComplex` does, where it used to give up on
+any selector ending in a combinator. That last one closed three
+`selector.extend` fixtures, such as `trailing_combinator/extender/child`,
+that failed before this item for that reason alone.
+
+Other smaller ports came along: a bogus selector inside `:not()` makes the
+rule invisible and is never a superselector, and `:has()` allows one
+leading combinator where `:is()` does not.
+
+**Hidden from CSS, kept in values.** dart-sass hides a bogus selector only
+when it writes CSS. When it prints a selector as a SassScript value, it
+filters nothing, so `selector.parse(":is(.a > + .b)")` keeps its argument.
+This compiler prints values through `SelectorList`'s `Display`, which
+filters invisible complex selectors, and the first version of this change
+made that filter drop bogus arguments too, giving `:is()`. A code review
+caught it. The invisibility checks now take an `include_bogus` flag, like
+dart-sass's `isInvisibleOtherThanBogusCombinators`, and `Display` leaves
+bogus selectors in. The serializer, which writes CSS, still drops them.
+
+The review also found that `selector.replace` panicked in `trim` when no
+replacement survived, as in `selector.replace("a.b", ".b", "c")`. That was
+already true on master, but the new useless filter opened another path to
+it. dart-sass fails with "components may not be empty" only when the whole
+list is empty, so `trim` now accepts an empty list and `selector.replace`
+raises that error.
+
+Seventeen existing tests in `crates/lib/tests/` had frozen the old output:
+ten in `extend.rs`, five in `selector-unify.rs` and two in `selectors.rs`.
+They wove useless extenders in, unified selectors with two combinators in a
+row, and printed `> > foo` and `+`. weaving useless extenders in and printing
+`> > foo`. Each was checked against the dart-sass 1.104.0 binary and
+corrected. The new regression tests are in
+`crates/lib/tests/bogus-combinators.rs`.

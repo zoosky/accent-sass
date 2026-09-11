@@ -129,10 +129,65 @@ impl ComplexSelector {
         Specificity::new(min, max)
     }
 
+    /// Whether this selector should be left out of the generated CSS.
+    ///
+    /// That is the case when it contains a placeholder, or when its
+    /// combinators are bogus in a way that nesting cannot repair: see
+    /// [`Self::is_bogus_other_than_leading_combinator`]. A single leading
+    /// combinator, as in `> .c`, stays visible.
     pub fn is_invisible(&self) -> bool {
+        self.is_invisible_with(true)
+    }
+
+    /// Whether this selector would be invisible even if bogus combinators
+    /// were allowed: that is, whether it contains a placeholder.
+    ///
+    /// dart-sass's `isInvisibleOtherThanBogusCombinators`. Printing a
+    /// selector as a SassScript value uses it, because dart-sass hides bogus
+    /// selectors only when writing CSS: `selector.parse(":is(.a > + .b)")`
+    /// keeps its argument.
+    pub fn is_invisible_other_than_bogus_combinators(&self) -> bool {
+        self.is_invisible_with(false)
+    }
+
+    /// [`Self::is_invisible`], counting bogus combinators as invisible only
+    /// when `include_bogus` is set, at every level of nesting.
+    pub(crate) fn is_invisible_with(&self, include_bogus: bool) -> bool {
         self.components
             .iter()
-            .any(ComplexSelectorComponent::is_invisible)
+            .any(|component| component.is_invisible_with(include_bogus))
+            || (include_bogus && self.is_bogus_other_than_leading_combinator())
+    }
+
+    /// Whether this selector is not valid CSS because of its combinators.
+    ///
+    /// A port of dart-sass 1.104.0's `Selector.isBogus`. It covers selectors
+    /// that are only useful for nesting, such as `> .a` and `.a >`, and ones
+    /// that can never match, such as `.a + ~ .b`. A bogus selector inside a
+    /// selector pseudo such as `:is()` makes the outer selector bogus too.
+    pub fn is_bogus(&self) -> bool {
+        components_are_bogus(&self.components, true)
+    }
+
+    /// Whether this selector is bogus for any reason other than a single
+    /// leading combinator.
+    ///
+    /// A single leading combinator is legal CSS nesting, so `> .c` is printed
+    /// as written. Anything else [`Self::is_bogus`] reports makes the selector
+    /// invisible, including a trailing combinator: `.b >` is only meaningful
+    /// as the parent of a nested rule, and its own declarations are dropped.
+    pub fn is_bogus_other_than_leading_combinator(&self) -> bool {
+        components_are_bogus(&self.components, false)
+    }
+
+    /// Whether this selector is bogus and cannot be turned into valid CSS by
+    /// nesting or `@extend`.
+    ///
+    /// A port of dart-sass 1.104.0's `Selector.isUseless`: two combinators in
+    /// a row, more than one leading combinator, or a bogus selector pseudo.
+    /// A useless selector may not act as an extender.
+    pub fn is_useless(&self) -> bool {
+        components_are_useless(&self.components)
     }
 
     /// Returns whether `self` is a superselector of `other`.
@@ -313,6 +368,61 @@ impl ComplexSelector {
     }
 }
 
+/// Whether the complex selector made of `components` is bogus.
+///
+/// Shared by [`ComplexSelector::is_bogus`] and
+/// [`ComplexSelector::is_bogus_other_than_leading_combinator`], and taking a
+/// slice so the extend machinery can ask about a selector it holds only as
+/// components. With `include_leading_combinator` false, one leading
+/// combinator is allowed; more than one is still bogus. A selector that is
+/// nothing but combinators, such as `+`, is always bogus.
+pub(crate) fn components_are_bogus(
+    components: &[ComplexSelectorComponent],
+    include_leading_combinator: bool,
+) -> bool {
+    let leading = components
+        .iter()
+        .take_while(|component| component.is_combinator())
+        .count();
+    if leading == components.len() {
+        return leading > 0;
+    }
+
+    leading > usize::from(!include_leading_combinator)
+        || components
+            .last()
+            .is_some_and(ComplexSelectorComponent::is_combinator)
+        || has_adjacent_combinators(components)
+        || has_bogus_simple(components)
+}
+
+/// Whether the complex selector made of `components` is useless: see
+/// [`ComplexSelector::is_useless`].
+///
+/// More than one leading combinator is a pair of adjacent combinators, so
+/// [`has_adjacent_combinators`] covers it along with a pair in the middle.
+pub(crate) fn components_are_useless(components: &[ComplexSelectorComponent]) -> bool {
+    has_adjacent_combinators(components) || has_bogus_simple(components)
+}
+
+/// Whether two combinators follow each other anywhere in `components`.
+fn has_adjacent_combinators(components: &[ComplexSelectorComponent]) -> bool {
+    components
+        .windows(2)
+        .any(|pair| pair[0].is_combinator() && pair[1].is_combinator())
+}
+
+/// Whether any compound in `components` holds a selector pseudo whose
+/// argument is bogus.
+fn has_bogus_simple(components: &[ComplexSelectorComponent]) -> bool {
+    components.iter().any(|component| match component {
+        ComplexSelectorComponent::Compound(compound) => {
+            compound.components.iter().any(SimpleSelector::is_bogus)
+        }
+        ComplexSelectorComponent::Combinator(..) => false,
+    })
+}
+
 /// One compound selector of a complex selector with the combinators written
 /// after it.
 ///
@@ -424,10 +534,12 @@ pub(crate) enum ComplexSelectorComponent {
 }
 
 impl ComplexSelectorComponent {
-    pub fn is_invisible(&self) -> bool {
+    /// Whether this component hides its complex selector: see
+    /// [`ComplexSelector::is_invisible_with`]. A combinator never does.
+    pub fn is_invisible_with(&self, include_bogus: bool) -> bool {
         match self {
             Self::Combinator(..) => false,
-            Self::Compound(c) => c.is_invisible(),
+            Self::Compound(c) => c.is_invisible_with(include_bogus),
         }
     }
 

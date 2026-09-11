@@ -474,15 +474,18 @@ test!(
     "a {\n  color: selector-unify(\"+ .c\", \"+ .d\");\n}\n",
     "a {\n  color: + .c.d;\n}\n"
 );
+// More than one leading combinator makes a selector useless, and a useless
+// selector unifies with nothing, so the result is null. Verified against
+// dart-sass 1.104.0.
 test!(
     combinator_at_start_contiguous_super_sequence,
     "a {\n  color: selector-unify(\"+ ~ > .c\", \"> + ~ > > .d\");\n}\n",
-    "a {\n  color: > + ~ > > .c.d;\n}\n"
+    ""
 );
 test!(
     combinator_at_start_non_contiguous_super_sequence,
     "a {\n  color: selector-unify(\"+ ~ > .c\", \"+ > ~ ~ > .d\");\n}\n",
-    "a {\n  color: + > ~ ~ > .c.d;\n}\n"
+    ""
 );
 test!(
     combinator_at_start_distinct,
@@ -494,20 +497,22 @@ test!(
     "a {\n  color: selector-unify(\".c > .d + .e\", \".f .g ~ .h\");\n}\n",
     "a {\n  color: .f .c > .g ~ .d + .e.h, .f .c > .g.d + .e.h;\n}\n"
 );
+// Two combinators in a row make a selector useless, so it unifies with
+// nothing. Verified against dart-sass 1.104.0.
 test!(
     combinator_multiple_in_a_row_same,
     "a {\n  color: selector-unify(\".c + ~ > .d\", \".e + ~ > .f\");\n}\n",
-    "a {\n  color: .c .e + ~ > .d.f, .e .c + ~ > .d.f;\n}\n"
+    ""
 );
 test!(
     combinator_multiple_in_a_row_contiguous_super_sequence,
     "a {\n  color: selector-unify(\".c + ~ > .d\", \".e > + ~ > > .f\");\n}\n",
-    "a {\n  color: .c .e > + ~ > > .d.f, .e .c > + ~ > > .d.f;\n}\n"
+    ""
 );
 test!(
     combinator_multiple_in_a_row_non_contiguous_super_sequence,
     "a {\n  color: selector-unify(\".c + ~ > .d\", \".e + > ~ ~ > .f\");\n}\n",
-    "a {\n  color: .c .e + > ~ ~ > .d.f, .e .c + > ~ ~ > .d.f;\n}\n"
+    ""
 );
 test!(
     combinator_multiple_in_a_row_distinct,

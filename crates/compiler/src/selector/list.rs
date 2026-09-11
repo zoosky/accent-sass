@@ -44,7 +44,14 @@ impl Hash for SelectorList {
 
 impl fmt::Display for SelectorList {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let complexes = self.components.iter().filter(|c| !c.is_invisible());
+        // This prints selectors as SassScript values, such as the argument of
+        // `:is()` in `selector.parse()`'s result. dart-sass keeps a bogus
+        // selector there and drops it only from CSS, which the serializer
+        // writes, so only placeholders are left out.
+        let complexes = self
+            .components
+            .iter()
+            .filter(|c| !c.is_invisible_other_than_bogus_combinators());
 
         let mut first = true;
 
@@ -67,7 +74,30 @@ impl fmt::Display for SelectorList {
 
 impl SelectorList {
     pub fn is_invisible(&self) -> bool {
-        self.components.iter().all(ComplexSelector::is_invisible)
+        self.is_invisible_with(true)
+    }
+
+    /// Whether every complex selector in this list is invisible: see
+    /// [`ComplexSelector::is_invisible_with`].
+    pub(crate) fn is_invisible_with(&self, include_bogus: bool) -> bool {
+        self.components
+            .iter()
+            .all(|complex| complex.is_invisible_with(include_bogus))
+    }
+
+    /// Whether any complex selector in this list is bogus: see
+    /// [`ComplexSelector::is_bogus`].
+    pub fn is_bogus(&self) -> bool {
+        self.components.iter().any(ComplexSelector::is_bogus)
+    }
+
+    /// Whether any complex selector in this list is bogus for a reason other
+    /// than a single leading combinator: see
+    /// [`ComplexSelector::is_bogus_other_than_leading_combinator`].
+    pub fn is_bogus_other_than_leading_combinator(&self) -> bool {
+        self.components
+            .iter()
+            .any(ComplexSelector::is_bogus_other_than_leading_combinator)
     }
 
     pub fn contains_parent_selector(&self) -> bool {
