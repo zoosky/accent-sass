@@ -130,9 +130,10 @@ this is specifically about a comment at the end of the prelude.
   section 3 pass.
 - `spec/css/comment` drops from 10 failures to 9. On `f55ace41`, item 19's
   section 1 names one of the nine left, `loud/multi_line/sass`. The other
-  eight are item 05's residue, and item 05 lists them without a cause
-  written down for any: five loud comments in the indented syntax, under
-  `block/loud/sass` and `error/loud/sass`, and three under `sourcemap`.
+  eight are the rest of item 05's residue, which item 05 lists without a
+  cause written down for any: five loud comments in the indented syntax,
+  under `block/loud/sass` and `error/loud/sass`, and three under
+  `sourcemap`.
 - `spec/css/font-face/bubble/empty` needs section 1 as well as item 23; it
   is counted under item 23, not here.
 - The whole-suite count does not rise anywhere else. The serializer change

@@ -160,8 +160,8 @@ than its 128 unclaimed, so no number on this page double-counts them.
 documents claim and belonged to neither; item 24 recorded it outside its count
 of 39, and #79 closed it. Ten failures are like it now: they sit in areas that
 landed items claim, and no document gives their cause. Eight are in
-`spec/css/comment`, and item 05 lists them as its residue, saying none has
-been read for a cause: five loud comments in the indented syntax
+`spec/css/comment`, and item 05 lists them among its residue, saying none
+has been read for a cause: five loud comments in the indented syntax
 (`block/loud/sass/content_after_close/{loud_comment,silent_comment}`,
 `block/loud/sass/trailing_whitespace` and
 `error/loud/sass/content_after_close/{multi_line,single_line}`) and three
