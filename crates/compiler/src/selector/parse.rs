@@ -85,11 +85,16 @@ impl SelectorParser {
     /// selector marked this way, is marked with a line break, which the
     /// output keeps. This is dart-sass's `_selectorList`, which compares
     /// scanner lines. It counts a newline wherever it falls, so `a\n, b` breaks
-    /// before `b` as `a,\nb` does (libsass scss test 186). `previous_line`
-    /// marks a cursor instead of a line number: a newline in the text since
-    /// that cursor is a change of line.
+    /// before `b` as `a,\nb` does (libsass scss test 186).
+    ///
+    /// The lexer has no line counter, so a change of line is a newline token
+    /// since the mark. Tokens before `checked` have been searched already and
+    /// `newline_since_mark` holds what they showed, so each token is looked at
+    /// once. Searching from the mark at every comma instead made a long
+    /// one-line list quadratic.
     fn parse_selector_list(&mut self) -> SassResult<SelectorList> {
-        let mut previous_line = self.toks.cursor();
+        let mut checked = self.toks.cursor();
+        let mut newline_since_mark = false;
         let mut components = vec![self.parse_complex_selector(false)?];
 
         self.whitespace(false)?;
@@ -102,10 +107,9 @@ impl SelectorParser {
                 None => break,
             }
 
-            let line_break = self.toks.raw_text(previous_line).contains('\n');
-            if line_break {
-                previous_line = self.toks.cursor();
-            }
+            newline_since_mark |= self.toks.contains_newline_since(checked);
+            checked = self.toks.cursor();
+            let line_break = std::mem::take(&mut newline_since_mark);
             components.push(self.parse_complex_selector(line_break)?);
         }
 
