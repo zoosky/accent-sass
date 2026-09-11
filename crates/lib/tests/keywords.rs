@@ -30,7 +30,7 @@ error!(
     a {
         color: foo($a: 1, $b: 2, $c: 3);
     }",
-    "Error: No arguments named $a, $b or $c."
+    "Error: No parameters named $a, $b or $c."
 );
 test!(
     keywords_in_meta_module,

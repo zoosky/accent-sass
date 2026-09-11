@@ -100,3 +100,21 @@ error!(
     denies_function_named_after_keyword,
     "@function and($a) {}", "Error: Invalid function name."
 );
+// libsass issue 143: a function Sass does not know is plain CSS, and keeps
+// the spelling it was written with. Sass normalises `_` to `-` only to look
+// a name up. Verified against dart-sass 1.103.1.
+test!(
+    plain_function_keeps_its_underscores,
+    "a {\n  b: file_join(1);\n  c: Foo_Bar(1);\n  d: url(file_join(\"x\"));\n}\n",
+    "a {\n  b: file_join(1);\n  c: Foo_Bar(1);\n  d: url(file_join(\"x\"));\n}\n"
+);
+test!(
+    underscore_still_finds_hyphenated_function,
+    "@function a-b() {\n  @return ok;\n}\na {\n  b: a_b();\n}\n",
+    "a {\n  b: ok;\n}\n"
+);
+test!(
+    plain_function_reference_keeps_its_underscores,
+    "@use \"sass:meta\";\na {\n  b: meta.call(meta.get-function(\"file_join\", $css: true), 1);\n  c: meta.inspect(meta.get-function(\"file_join\", $css: true));\n}\n",
+    "a {\n  b: file_join(1);\n  c: get-function(\"file_join\");\n}\n"
+);

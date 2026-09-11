@@ -501,6 +501,24 @@ impl ExtensionStore {
             paths(extended_not_expanded)
                 .into_iter()
                 .flat_map(move |path| {
+                    // A path of one selector weaves to that selector. Return
+                    // it rather than a rebuilt copy: `originals` and the
+                    // trimming that reads it go by identity, as dart-sass's
+                    // identity sets do, and a copy would drop an original
+                    // extender such as `:is(.m)` in
+                    // `:is(.m) {@extend .u} .d {@extend .m}`. dart-sass's
+                    // `weave` returns the same object here too.
+                    if let [single] = path.as_slice()
+                        && (!complex_has_line_break || single.line_break)
+                    {
+                        let output_complex = single.clone();
+                        if first && self.originals.contains(&complex) {
+                            self.originals.insert(&output_complex);
+                        }
+                        first = false;
+                        return vec![output_complex];
+                    }
+
                     weave(
                         path.clone()
                             .into_iter()
@@ -1151,7 +1169,12 @@ impl ExtensionStore {
         span: Span,
     ) -> SassResult<()> {
         let selectors = self.selectors.get(target).cloned();
-        let existing_extensions = self.extensions_by_extender.get(target).cloned();
+        // dart-sass holds a live reference to this list rather than a copy,
+        // so an extender added below that itself contains `target` -- `.z.c`
+        // in `.z.c {@extend .c}` -- is extended along with the ones already
+        // there. That is what closes an extension loop. Record only whether
+        // the list exists now, and read it after the loop.
+        let had_existing_extensions = self.extensions_by_extender.contains_key(target);
 
         let mut new_extensions: Option<IndexMap<ComplexSelector, Extension>> = None;
 
@@ -1200,7 +1223,7 @@ impl ExtensionStore {
                     .or_insert_with(|| complex.max_specificity());
             }
 
-            if selectors.is_some() || existing_extensions.is_some() {
+            if selectors.is_some() || had_existing_extensions {
                 new_extensions
                     .get_or_insert_with(IndexMap::new)
                     .insert(complex.clone(), state.clone());
@@ -1216,6 +1239,9 @@ impl ExtensionStore {
         let mut new_extensions_by_target = HashMap::new();
         new_extensions_by_target.insert(target.clone(), new_extensions);
 
+        let existing_extensions = had_existing_extensions
+            .then(|| self.extensions_by_extender.get(target).cloned())
+            .flatten();
         if let Some(existing_extensions) = existing_extensions {
             let additional_extensions =
                 self.extend_existing_extensions(existing_extensions, &new_extensions_by_target);

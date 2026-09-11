@@ -478,3 +478,28 @@ test!(
     "a {\n  color: calc(1foo + 1deg);\n}\n",
     "a {\n  color: calc(1foo + 1deg);\n}\n"
 );
+// A complex unit converts part by part, as dart-sass's
+// `_coerceOrConvertValue` does: `in/fu` and `cm/fu` pair `in` with `cm` and
+// `fu` with `fu`. Each expectation was verified against dart-sass 1.103.1.
+//
+// libsass `units/simple`.
+test!(
+    complex_units_compare_part_by_part,
+    "a {\n  b: (23in/2fu) > (23cm/2fu);\n}\n",
+    "a {\n  b: true;\n}\n"
+);
+test!(
+    complex_units_add_part_by_part,
+    "a {\n  b: (1in/1fu) + (1cm/1fu);\n}\n",
+    "a {\n  b: calc(1.3937007874in / 1fu);\n}\n"
+);
+test!(
+    complex_units_are_equal_after_conversion,
+    "a {\n  b: (1in/1fu) == (2.54cm/1fu);\n}\n",
+    "a {\n  b: true;\n}\n"
+);
+test!(
+    complex_units_are_compatible,
+    "@use \"sass:math\";\na {\n  b: math.compatible(1in/1fu, 1cm/1fu);\n}\n",
+    "a {\n  b: true;\n}\n"
+);

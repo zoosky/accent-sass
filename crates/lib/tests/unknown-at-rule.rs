@@ -266,3 +266,21 @@ test!(
     ".a {\n  @foo (b c);\n}\n\n.d {\n  e: f;\n}\n",
     accent_sass::Options::default().input_syntax(accent_sass::InputSyntax::Sass)
 );
+// libsass issue 1263: an unknown at-rule's value collapses each run of
+// whitespace to one space, as dart-sass 1.103.1's `_interpolatedDeclarationValue`
+// does. Each expectation was verified against it.
+test!(
+    at_rule_value_collapses_whitespace,
+    "@apply  (  --bar  );\n",
+    "@apply ( --bar );\n"
+);
+test!(
+    nested_at_rule_value_collapses_whitespace,
+    "a {\n  @foo  x   y;\n}\n",
+    "a {\n  @foo x y;\n}\n"
+);
+test!(
+    at_rule_value_keeps_important,
+    "@foo a !important;\n",
+    "@foo a !important;\n"
+);

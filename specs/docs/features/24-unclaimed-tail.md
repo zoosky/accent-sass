@@ -48,6 +48,9 @@ The whole-suite "Expected test to fail but it did not" count is 28, so
 these eight are a quarter of that column. Item 17's section 3 is another
 one, counted there.
 
+`list/join/error/named` is closed by `fix/builtin-parameter-lists`, together
+with section 10. See there.
+
 ## 2. An arglist does not keep its separator
 
 `non_conformant/sass/var-args/success`,
@@ -97,6 +100,21 @@ These are the last of item 04's territory that item 04 does not cover, and
 they are genuinely fiddly; take them one at a time, and read
 `crates/compiler/src/selector/extend/` before assuming which pass is wrong.
 
+**Closed by `fix/extend-selector-set`.** The trimming pass was not wrong. The
+four came from three places where the port had drifted from dart-sass
+1.103.1:
+
+- `issue_1091`: `ComplexSelector::is_super_selector` was the pre-rewrite
+  algorithm. It rejected `.d > .e` as a superselector of `.b .d > .e`. It is
+  now a port of `complexIsSuperselector`, which also closes nine
+  `is_superselector/complex` fixtures.
+- `into_pseudo/extends_after`: `extend_complex` rebuilt a single-selector
+  path instead of returning it. That dropped the selector's identity, and with
+  it its place in `originals`.
+- `extend-loop` and `issue_2055`: `add_extension` copied the target's
+  extensions-by-extender list up front. dart-sass holds a live reference, so
+  an extender added in the same call is extended too.
+
 ## 4. `@extend` across media queries is not an error
 
 `libsass-closed-issues/issue_{673,712,1923}`
@@ -124,6 +142,20 @@ merge, emits the merged block in the wrong order relative to the outer
 one. `retained` is the clearer of the two: dart-sass keeps
 `@media not screen and (color) { a {..} @media screen { x {..} } }` nested,
 and this compiler splits it into two top-level blocks.
+
+**Closed by `fix/nested-media-merge`.** Hoisting was not the cause; the
+bubbling logic already matched dart-sass. There were two defects:
+
+- `removed` and `retained`: `MediaQuery::merge` compared the modifiers where
+  dart-sass compares the types, in the branch where exactly one query is
+  negated. The modifiers always differ there, so `not screen` merged with
+  `screen` came out as `screen` instead of empty or unrepresentable.
+- `issue_2154`: the tree's `has_following_sibling` counted invisible
+  siblings. An empty bubbled `@media` split its parent in two. It now skips
+  them, as dart-sass's `hasFollowingSibling` does. Declarations, comments,
+  childless at-rules and nested imports keep the any-sibling test, because
+  dart-sass's `_copyParentAfterSibling` does not skip invisible nodes. They
+  now go through their own `add_child_after_sibling`.
 
 ## 6. A childless at-rule jumps its place in the rule
 
@@ -197,6 +229,19 @@ name for it. Section 1's `list.join(c, d, $invalid: true)` is the
 mirror-image case, where an unknown name is accepted instead of rejected;
 both come from builtin signatures being positional lookups rather than
 declared parameter lists.
+
+**Closed by `fix/builtin-parameter-lists`**, together with section 1's
+`list/join/error/named`. Every builtin now carries the parameter lists
+dart-sass 1.103.1 declares, overloads included, in
+`crates/compiler/src/builtin/signatures.rs`. The table was generated from
+dart-sass's own sources at that tag. A call picks its overload the way
+`BuiltInCallable.callbackFor` does and is checked with that overload's
+`verify`. Named arguments then move into their declared positions, up to
+the first parameter that was not passed; dart-sass also evaluates defaults
+for the rest, which this does not. `map.set` and `map.merge` read which
+overload matched, because counting arguments cannot tell their two forms
+apart. The unknown-name error now says "parameter", as dart-sass does, for
+user-defined functions too.
 
 ## 11. A private-use character is not escaped
 

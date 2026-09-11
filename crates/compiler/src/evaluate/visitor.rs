@@ -1679,7 +1679,7 @@ impl<'a> Visitor<'a> {
             // Nested, so it stays where it was written -- through `add_child`
             // for the reason `visit_style` gives, since an import holds its
             // place among the rule's other children.
-            self.add_child(node, Some(|_: &CssStmt| false));
+            self.add_child_after_sibling(node);
         } else if self.end_of_imports == self.css_tree.root_child_count() {
             // Still inside the `@import` block, so it can stay in the tree.
             self.css_tree.add_stmt(node, Some(CssTree::ROOT));
@@ -1730,7 +1730,16 @@ impl<'a> Visitor<'a> {
         Ok(None)
     }
 
-    fn trim_included(&self, nodes: &[CssTreeIdx]) -> CssTreeIdx {
+    /// Removes the trailing run of `nodes` that the current parents already
+    /// provide, and returns the innermost of them: the node the `@at-root`
+    /// body can go straight into.
+    ///
+    /// A port of dart-sass 1.103.1's `_trimIncluded`. `nodes` lists the
+    /// included parents from innermost to outermost. If a trailing run of
+    /// them is contiguous and ends directly under the root, that run is
+    /// removed, so only the parents left over need copies. Otherwise `nodes`
+    /// is left as it is and the root is returned.
+    fn trim_included(&self, nodes: &mut Vec<CssTreeIdx>) -> CssTreeIdx {
         if nodes.is_empty() {
             return CssTree::ROOT;
         }
@@ -1768,7 +1777,13 @@ impl<'a> Visitor<'a> {
             return CssTree::ROOT;
         }
 
-        nodes[innermost_contiguous.unwrap()]
+        // Without the removal the trimmed parents were copied anyway, which
+        // left the original empty beside its copy: `@fblthp {}` followed by
+        // `@fblthp {.bar {...}}` (libsass at-root test 140).
+        let innermost = innermost_contiguous.unwrap();
+        let root = nodes[innermost];
+        nodes.truncate(innermost);
+        root
     }
 
     fn visit_at_root_rule(&mut self, mut at_root_rule: AstAtRootRule) -> SassResult<Option<Value>> {
@@ -1804,7 +1819,7 @@ impl<'a> Visitor<'a> {
             current_parent_idx = grandparent_idx;
         }
 
-        let root = self.trim_included(&included);
+        let root = self.trim_included(&mut included);
 
         // If we didn't exclude any rules, we don't need to use the copies we might
         // have created.
@@ -1820,37 +1835,21 @@ impl<'a> Visitor<'a> {
             return Ok(None);
         }
 
-        let inner_copy = if !included.is_empty() {
-            let inner_copy = self
+        // Copy the included parents left after trimming, outermost first, as
+        // a chain under `root`, and put the body in the innermost copy. With
+        // none left the body goes straight into `root`, which dart-sass uses
+        // as is rather than copying. `None` stands for the document root.
+        let mut inner_copy = root;
+        for node in included.iter().rev() {
+            let copy = self
                 .css_tree
-                .get(*included.first().unwrap())
+                .get(*node)
                 .as_ref()
-                .map(CssStmt::copy_without_children);
-            let mut outer_copy = self.css_tree.add_stmt(inner_copy.unwrap(), None);
-
-            for node in &included[1..] {
-                let copy = self
-                    .css_tree
-                    .get(*node)
-                    .as_ref()
-                    .map(CssStmt::copy_without_children)
-                    .unwrap();
-
-                let copy_idx = self.css_tree.add_stmt(copy, None);
-                self.css_tree.link_child_to_parent(outer_copy, copy_idx);
-
-                outer_copy = copy_idx;
-            }
-
-            Some(outer_copy)
-        } else {
-            let inner_copy = self
-                .css_tree
-                .get(root)
-                .as_ref()
-                .map(CssStmt::copy_without_children);
-            inner_copy.map(|p| self.css_tree.add_stmt(p, None))
-        };
+                .map(CssStmt::copy_without_children)
+                .unwrap();
+            inner_copy = self.css_tree.add_child(copy, inner_copy);
+        }
+        let inner_copy = (inner_copy != CssTree::ROOT).then_some(inner_copy);
 
         let body = mem::take(&mut at_root_rule.body);
 
@@ -2202,7 +2201,7 @@ impl<'a> Visitor<'a> {
             // splits the enclosing rule rather than letting the at-rule hoist
             // back up beside the rule's earlier children. dart-sass calls
             // `_copyParentAfterSibling` here for exactly this.
-            self.add_child(stmt, Some(|_: &CssStmt| false));
+            self.add_child_after_sibling(stmt);
 
             return Ok(None);
         }
@@ -2403,6 +2402,37 @@ impl<'a> Visitor<'a> {
         }
 
         self.css_tree.add_child(node, parent)
+    }
+
+    /// Adds `node` to the current parent, first moving to a copy of that
+    /// parent if anything has been written after it.
+    ///
+    /// This is dart-sass's `_copyParentAfterSibling` followed by an add, for
+    /// the nodes that hold their place in source order: declarations, loud
+    /// comments, childless at-rules and nested imports. A nested rule written
+    /// above one of them was added after the parent, so the node goes into a
+    /// copy placed after that rule. Unlike [`Self::add_child`] with a
+    /// `through`, an invisible sibling counts here too: dart-sass splits
+    /// `.p {x: y; @media (b) {} z: w}` into two `.p` rules.
+    ///
+    /// Later nodes belong in the same copy, so it becomes the current parent;
+    /// `with_parent` reads `self.parent` afterwards, which hands the copy back
+    /// to the enclosing scope as well.
+    fn add_child_after_sibling(&mut self, node: CssStmt) -> CssTreeIdx {
+        if let Some(parent) = self.parent.filter(|&parent| parent != CssTree::ROOT)
+            && !self.css_tree.is_last_child(parent)
+        {
+            let grandparent = self.css_tree.child_to_parent[&parent];
+            let copy = self
+                .css_tree
+                .get(parent)
+                .as_ref()
+                .map(CssStmt::copy_without_children)
+                .unwrap();
+            self.parent = Some(self.css_tree.add_child(copy, grandparent));
+        }
+
+        self.css_tree.add_stmt(node, self.parent)
     }
 
     fn with_parent<F: FnOnce(&mut Self) -> SassResult<()>, FT: Fn(&CssStmt) -> bool>(
@@ -2793,7 +2823,7 @@ impl<'a> Visitor<'a> {
         // order, so a nested rule written between two of them splits the
         // enclosing rule rather than letting the second comment hoist back up
         // beside the first.
-        self.add_child(comment, Some(|_: &CssStmt| false));
+        self.add_child_after_sibling(comment);
 
         Ok(None)
     }
@@ -2965,6 +2995,7 @@ impl<'a> Visitor<'a> {
                 separator: ListSeparator::Undecided,
                 span,
                 touched: BTreeSet::new(),
+                overload: 0,
             });
         }
 
@@ -3008,6 +3039,7 @@ impl<'a> Visitor<'a> {
                 separator,
                 span: arguments.span,
                 touched: BTreeSet::new(),
+                overload: 0,
             });
         }
 
@@ -3021,6 +3053,7 @@ impl<'a> Visitor<'a> {
                     separator,
                     span: arguments.span,
                     touched: BTreeSet::new(),
+                    overload: 0,
                 })
             }
             v => Err((
@@ -3165,10 +3198,11 @@ impl<'a> Visitor<'a> {
                     return Ok(val);
                 }
 
-                let argument_word = if num_named_args == 1 {
-                    "argument"
+                // dart-sass's wording: the names match no *parameter*.
+                let parameter_word = if num_named_args == 1 {
+                    "parameter"
                 } else {
-                    "arguments"
+                    "parameters"
                 };
 
                 let argument_names = to_sentence(
@@ -3180,17 +3214,96 @@ impl<'a> Visitor<'a> {
                     "or",
                 );
 
-                Err((
-                    format!(
-                        "No {argument_word} named {argument_names}.",
-                        argument_word = argument_word,
-                        argument_names = argument_names
-                    ),
-                    span,
-                )
-                    .into())
+                Err((format!("No {parameter_word} named {argument_names}."), span).into())
             })
         })
+    }
+
+    /// Checks `arguments` against the parameter lists of a builtin and binds
+    /// its named arguments to their positions.
+    ///
+    /// This is dart-sass 1.103.1's `_runBuiltInCallable` up to the call. The
+    /// first overload the call matches is used, otherwise the one closest in
+    /// number of parameters (`BuiltInCallable.callbackFor`). That overload's
+    /// `verify` then raises the error for a call that fits none: an unknown
+    /// named argument, a missing one, one passed twice, or too many.
+    fn bind_builtin_arguments(
+        &mut self,
+        signatures: &'static [&'static str],
+        arguments: &mut ArgumentResult,
+        span: Span,
+    ) -> SassResult<()> {
+        let overloads = self.builtin_parameter_lists(signatures, span)?;
+        let positional = arguments.positional.len();
+
+        let mut chosen = None;
+        let mut fuzzy = None;
+        let mut min_distance: Option<isize> = None;
+        for (index, overload) in overloads.iter().enumerate() {
+            if overload.matches(positional, &arguments.named) {
+                chosen = Some((index, overload));
+                break;
+            }
+
+            let distance = overload.args.len() as isize - positional as isize;
+            if let Some(min) = min_distance {
+                if distance.abs() > min.abs() {
+                    continue;
+                }
+                // At equal distance, favour the overload with more parameters.
+                if distance.abs() == min.abs() && distance < 0 {
+                    continue;
+                }
+            }
+            min_distance = Some(distance);
+            fuzzy = Some((index, overload));
+        }
+
+        let (index, overload) = chosen
+            .or(fuzzy)
+            .expect("every builtin signature has at least one parameter list");
+        overload.verify(positional, &arguments.named, span)?;
+        arguments.bind_to(overload);
+        arguments.overload = index;
+
+        Ok(())
+    }
+
+    /// The parameter lists in `signatures`, parsed once per thread.
+    ///
+    /// The lists are `'static`, so the slice's address identifies them.
+    fn builtin_parameter_lists(
+        &self,
+        signatures: &'static [&'static str],
+        span: Span,
+    ) -> SassResult<std::rc::Rc<[crate::ast::ArgumentDeclaration]>> {
+        use std::{cell::RefCell, collections::HashMap, path::Path, rc::Rc};
+
+        use crate::{ast::ArgumentDeclaration, lexer::Lexer, parse::StylesheetParser};
+
+        thread_local! {
+            static PARSED: RefCell<HashMap<usize, Rc<[ArgumentDeclaration]>>> =
+                RefCell::new(HashMap::new());
+        }
+
+        let key = signatures.as_ptr() as usize;
+        if let Some(parsed) = PARSED.with(|parsed| parsed.borrow().get(&key).cloned()) {
+            return Ok(parsed);
+        }
+
+        let parsed = signatures
+            .iter()
+            .map(|signature| {
+                let text = format!("({signature})");
+                let lexer = Lexer::new_from_string(&text, span);
+                ScssParser::new(lexer, self.options, span, Path::new(""))
+                    .parse_argument_declaration()
+            })
+            .collect::<SassResult<Rc<[ArgumentDeclaration]>>>()?;
+
+        PARSED.with(|cache| cache.borrow_mut().insert(key, Rc::clone(&parsed)));
+
+        Ok(parsed)
     }
 
     pub(crate) fn run_function_callable(
@@ -3214,7 +3327,10 @@ impl<'a> Visitor<'a> {
     ) -> SassResult<Value> {
         match func {
             SassFunction::Builtin(func, _name) => {
-                let evaluated = self.eval_maybe_args(arguments, span)?;
+                let mut evaluated = self.eval_maybe_args(arguments, span)?;
+                if let Some(signatures) = func.2 {
+                    self.bind_builtin_arguments(signatures, &mut evaluated, span)?;
+                }
                 let val = func.0(evaluated, self)?;
                 Ok(self.without_slash(val))
             }
@@ -3345,7 +3461,9 @@ impl<'a> Visitor<'a> {
                         return Err((message, span).into());
                     }
 
-                    SassFunction::Plain { name }
+                    SassFunction::Plain {
+                        name: func_call.original_name.clone(),
+                    }
                 }
             }
         };
@@ -3867,6 +3985,7 @@ impl<'a> Visitor<'a> {
         let func_call = FunctionCallExpr {
             namespace: None,
             name: Identifier::from(name.as_str()),
+            original_name: name.as_str().to_owned(),
             arguments: Arc::new(ArgumentInvocation {
                 positional: args,
                 named: BTreeMap::new(),
@@ -4443,14 +4562,11 @@ impl<'a> Visitor<'a> {
                 // implements that split; adding the statement directly skipped
                 // it and hoisted the later declaration back up beside the
                 // earlier one.
-                self.add_child(
-                    CssStmt::Style(Style {
-                        property: InternedString::get_or_intern(&name),
-                        value: Box::new(value),
-                        parsed_as_sass_script,
-                    }),
-                    Some(|_: &CssStmt| false),
-                );
+                self.add_child_after_sibling(CssStmt::Style(Style {
+                    property: InternedString::get_or_intern(&name),
+                    value: Box::new(value),
+                    parsed_as_sass_script,
+                }));
             }
         }
 

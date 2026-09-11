@@ -1,5 +1,6 @@
 mod functions;
 pub(crate) mod modules;
+pub(crate) mod signatures;
 
 pub(crate) use functions::{
     DISALLOWED_PLAIN_CSS_FUNCTION_NAMES, GLOBAL_FUNCTIONS, color, list, map, math, meta, selector,

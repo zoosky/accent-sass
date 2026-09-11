@@ -160,3 +160,53 @@ test!(
     }"#,
     "a {\n  color: (c: (d: e));\n}\n"
 );
+// The builtins are checked against the parameter lists dart-sass 1.103.1
+// declares. Each expectation below was verified against it.
+//
+// `map.remove` is `$map | $map, $key, $keys...`, so `$key` is a parameter
+// and reaches the function by name.
+test!(
+    remove_key_by_name,
+    r#"@use "sass:map";
+    a {
+        color: inspect(map.remove($map: (c: d), $key: c));
+    }"#,
+    "a {\n  color: ();\n}\n"
+);
+test!(
+    remove_key_by_name_after_positional_map,
+    r#"@use "sass:map";
+    a {
+        color: inspect(map.remove((c: d, e: f), $key: c));
+    }"#,
+    "a {\n  color: (e: f);\n}\n"
+);
+// `$keys` is the rest parameter, which cannot be passed by name.
+error!(
+    remove_rest_parameter_by_name,
+    r#"@use "sass:map";
+    a {
+        color: inspect(map.remove((c: d), $keys: c));
+    }"#,
+    "Error: No parameter named $keys."
+);
+// Three positional arguments and a stray name match `$map, $args...`, which
+// reads no names.
+error!(
+    set_args_form_rejects_unknown_name,
+    r#"@use "sass:map";
+    a {
+        color: inspect(map.set((c: d), c, e, $x: 1));
+    }"#,
+    "Error: No parameter named $x."
+);
+// `$map2` after a second positional argument is not the two-map form, so the
+// call is `$map1, $args...` with a single argument.
+error!(
+    merge_args_form_needs_a_map,
+    r#"@use "sass:map";
+    a {
+        color: inspect(map.merge((a: b), c, $map2: (d: e)));
+    }"#,
+    "Error: Expected $args to contain a map."
+);

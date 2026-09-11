@@ -187,6 +187,11 @@ impl Number {
 
         debug_assert!(from.comparable(to), "from: {:?}, to: {:?}", from, to);
 
+        // A complex unit has no row in the table; convert it part by part.
+        if matches!(from, Unit::Complex(..)) || matches!(to, Unit::Complex(..)) {
+            return Number(self.0 * from.factor_to(to).unwrap_or(1.0));
+        }
+
         Number(self.0 * UNIT_CONVERSION_TABLE[to][from])
     }
 }

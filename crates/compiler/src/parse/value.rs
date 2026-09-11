@@ -1479,6 +1479,7 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
                     Ok(AstExpr::FunctionCall(FunctionCallExpr {
                         namespace: None,
                         name: Identifier::from(plain),
+                        original_name: plain.to_string(),
                         arguments: Arc::new(arguments),
                         span: parser.toks_mut().span_from(start),
                         is_custom_function: plain.starts_with("--"),
@@ -1539,7 +1540,8 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
 
         Ok(AstExpr::FunctionCall(FunctionCallExpr {
             namespace: Some(namespace),
-            name: Identifier::from(name),
+            name: Identifier::from(name.as_str()),
+            original_name: name,
             arguments: Arc::new(args),
             span,
             is_custom_function: false,
@@ -1688,7 +1690,7 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
         }
 
         let mut contents =
-            parser.parse_interpolated_declaration_value(false, true, true, false, true)?;
+            parser.parse_interpolated_declaration_value(false, true, true, false, true, true)?;
         // An interpolated calc() reaches this raw-string fallback, but Dart
         // Sass serializes it without the source's leading/trailing whitespace
         // inside the parentheses (`calc( #{x} )` becomes `calc(x)`).
@@ -1797,8 +1799,8 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
     ) -> SassResult<Option<AstExpr>> {
         Ok(
             if ValueParser::contains_calculation_interpolation(parser)? {
-                let mut contents =
-                    parser.parse_interpolated_declaration_value(false, false, true, false, true)?;
+                let mut contents = parser
+                    .parse_interpolated_declaration_value(false, false, true, false, true, true)?;
                 // Dart Sass serializes an interpolated calculation without the
                 // source's leading/trailing whitespace inside the parentheses
                 // (`calc( x )` becomes `calc(x)`).
@@ -2062,6 +2064,7 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
             Ok(AstExpr::FunctionCall(FunctionCallExpr {
                 namespace: None,
                 name: Identifier::from(&ident),
+                original_name: ident.clone(),
                 arguments: Arc::new(parser.parse_argument_invocation(false, false)?),
                 span: parser.toks_mut().span_from(start),
                 is_custom_function: ident.starts_with("--"),

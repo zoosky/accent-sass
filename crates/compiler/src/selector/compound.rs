@@ -66,6 +66,25 @@ impl CompoundSelector {
         self.components.iter().any(SimpleSelector::is_invisible)
     }
 
+    /// Whether deciding if this is a superselector needs more than comparing
+    /// simple selectors one by one: it holds a pseudo-element, or a pseudo
+    /// selector with a selector argument. Only these read the `parents`
+    /// passed to [`Self::is_super_selector`].
+    pub fn has_complicated_superselector_semantics(&self) -> bool {
+        self.components.iter().any(|simple| {
+            matches!(
+                simple,
+                SimpleSelector::Pseudo(Pseudo {
+                    is_class: false,
+                    ..
+                }) | SimpleSelector::Pseudo(Pseudo {
+                    selector: Some(..),
+                    ..
+                })
+            )
+        })
+    }
+
     pub fn is_super_selector(
         &self,
         other: &Self,
