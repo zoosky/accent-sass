@@ -27,8 +27,8 @@ five areas, the nine deepest cover 89 of the 128, and the rest is a tail of 12
 that item 24 records one by one. Items 15 to 24 are that reading. Several of
 those items hold more than one defect -- item 17 is five -- so 21 is the count
 of things worth queueing, not of lines to change. Items 16, 17, 20, 21, 23 and
-24 have since landed, and 39 of the unclaimed failures are left, all in items
-15, 18, 19 and 22.
+24 have since landed, and 40 of the unclaimed failures are left: 39 in items
+15, 18, 19 and 22, and item 23's residue, `css/font-face/bubble/empty`.
 
 Counting by cause reorders the work. `spec/core_functions/math` looked like the
 deepest unclaimed area at 12 failures; it is five unrelated defects, four of
@@ -124,7 +124,8 @@ Scope a run to one area by appending its spec path, for example
 The two `--ignore-*` flags hide real differences: a test that only fails on a
 missing deprecation warning or on the wording of an error counts as passing. In
 `spec/values/calculation` that is 0 failures with the flags, 22 without
-`--ignore-warning-diffs`, and 22 with neither (re-measured 2026-09-11 on
+`--ignore-warning-diffs`, and 22 with neither `--ignore-*` flag but
+`--trim-errors` kept (re-measured 2026-09-11 on
 `f55ace41`; it was 3, 25 and 60 on 2026-09-06).
 [08](08-calculation-warnings-and-error-wording.md) records them. Every count
 on this page is *with* the flags, so each is a floor rather than the whole
@@ -310,7 +311,7 @@ At 234 the split was 179, 28 and 27.
 The order flipped on 2026-09-05. On 2026-09-04 *rejects valid input* stood at
 304 and dominated; items 09 and 10 were both drawn from it, and it is now 14.
 What dominates now is different output, which is a serialization or semantics
-difference rather than a parser gap. Item 16 took 14 of the 48 that column
+difference rather than a parser gap. Item 16 took 18 of the 48 that column
 held at 284, and it was a restriction to delete rather than a feature to
 write.
 
