@@ -111,7 +111,7 @@ pub struct ComplexUnit {
 
 /// The factor that turns a value in the single unit `from` into `to`, or
 /// `None` if they do not convert. dart-sass's `conversionFactor(to, from)`.
-fn simple_factor(from: &Unit, to: &Unit) -> Option<f64> {
+pub(crate) fn conversion_factor(from: &Unit, to: &Unit) -> Option<f64> {
     if from == to {
         return Some(1.0);
     }
@@ -211,14 +211,14 @@ impl Unit {
         for new in &new_numer {
             let i = old_numer
                 .iter()
-                .position(|old| simple_factor(old, new).is_some())?;
-            factor *= simple_factor(&old_numer.remove(i), new)?;
+                .position(|old| conversion_factor(old, new).is_some())?;
+            factor *= conversion_factor(&old_numer.remove(i), new)?;
         }
         for new in &new_denom {
             let i = old_denom
                 .iter()
-                .position(|old| simple_factor(old, new).is_some())?;
-            factor /= simple_factor(&old_denom.remove(i), new)?;
+                .position(|old| conversion_factor(old, new).is_some())?;
+            factor /= conversion_factor(&old_denom.remove(i), new)?;
         }
 
         (old_numer.is_empty() && old_denom.is_empty()).then_some(factor)
