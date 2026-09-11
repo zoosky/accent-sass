@@ -48,6 +48,9 @@ The whole-suite "Expected test to fail but it did not" count is 28, so
 these eight are a quarter of that column. Item 17's section 3 is another
 one, counted there.
 
+`list/join/error/named` is closed by `fix/builtin-parameter-lists`, together
+with section 10. See there.
+
 ## 2. An arglist does not keep its separator
 
 `non_conformant/sass/var-args/success`,
@@ -226,6 +229,19 @@ name for it. Section 1's `list.join(c, d, $invalid: true)` is the
 mirror-image case, where an unknown name is accepted instead of rejected;
 both come from builtin signatures being positional lookups rather than
 declared parameter lists.
+
+**Closed by `fix/builtin-parameter-lists`**, together with section 1's
+`list/join/error/named`. Every builtin now carries the parameter lists
+dart-sass 1.103.1 declares, overloads included, in
+`crates/compiler/src/builtin/signatures.rs`. The table was generated from
+dart-sass's own sources at that tag. A call picks its overload the way
+`BuiltInCallable.callbackFor` does and is checked with that overload's
+`verify`. Named arguments then move into their declared positions, up to
+the first parameter that was not passed; dart-sass also evaluates defaults
+for the rest, which this does not. `map.set` and `map.merge` read which
+overload matched, because counting arguments cannot tell their two forms
+apart. The unknown-name error now says "parameter", as dart-sass does, for
+user-defined functions too.
 
 ## 11. A private-use character is not escaped
 

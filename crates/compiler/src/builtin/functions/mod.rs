@@ -54,6 +54,11 @@ static FUNCTION_COUNT: AtomicUsize = AtomicUsize::new(0);
 pub struct Builtin(
     pub(crate) fn(ArgumentResult, &mut Visitor) -> SassResult<Value>,
     usize,
+    /// The parameter lists dart-sass declares for this function, one per
+    /// overload. A call is checked against them before the function runs.
+    /// `None` for a function without one, such as a custom function passed
+    /// through `Options`, which keeps reading its arguments unchecked.
+    pub(crate) Option<&'static [&'static str]>,
 );
 
 impl fmt::Debug for Builtin {
@@ -68,7 +73,14 @@ impl fmt::Debug for Builtin {
 impl Builtin {
     pub fn new(body: fn(ArgumentResult, &mut Visitor) -> SassResult<Value>) -> Builtin {
         let count = FUNCTION_COUNT.fetch_add(1, Ordering::Relaxed);
-        Self(body, count)
+        Self(body, count, None)
+    }
+
+    /// Returns this function checked against `signatures`, the parameter
+    /// lists of its overloads in the order dart-sass tries them.
+    pub(crate) fn with_signatures(mut self, signatures: Option<&'static [&'static str]>) -> Self {
+        self.2 = signatures;
+        self
     }
 }
 
@@ -89,6 +101,9 @@ pub(crate) static GLOBAL_FUNCTIONS: Lazy<GlobalFunctionMap> = Lazy::new(|| {
     meta::declare(&mut m);
     selector::declare(&mut m);
     string::declare(&mut m);
+    for (name, builtin) in &mut m {
+        builtin.2 = super::signatures::global(name);
+    }
     m
 });
 

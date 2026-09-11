@@ -706,3 +706,20 @@ test!(
     "@function args($a...) {\n  @return $a;\n}\na {\n  color: join(args(1, 2), (4 5));\n}\n",
     "a {\n  color: 1, 2, 4, 5;\n}\n"
 );
+// The builtins are checked against the parameter lists dart-sass 1.103.1
+// declares. Each expectation below was verified against it.
+error!(
+    join_rejects_unknown_name,
+    "@use \"sass:list\";\na {\n  color: list.join(c, d, $invalid: true);\n}\n",
+    "Error: No parameter named $invalid."
+);
+error!(
+    nth_argument_passed_by_position_and_name,
+    "@use \"sass:list\";\na {\n  color: list.nth(a b, 1, $n: 2);\n}\n",
+    "Error: Argument $n was passed both by position and by name."
+);
+error!(
+    nth_rejects_two_unknown_names,
+    "@use \"sass:list\";\na {\n  color: list.nth(a b, 1, $x: 2, $y: 3);\n}\n",
+    "Error: No parameters named $x or $y."
+);

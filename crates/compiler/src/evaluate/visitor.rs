@@ -2987,6 +2987,7 @@ impl<'a> Visitor<'a> {
                 separator: ListSeparator::Undecided,
                 span,
                 touched: BTreeSet::new(),
+                overload: 0,
             });
         }
 
@@ -3030,6 +3031,7 @@ impl<'a> Visitor<'a> {
                 separator,
                 span: arguments.span,
                 touched: BTreeSet::new(),
+                overload: 0,
             });
         }
 
@@ -3043,6 +3045,7 @@ impl<'a> Visitor<'a> {
                     separator,
                     span: arguments.span,
                     touched: BTreeSet::new(),
+                    overload: 0,
                 })
             }
             v => Err((
@@ -3187,10 +3190,11 @@ impl<'a> Visitor<'a> {
                     return Ok(val);
                 }
 
-                let argument_word = if num_named_args == 1 {
-                    "argument"
+                // dart-sass's wording: the names match no *parameter*.
+                let parameter_word = if num_named_args == 1 {
+                    "parameter"
                 } else {
-                    "arguments"
+                    "parameters"
                 };
 
                 let argument_names = to_sentence(
@@ -3202,17 +3206,96 @@ impl<'a> Visitor<'a> {
                     "or",
                 );
 
-                Err((
-                    format!(
-                        "No {argument_word} named {argument_names}.",
-                        argument_word = argument_word,
-                        argument_names = argument_names
-                    ),
-                    span,
-                )
-                    .into())
+                Err((format!("No {parameter_word} named {argument_names}."), span).into())
             })
         })
+    }
+
+    /// Checks `arguments` against the parameter lists of a builtin and binds
+    /// its named arguments to their positions.
+    ///
+    /// This is dart-sass 1.103.1's `_runBuiltInCallable` up to the call. The
+    /// first overload the call matches is used, otherwise the one closest in
+    /// number of parameters (`BuiltInCallable.callbackFor`). That overload's
+    /// `verify` then raises the error for a call that fits none: an unknown
+    /// named argument, a missing one, one passed twice, or too many.
+    fn bind_builtin_arguments(
+        &mut self,
+        signatures: &'static [&'static str],
+        arguments: &mut ArgumentResult,
+        span: Span,
+    ) -> SassResult<()> {
+        let overloads = self.builtin_parameter_lists(signatures, span)?;
+        let positional = arguments.positional.len();
+
+        let mut chosen = None;
+        let mut fuzzy = None;
+        let mut min_distance: Option<isize> = None;
+        for (index, overload) in overloads.iter().enumerate() {
+            if overload.matches(positional, &arguments.named) {
+                chosen = Some((index, overload));
+                break;
+            }
+
+            let distance = overload.args.len() as isize - positional as isize;
+            if let Some(min) = min_distance {
+                if distance.abs() > min.abs() {
+                    continue;
+                }
+                // At equal distance, favour the overload with more parameters.
+                if distance.abs() == min.abs() && distance < 0 {
+                    continue;
+                }
+            }
+            min_distance = Some(distance);
+            fuzzy = Some((index, overload));
+        }
+
+        let (index, overload) = chosen
+            .or(fuzzy)
+            .expect("every builtin signature has at least one parameter list");
+        overload.verify(positional, &arguments.named, span)?;
+        arguments.bind_to(overload);
+        arguments.overload = index;
+
+        Ok(())
+    }
+
+    /// The parameter lists in `signatures`, parsed once per thread.
+    ///
+    /// The lists are `'static`, so the slice's address identifies them.
+    fn builtin_parameter_lists(
+        &self,
+        signatures: &'static [&'static str],
+        span: Span,
+    ) -> SassResult<std::rc::Rc<[crate::ast::ArgumentDeclaration]>> {
+        use std::{cell::RefCell, collections::HashMap, path::Path, rc::Rc};
+
+        use crate::{ast::ArgumentDeclaration, lexer::Lexer, parse::StylesheetParser};
+
+        thread_local! {
+            static PARSED: RefCell<HashMap<usize, Rc<[ArgumentDeclaration]>>> =
+                RefCell::new(HashMap::new());
+        }
+
+        let key = signatures.as_ptr() as usize;
+        if let Some(parsed) = PARSED.with(|parsed| parsed.borrow().get(&key).cloned()) {
+            return Ok(parsed);
+        }
+
+        let parsed = signatures
+            .iter()
+            .map(|signature| {
+                let text = format!("({signature})");
+                let lexer = Lexer::new_from_string(&text, span);
+                ScssParser::new(lexer, self.options, span, Path::new(""))
+                    .parse_argument_declaration()
+            })
+            .collect::<SassResult<Rc<[ArgumentDeclaration]>>>()?;
+
+        PARSED.with(|cache| cache.borrow_mut().insert(key, Rc::clone(&parsed)));
+
+        Ok(parsed)
     }
 
     pub(crate) fn run_function_callable(
@@ -3236,7 +3319,10 @@ impl<'a> Visitor<'a> {
     ) -> SassResult<Value> {
         match func {
             SassFunction::Builtin(func, _name) => {
-                let evaluated = self.eval_maybe_args(arguments, span)?;
+                let mut evaluated = self.eval_maybe_args(arguments, span)?;
+                if let Some(signatures) = func.2 {
+                    self.bind_builtin_arguments(signatures, &mut evaluated, span)?;
+                }
                 let val = func.0(evaluated, self)?;
                 Ok(self.without_slash(val))
             }

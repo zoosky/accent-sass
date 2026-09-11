@@ -95,22 +95,40 @@ pub(crate) fn map_values(mut args: ArgumentResult, visitor: &mut Visitor) -> Sas
     ))
 }
 
+/// `map.merge` in dart-sass's two overloads: `$map1, $map2` merges two maps,
+/// and `$map1, $args...` merges its last argument into the map found at the
+/// key path the others name.
+///
+/// The overload comes from the call's parameter lists. Counting arguments
+/// cannot tell `map.merge($m, $k, $map2: $n)` -- the `$args...` form with a
+/// stray named argument -- from the two-map form.
 pub(crate) fn map_merge(mut args: ArgumentResult, visitor: &mut Visitor) -> SassResult<Value> {
-    if args.len() == 1 {
-        return Err(("Expected $args to contain a key.", args.span()).into());
-    }
-
-    let map2_position = args.len().saturating_sub(1);
+    let span = args.span();
 
     let mut map1 = args
         .get_err(0, "map1")?
-        .assert_map_with_name("map1", args.span())?;
+        .assert_map_with_name("map1", span)?;
 
-    let map2 = args
-        .get_err(map2_position, "map2")?
-        .assert_map_with_name("map2", args.span())?;
-
-    let keys = args.get_variadic()?;
+    let (keys, map2) = if args.overload == 0 {
+        let map2 = args
+            .get_err(1, "map2")?
+            .assert_map_with_name("map2", span)?;
+        (Vec::new(), map2)
+    } else {
+        let mut rest: Vec<Value> = args.positional.drain(1..).collect();
+        let Some(last) = rest.pop() else {
+            return Err(("Expected $args to contain a key.", span).into());
+        };
+        if rest.is_empty() {
+            return Err(("Expected $args to contain a map.", span).into());
+        }
+        let map2 = last.assert_map_with_name("map2", span)?;
+        let keys: Vec<Spanned<Value>> = rest
+            .into_iter()
+            .map(|node| Spanned { node, span })
+            .collect();
+        (keys, map2)
+    };
 
     if keys.is_empty() {
         map1.merge(map2);
@@ -151,6 +169,8 @@ pub(crate) fn map_merge(mut args: ArgumentResult, visitor: &mut Visitor) -> Sass
         }
     }
 
+    args.assert_named_consumed()?;
+
     Ok(Value::Map(map1))
 }
 
@@ -165,21 +185,36 @@ pub(crate) fn map_remove(mut args: ArgumentResult, visitor: &mut Visitor) -> Sas
     Ok(Value::Map(map))
 }
 
+/// `map.set` in dart-sass's two overloads: `$map, $key, $value` sets one key,
+/// and `$map, $args...` sets its last argument at the key path the others
+/// name.
+///
+/// The overload comes from the call's parameter lists, for the reason
+/// [`map_merge`] gives.
 pub(crate) fn map_set(mut args: ArgumentResult, visitor: &mut Visitor) -> SassResult<Value> {
-    let key_position = args.len().saturating_sub(2);
-    let value_position = args.len().saturating_sub(1);
+    let span = args.span();
 
-    let mut map = args
-        .get_err(0, "map")?
-        .assert_map_with_name("map", args.span())?;
+    let mut map = args.get_err(0, "map")?.assert_map_with_name("map", span)?;
 
-    let key = Spanned {
-        node: args.get_err(key_position, "key")?,
-        span: args.span(),
+    let (keys, key, value) = if args.overload == 0 {
+        let key = args.get_err(1, "key")?;
+        let value = args.get_err(2, "value")?;
+        (Vec::new(), key, value)
+    } else {
+        let mut rest: Vec<Value> = args.positional.drain(1..).collect();
+        let Some(value) = rest.pop() else {
+            return Err(("Expected $args to contain a key.", span).into());
+        };
+        let Some(key) = rest.pop() else {
+            return Err(("Expected $args to contain a value.", span).into());
+        };
+        let keys: Vec<Spanned<Value>> = rest
+            .into_iter()
+            .map(|node| Spanned { node, span })
+            .collect();
+        (keys, key, value)
     };
-    let value = args.get_err(value_position, "value")?;
-
-    let keys = args.get_variadic()?;
+    let key = Spanned { node: key, span };
 
     if keys.is_empty() {
         map.insert(key, value);
@@ -217,6 +252,8 @@ pub(crate) fn map_set(mut args: ArgumentResult, visitor: &mut Visitor) -> SassRe
             }
         }
     }
+
+    args.assert_named_consumed()?;
 
     Ok(Value::Map(map))
 }
