@@ -190,3 +190,24 @@ test!(
     "a {\n  b: calc((var(--c) 1) + 2px);\n}\n",
     "a {\n  b: calc((var(--c) 1) + 2px);\n}\n"
 );
+// A nested `calc()` holding a `var()` call keeps parentheses when it is
+// inlined, since the variable may expand to anything: dart-sass's
+// `_needsParentheses`. Each expectation was verified against dart-sass
+// 1.103.1.
+//
+// sass-spec `values/calculation/calc/operator/var/calculation`.
+test!(
+    nested_calc_of_var_keeps_its_parens,
+    "a {\n  b: calc(1 + calc(var(--c)));\n}\n",
+    "a {\n  b: calc(1 + (var(--c)));\n}\n"
+);
+test!(
+    nested_calc_of_var_matches_the_name_in_any_case,
+    "a {\n  b: calc(1 + calc(VAR(--c)));\n}\n",
+    "a {\n  b: calc(1 + (VAR(--c)));\n}\n"
+);
+test!(
+    nested_calc_of_var_in_min_keeps_its_parens,
+    "a {\n  b: min(1px, calc(var(--c)));\n}\n",
+    "a {\n  b: min(1px, (var(--c)));\n}\n"
+);
