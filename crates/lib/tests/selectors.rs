@@ -1138,3 +1138,24 @@ test!(
     "a[b] {\n  c: d;\n}\n",
     accent_sass::Options::default().input_syntax(accent_sass::InputSyntax::Sass)
 );
+// A selector that starts on a later line than the previous line-broken one
+// keeps a line break in the output, wherever the newline falls: before the
+// comma, after it, or inside the previous selector. Each expectation was
+// verified against dart-sass 1.103.1.
+//
+// libsass scss test 186: the newline is before the comma.
+test!(
+    newline_before_comma_breaks_the_list,
+    "a\n, b {\n  z & {\n    display: block;\n  }\n}\n",
+    "z a,\nz b {\n  display: block;\n}\n"
+);
+test!(
+    newline_inside_previous_selector_breaks_the_list,
+    "a\nb, c {\n  x: y;\n}\n",
+    "a b,\nc {\n  x: y;\n}\n"
+);
+test!(
+    each_newline_breaks_the_list,
+    "a,\nb,\nc {\n  x: y;\n}\n",
+    "a,\nb,\nc {\n  x: y;\n}\n"
+);

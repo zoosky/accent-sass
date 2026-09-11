@@ -7,16 +7,6 @@ use super::{
     Pseudo, QualifiedName, SelectorList, SimpleSelector,
 };
 
-#[derive(PartialEq)]
-enum DevouredWhitespace {
-    /// Some whitespace was found
-    Whitespace,
-    /// A newline and potentially other whitespace was found
-    Newline,
-    /// No whitespace was found
-    None,
-}
-
 /// Pseudo-class selectors that take unadorned selectors as arguments.
 const SELECTOR_PSEUDO_CLASSES: [&str; 9] = [
     "not",
@@ -89,41 +79,44 @@ impl SelectorParser {
         Ok(tmp)
     }
 
+    /// Consumes a comma-separated list of complex selectors.
+    ///
+    /// A selector that starts on a later line than the list, or than the last
+    /// selector marked this way, is marked with a line break, which the
+    /// output keeps. This is dart-sass's `_selectorList`, which compares
+    /// scanner lines. It counts a newline wherever it falls, so `a\n, b` breaks
+    /// before `b` as `a,\nb` does (libsass scss test 186).
+    ///
+    /// The lexer has no line counter, so a change of line is a newline token
+    /// since the mark. Tokens before `checked` have been searched already and
+    /// `newline_since_mark` holds what they showed, so each token is looked at
+    /// once. Searching from the mark at every comma instead made a long
+    /// one-line list quadratic.
     fn parse_selector_list(&mut self) -> SassResult<SelectorList> {
+        let mut checked = self.toks.cursor();
+        let mut newline_since_mark = false;
         let mut components = vec![self.parse_complex_selector(false)?];
 
         self.whitespace(false)?;
 
-        let mut line_break = false;
-
         while self.scan_char(',') {
-            line_break = self.eat_whitespace() == DevouredWhitespace::Newline || line_break;
+            self.whitespace(false)?;
             match self.toks.peek() {
                 Some(Token { kind: ',', .. }) => continue,
                 Some(..) => {}
                 None => break,
             }
-            components.push(self.parse_complex_selector(line_break)?);
 
-            line_break = false;
+            newline_since_mark |= self.toks.contains_newline_since(checked);
+            checked = self.toks.cursor();
+            let line_break = std::mem::take(&mut newline_since_mark);
+            components.push(self.parse_complex_selector(line_break)?);
         }
 
         Ok(SelectorList {
             components,
             span: self.span,
         })
-    }
-
-    fn eat_whitespace(&mut self) -> DevouredWhitespace {
-        let text = self.raw_text(|parser| parser.whitespace(false));
-
-        if text.contains('\n') {
-            DevouredWhitespace::Newline
-        } else if !text.is_empty() {
-            DevouredWhitespace::Whitespace
-        } else {
-            DevouredWhitespace::None
-        }
     }
 
     /// Consumes a complex selector.

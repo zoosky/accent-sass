@@ -28,6 +28,15 @@ impl Lexer {
             .collect()
     }
 
+    /// Whether a newline lies between `start` and the cursor.
+    ///
+    /// Like [`Self::raw_text`] with a search, but without building the
+    /// string. The lexer has already turned `\r`, `\r\n` and form feeds into
+    /// `\n`, so this is the one character to look for.
+    pub fn contains_newline_since(&self, start: usize) -> bool {
+        self.buf[start..self.cursor].iter().any(|t| t.kind == '\n')
+    }
+
     pub fn next_char_is(&self, c: char) -> bool {
         matches!(self.peek(), Some(Token { kind, .. }) if kind == c)
     }
