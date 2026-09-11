@@ -301,3 +301,28 @@ error!(
     query_is_empty_parens_after_interpolation_is_resolved,
     "@at-root (#{null}) {}", r#"Error: Expected "without"."#
 );
+// `@at-root` puts its body straight into the parents it keeps when they
+// already enclose it, instead of copying them; the copy left the original
+// empty beside it. Each expectation was verified against dart-sass 1.103.1.
+//
+// libsass at-root test 140.
+test!(
+    at_root_in_unknown_at_rule_leaves_no_empty_copy,
+    "@fblthp {\n  .foo {\n    @at-root .bar {\n      a: b;\n    }\n  }\n}\n",
+    "@fblthp {\n  .bar {\n    a: b;\n  }\n}\n"
+);
+test!(
+    at_root_in_two_unknown_at_rules,
+    "@a {@b {.foo {@at-root .bar {x: y}}}}\n",
+    "@a {\n  @b {\n    .bar {\n      x: y;\n    }\n  }\n}\n"
+);
+test!(
+    at_root_in_media_in_unknown_at_rule,
+    "@a {@media screen {.foo {@at-root .bar {x: y}}}}\n",
+    "@a {\n  @media screen {\n    .bar {\n      x: y;\n    }\n  }\n}\n"
+);
+test!(
+    at_root_in_unknown_at_rule_keeps_sibling_order,
+    ".p {@a {.foo {@at-root .bar {x: y}}} .q {z: w}}\n",
+    "@a {\n  .bar {\n    x: y;\n  }\n}\n.p .q {\n  z: w;\n}\n"
+);
