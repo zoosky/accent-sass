@@ -268,6 +268,31 @@ needs this too; item 20 records that.
 | `libsass/at-root/140_test_at_root_in_unknown_directive` | `@at-root` inside an unknown at-rule leaves an empty `@fblthp {}` behind. The emptied parent should be dropped. |
 | `non_conformant/scss-tests/186_test_newlines_removed_from_selectors_when_compressed` | A newline between two selectors in a list is not preserved in expanded output. `ComplexSelector` already carries `line_break` for this. |
 
+**All six are closed**, one pull request each, since they share no cause.
+Several turned out to be something other than the table above guessed:
+
+- `issue_143`, #73: `Identifier` rewrites `_` to `-` when a name is
+  interned. That is right for lookup, but it lost the spelling of a call that
+  finds no function and is written back as plain CSS. `FunctionCallExpr` now
+  keeps the name as written, and `SassFunction::Plain` carries it.
+- `issue_1263`, #74: the whitespace code was already right. An unknown
+  at-rule read its value with `almost_any_value`, dart-sass's reader for
+  selectors. dart-sass uses `_interpolatedDeclarationValue`, which collapses
+  whitespace, and the at-rule now uses that reader.
+- `issue_2000`, #75: dart-sass keeps each style rule's `originalSelector`,
+  its selector before `@extend`, and reads it for `&` and for nesting. This
+  compiler read the extended selector.
+- `units/simple`, #78: a complex unit now converts part by part, as
+  dart-sass's `_coerceOrConvertValue` does, pairing `in` with `cm` and `fu`
+  with `fu`.
+- `140_test_at_root_in_unknown_directive`, #76: the port of `_trimIncluded`
+  returned the right parent but never removed the trimmed run. So the parent
+  was copied anyway, and the original was left empty.
+- `186_test_newlines_removed_from_selectors_when_compressed`, #77: the
+  selector-list parser marked a line break only for a newline after a comma.
+  dart-sass marks one for any change of line, including a newline before the
+  comma.
+
 ## One more, outside the 39
 
 `values/calculation/calc/operator/var/calculation` is in an area items 07
@@ -277,6 +302,11 @@ an unevaluated operand. It is recorded here because "claimed" is measured
 by area on the roadmap's front page, and an area being claimed does not
 mean every fixture in it is. It is not counted in the 39 above, which would
 make the front page's arithmetic disagree with itself.
+
+**Closed by #79.** It is not a precedence rule. dart-sass's
+`_needsParentheses` keeps parentheses around an inlined `calc()` whose text
+starts with a `var(` call, since the variable may expand to anything.
+`needs_parens` lacked that rule.
 
 ## Testing
 
