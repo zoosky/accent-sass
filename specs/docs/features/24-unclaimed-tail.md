@@ -125,6 +125,20 @@ one. `retained` is the clearer of the two: dart-sass keeps
 `@media not screen and (color) { a {..} @media screen { x {..} } }` nested,
 and this compiler splits it into two top-level blocks.
 
+**Closed by `fix/nested-media-merge`.** Hoisting was not the cause; the
+bubbling logic already matched dart-sass. There were two defects:
+
+- `removed` and `retained`: `MediaQuery::merge` compared the modifiers where
+  dart-sass compares the types, in the branch where exactly one query is
+  negated. The modifiers always differ there, so `not screen` merged with
+  `screen` came out as `screen` instead of empty or unrepresentable.
+- `issue_2154`: the tree's `has_following_sibling` counted invisible
+  siblings. An empty bubbled `@media` split its parent in two. It now skips
+  them, as dart-sass's `hasFollowingSibling` does. Declarations, comments,
+  childless at-rules and nested imports keep the any-sibling test, because
+  dart-sass's `_copyParentAfterSibling` does not skip invisible nodes. They
+  now go through their own `add_child_after_sibling`.
+
 ## 6. A childless at-rule jumps its place in the rule
 
 `css/unknown_directive/semicolon/nested/interleaved/{final,before_rule,before_declaration}`

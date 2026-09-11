@@ -639,3 +639,32 @@ test!(
     "@media screen {\n  a,\n  b {\n    color: red;\n  }\n}\n",
     "@media screen {\n  a,\n  b {\n    color: red;\n  }\n}\n"
 );
+// `not screen` and `screen` have no intersection, so the inner rule is
+// dropped rather than emitted under `screen`.
+test!(
+    nested_negation_of_same_type_is_removed,
+    "@media not screen {\n  a {b: c}\n  @media screen {x {y: z}}\n}\n",
+    "@media not screen {\n  a {\n    b: c;\n  }\n}\n"
+);
+// `not screen and (color)` means `not (screen and (color))`, so it overlaps
+// `screen` without color. No level 3 query says that, so the inner rule
+// stays nested for browsers that support nesting.
+test!(
+    nested_unrepresentable_intersection_is_retained,
+    "@media not screen and (color) {\n  a {b: c}\n  @media screen {x {y: z}}\n}\n",
+    "@media not screen and (color) {\n  a {\n    b: c;\n  }\n  @media screen {\n    x {\n      y: z;\n    }\n  }\n}\n"
+);
+// libsass issue 2154: an inner `@media` that turns out empty leaves nothing
+// behind, so it does not split the outer block.
+test!(
+    empty_nested_media_does_not_split_its_parent,
+    "@media (min-width: 1px) {.first {x: y; @media (min-width: 2px) {}} .second {x: y}}\n",
+    "@media (min-width: 1px) {\n  .first {\n    x: y;\n  }\n  .second {\n    x: y;\n  }\n}\n"
+);
+// A declaration is different: any rule written above it, even an empty one,
+// splits its style rule, as dart-sass's `_copyParentAfterSibling` does.
+test!(
+    empty_nested_media_still_splits_following_declaration,
+    ".p {x: y; @media (b) {} z: w}\n",
+    ".p {\n  x: y;\n}\n.p {\n  z: w;\n}\n"
+);

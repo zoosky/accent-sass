@@ -1670,7 +1670,7 @@ impl<'a> Visitor<'a> {
             // Nested, so it stays where it was written -- through `add_child`
             // for the reason `visit_style` gives, since an import holds its
             // place among the rule's other children.
-            self.add_child(node, Some(|_: &CssStmt| false));
+            self.add_child_after_sibling(node);
         } else if self.end_of_imports == self.css_tree.root_child_count() {
             // Still inside the `@import` block, so it can stay in the tree.
             self.css_tree.add_stmt(node, Some(CssTree::ROOT));
@@ -2193,7 +2193,7 @@ impl<'a> Visitor<'a> {
             // splits the enclosing rule rather than letting the at-rule hoist
             // back up beside the rule's earlier children. dart-sass calls
             // `_copyParentAfterSibling` here for exactly this.
-            self.add_child(stmt, Some(|_: &CssStmt| false));
+            self.add_child_after_sibling(stmt);
 
             return Ok(None);
         }
@@ -2394,6 +2394,37 @@ impl<'a> Visitor<'a> {
         }
 
         self.css_tree.add_child(node, parent)
+    }
+
+    /// Adds `node` to the current parent, first moving to a copy of that
+    /// parent if anything has been written after it.
+    ///
+    /// This is dart-sass's `_copyParentAfterSibling` followed by an add, for
+    /// the nodes that hold their place in source order: declarations, loud
+    /// comments, childless at-rules and nested imports. A nested rule written
+    /// above one of them was added after the parent, so the node goes into a
+    /// copy placed after that rule. Unlike [`Self::add_child`] with a
+    /// `through`, an invisible sibling counts here too: dart-sass splits
+    /// `.p {x: y; @media (b) {} z: w}` into two `.p` rules.
+    ///
+    /// Later nodes belong in the same copy, so it becomes the current parent;
+    /// `with_parent` reads `self.parent` afterwards, which hands the copy back
+    /// to the enclosing scope as well.
+    fn add_child_after_sibling(&mut self, node: CssStmt) -> CssTreeIdx {
+        if let Some(parent) = self.parent.filter(|&parent| parent != CssTree::ROOT)
+            && !self.css_tree.is_last_child(parent)
+        {
+            let grandparent = self.css_tree.child_to_parent[&parent];
+            let copy = self
+                .css_tree
+                .get(parent)
+                .as_ref()
+                .map(CssStmt::copy_without_children)
+                .unwrap();
+            self.parent = Some(self.css_tree.add_child(copy, grandparent));
+        }
+
+        self.css_tree.add_stmt(node, self.parent)
     }
 
     fn with_parent<F: FnOnce(&mut Self) -> SassResult<()>, FT: Fn(&CssStmt) -> bool>(
@@ -2784,7 +2815,7 @@ impl<'a> Visitor<'a> {
         // order, so a nested rule written between two of them splits the
         // enclosing rule rather than letting the second comment hoist back up
         // beside the first.
-        self.add_child(comment, Some(|_: &CssStmt| false));
+        self.add_child_after_sibling(comment);
 
         Ok(None)
     }
@@ -4429,14 +4460,11 @@ impl<'a> Visitor<'a> {
                 // implements that split; adding the statement directly skipped
                 // it and hoisted the later declaration back up beside the
                 // earlier one.
-                self.add_child(
-                    CssStmt::Style(Style {
-                        property: InternedString::get_or_intern(&name),
-                        value: Box::new(value),
-                        parsed_as_sass_script,
-                    }),
-                    Some(|_: &CssStmt| false),
-                );
+                self.add_child_after_sibling(CssStmt::Style(Style {
+                    property: InternedString::get_or_intern(&name),
+                    value: Box::new(value),
+                    parsed_as_sass_script,
+                }));
             }
         }
 
