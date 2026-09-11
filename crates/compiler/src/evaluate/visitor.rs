@@ -149,6 +149,15 @@ pub struct Visitor<'a> {
     pub(crate) env: Environment,
     pub(crate) style_rule_ignoring_at_root: Option<ExtendedSelector>,
 
+    /// The selector of `style_rule_ignoring_at_root` as it was resolved,
+    /// before `@extend` added to it: dart-sass's `originalSelector`.
+    ///
+    /// `&` evaluates to this, and nested rules resolve against it, so neither
+    /// sees extenders. Reading the extended selector instead printed
+    /// `--&` as `-- .a--plain, .a` where dart-sass prints `-- .a--plain`
+    /// (libsass issue 2000).
+    style_rule_original_selector: Option<SelectorList>,
+
     /// Whether `style_rule_ignoring_at_root` came from a plain CSS file.
     ///
     /// A style rule written inside one of those is CSS nesting: it keeps its
@@ -240,6 +249,7 @@ impl<'a> Visitor<'a> {
         Self {
             declaration_name: None,
             style_rule_ignoring_at_root: None,
+            style_rule_original_selector: None,
             style_rule_is_plain_css: false,
             has_css_nesting: false,
             flags,
@@ -925,6 +935,7 @@ impl<'a> Visitor<'a> {
             // different rule.
             let in_import_context = visitor.in_import_context;
             let old_style_rule = visitor.style_rule_ignoring_at_root.take();
+            let old_style_rule_original_selector = visitor.style_rule_original_selector.take();
             let old_style_rule_is_plain_css =
                 mem::replace(&mut visitor.style_rule_is_plain_css, false);
             let old_has_css_nesting = mem::replace(&mut visitor.has_css_nesting, false);
@@ -960,6 +971,7 @@ impl<'a> Visitor<'a> {
             // visitor.end_of_imports = old_end_of_imports;
             // visitor.out_of_order_imports = old_out_of_order_imports;
             visitor.style_rule_ignoring_at_root = old_style_rule;
+            visitor.style_rule_original_selector = old_style_rule_original_selector;
             visitor.style_rule_is_plain_css = old_style_rule_is_plain_css;
             visitor.has_css_nesting = old_has_css_nesting;
             if !in_import_context {
@@ -1095,10 +1107,7 @@ impl<'a> Visitor<'a> {
         &mut self,
         selector_list: SelectorList,
     ) -> SassResult<ExtendedSelector> {
-        let parent = self
-            .style_rule_ignoring_at_root
-            .as_ref()
-            .map(|rule| rule.as_selector_list().clone());
+        let parent = self.style_rule_original_selector.clone();
 
         let resolved = selector_list.resolve_parent_selectors(
             parent,
@@ -3388,9 +3397,12 @@ impl<'a> Visitor<'a> {
         Ok(Value::String(buffer, QuoteKind::None))
     }
 
+    /// `&` in SassScript: the enclosing style rule's selector before
+    /// `@extend` added to it, as dart-sass's `visitSelectorExpression` reads
+    /// `originalSelector`.
     fn visit_parent_selector(&self) -> Value {
-        match &self.style_rule_ignoring_at_root {
-            Some(selector) => selector.as_selector_list().clone().to_sass_list(),
+        match &self.style_rule_original_selector {
+            Some(selector) => selector.clone().to_sass_list(),
             None => Value::Null,
         }
     }
@@ -4269,14 +4281,13 @@ impl<'a> Visitor<'a> {
             }
 
             parsed_selector = parsed_selector.resolve_parent_selectors(
-                self.style_rule_ignoring_at_root
-                    .as_ref()
-                    // todo: this clone should be superfluous(?)
-                    .map(|x| x.as_selector_list().clone()),
+                self.style_rule_original_selector.clone(),
                 !self.flags.at_root_excluding_style_rule(),
                 self.is_plain_css,
             )?;
         }
+
+        let original_selector = parsed_selector.clone();
 
         // todo: _mediaQueries
         let selector = self
@@ -4296,6 +4307,8 @@ impl<'a> Visitor<'a> {
             .set(ContextFlags::AT_ROOT_EXCLUDING_STYLE_RULE, false);
 
         let old_style_rule_ignoring_at_root = self.style_rule_ignoring_at_root.take();
+        let old_style_rule_original_selector =
+            self.style_rule_original_selector.replace(original_selector);
         let old_style_rule_is_plain_css = self.style_rule_is_plain_css;
         let old_has_css_nesting = self.has_css_nesting;
         self.style_rule_ignoring_at_root = Some(selector);
@@ -4317,6 +4330,7 @@ impl<'a> Visitor<'a> {
         )?;
 
         self.style_rule_ignoring_at_root = old_style_rule_ignoring_at_root;
+        self.style_rule_original_selector = old_style_rule_original_selector;
         self.style_rule_is_plain_css = old_style_rule_is_plain_css;
         self.has_css_nesting = old_has_css_nesting;
         self.flags.set(

@@ -2088,3 +2088,26 @@ test!(
     "@media print {\n  .foo { content: 'x' }\n  .bar { @extend .foo }\n}\n",
     "@media print {\n  .foo, .bar {\n    content: \"x\";\n  }\n}\n"
 );
+// `&` is the style rule's selector before `@extend` adds to it, as dart-sass's
+// `originalSelector` is. Each expectation was verified against dart-sass
+// 1.103.1.
+//
+// libsass issue 2000: `--&` names only the rule's own selector, not the
+// extender added to it.
+test!(
+    parent_selector_value_ignores_its_own_extender,
+    ".a {\n  @extend #{&}--plain;\n  &--plain {\n    b: --&;\n  }\n}\n",
+    ".a--plain, .a {\n  b: -- .a--plain;\n}\n"
+);
+test!(
+    parent_selector_value_ignores_later_extender,
+    ".a {\n  x: y;\n}\n.b {\n  @extend .a;\n}\n.a {\n  c: &;\n}\n",
+    ".a, .b {\n  x: y;\n}\n\n.a, .b {\n  c: .a;\n}\n"
+);
+// Nested rules resolve against the selector before extension, and the
+// extension then applies to the result.
+test!(
+    nested_rule_under_extended_rule,
+    ".a {\n  x: y;\n}\n.c {\n  @extend .a;\n}\n.a {\n  .b {\n    .d {\n      q: r;\n    }\n  }\n}\n",
+    ".a, .c {\n  x: y;\n}\n\n.a .b .d, .c .b .d {\n  q: r;\n}\n"
+);
