@@ -7,6 +7,8 @@ anything, and this compiler prints it.
 
 Measured 2026-09-10 against master (`31361d7`), the pinned sass-spec
 revision `4a9eea66`, and dart-sass 1.103.1 run as `npx -y sass@1.103.1`.
+Re-measured 2026-09-11 on master (`f55ace41`) against sass-spec `b39c32768`:
+all 18 still fail.
 
 | Area | Failures |
 |---|---:|
@@ -99,17 +101,25 @@ without the warning closes every one of these tests.
   revision.
 - Scoped spec runs: `spec/directives/extend`,
   `spec/non_conformant/extend-tests`, `spec/non_conformant/scss`.
+- Also run `spec/css/selector` and `spec/core_functions/selector`, which
+  item 04 counts as residue. On `f55ace41`, 24 of `css/selector`'s 25
+  failures are under `css/selector/combinator/`, and 20 of
+  `core_functions/selector`'s 25 have `combinator` in their path. This
+  document names none of them, and nobody has checked whether this fix
+  reaches them. Record what moves.
 - Add regression tests to `crates/lib/tests/` with `test!`, covering each
   row of the table above, including the two rows that must keep printing.
-- Verify every new expectation against dart-sass 1.103.1 with
-  `npx -y sass@1.103.1`, never bare `npx sass`.
+- Verify every new expectation against the reference, dart-sass 1.104.0
+  since [item 25](25-baseline-before-dart-sass-1-104.md), using the native
+  release binary. `npx sass` runs the JavaScript build, which gives
+  different answers in places.
 
 ## Acceptance criteria
 
-- `spec/directives/extend` drops from 6 failures to 1, the one left being
-  `pseudo/into_pseudo/extends_after`, which item 24 covers.
-- `spec/non_conformant/extend-tests` drops from 10 to 1, the one left being
-  `extend-loop`, which item 24 covers.
+- `spec/directives/extend` and `spec/non_conformant/extend-tests` are clear.
+  They failed 6 and 10 when this was written; #70, item 24's cause 3,
+  closed the one other failure in each (`pseudo/into_pseudo/extends_after`
+  and `extend-loop`), so the 5 and 9 left there are all this item's.
 - `spec/non_conformant/scss` drops by 2, `spec/non_conformant/sass` by 1,
   and `spec/libsass-closed-issues/issue_439` passes.
 - The whole-suite "Expected test to fail but it did not" count has not

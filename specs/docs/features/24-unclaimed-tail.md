@@ -8,20 +8,26 @@ whoever picks one up starts from a cause instead of a diff.
 Measured 2026-09-10 against master (`31361d7`), the pinned sass-spec
 revision `4a9eea66`, and dart-sass 1.103.1 run as `npx -y sass@1.103.1`.
 
-| # | Cause | Failures |
-|---|---|---:|
-| 1 | Missing strictness checks | 8 |
-| 2 | An arglist does not keep its separator | 4, one of them since closed |
-| 3 | `@extend` produces the wrong selector set | 4 |
-| 4 | `@extend` across media queries is not an error | 3 |
-| 5 | Nested `@media` is flattened | 3 |
-| 6 | A childless at-rule jumps its place in the rule | 3 |
-| 7 | `@import` is hoisted past the comments above it | 2 |
-| 8 | `if()` does not take a rest argument | 2 |
-| 9 | A hex colour with alpha keeps its source text | 2 |
-| 10 | A named argument does not reach a variadic parameter | 1 |
-| 11 | A private-use character is not escaped | 1 |
-| 12 | Six singletons | 6 |
+**Closed in full.** Re-measured 2026-09-11 on master (`f55ace41`) against
+sass-spec `b39c32768`: all 39 fixtures pass, and so does the calc fixture
+recorded outside them. Each pull request's description shows the diff of
+failing tests to be exactly the fixtures of its cause. The sections below
+keep their diagnosis for the record.
+
+| # | Cause | Failures | Closed by |
+|---|---|---:|---|
+| 1 | Missing strictness checks | 8 | #68; #72 for `list/join/error/named` |
+| 2 | An arglist does not keep its separator | 4 | #67; item 21 for `issue_1269` |
+| 3 | `@extend` produces the wrong selector set | 4 | #70 |
+| 4 | `@extend` across media queries is not an error | 3 | #66 |
+| 5 | Nested `@media` is flattened | 3 | #71 |
+| 6 | A childless at-rule jumps its place in the rule | 3 | #61 |
+| 7 | `@import` is hoisted past the comments above it | 2 | #65 |
+| 8 | `if()` does not take a rest argument | 2 | #62 |
+| 9 | A hex colour with alpha keeps its source text | 2 | #63 |
+| 10 | A named argument does not reach a variadic parameter | 1 | #72 |
+| 11 | A private-use character is not escaped | 1 | #64 |
+| 12 | Six singletons | 6 | #73 to #78 |
 
 ## 1. Missing strictness checks
 
@@ -44,12 +50,13 @@ kind, not a mechanism, so they are eight small changes:
 | `@include --a` | as above, for `@include` |
 | a partial `#{` bracket | a parse error |
 
-The whole-suite "Expected test to fail but it did not" count is 28, so
-these eight are a quarter of that column. Item 17's section 3 is another
-one, counted there.
+The whole-suite "Expected test to fail but it did not" count was 28 at
+`31361d7`, so these eight were a quarter of that column; it is 16 on
+`f55ace41`. Item 17's section 3 is another one, counted there.
 
-`list/join/error/named` is closed by `fix/builtin-parameter-lists`, together
-with section 10. See there.
+**Closed by #68**, apart from `list/join/error/named`, which #72
+(`fix/builtin-parameter-lists`) closed together with section 10; see there.
+The bracket tracking #68 added also closed item 19's section 2.
 
 ## 2. An arglist does not keep its separator
 
@@ -79,6 +86,8 @@ defect and are not fixed by that: they need the arglist to be *built* with
 the separator of the list that was splatted into it, which happens in
 argument evaluation rather than in a list builtin.
 
+**Closed by #67**, which builds the arglist with that separator.
+
 ## 3. `@extend` produces the wrong selector set
 
 `libsass-closed-issues/issue_{1091,2055}`,
@@ -100,9 +109,9 @@ These are the last of item 04's territory that item 04 does not cover, and
 they are genuinely fiddly; take them one at a time, and read
 `crates/compiler/src/selector/extend/` before assuming which pass is wrong.
 
-**Closed by `fix/extend-selector-set`.** The trimming pass was not wrong. The
-four came from three places where the port had drifted from dart-sass
-1.103.1:
+**Closed by #70 (`fix/extend-selector-set`).** The trimming pass was not
+wrong. The four came from three places where the port had drifted from
+dart-sass 1.103.1:
 
 - `issue_1091`: `ComplexSelector::is_super_selector` was the pre-rewrite
   algorithm. It rejected `.d > .e` as a superselector of `.b .d > .e`. It is
@@ -130,6 +139,8 @@ as `zoosky/accent-sass` #34, which made an out-of-scope mandatory `@extend`
 an error and cut the "accepts invalid input" column from 43 to 29; the
 media-query rule is the next one in that family.
 
+**Closed by #66.**
+
 ## 5. Nested `@media` is flattened
 
 `non_conformant/scss/media/nesting/{removed,retained}`,
@@ -143,7 +154,7 @@ one. `retained` is the clearer of the two: dart-sass keeps
 `@media not screen and (color) { a {..} @media screen { x {..} } }` nested,
 and this compiler splits it into two top-level blocks.
 
-**Closed by `fix/nested-media-merge`.** Hoisting was not the cause; the
+**Closed by #71 (`fix/nested-media-merge`).** Hoisting was not the cause; the
 bubbling logic already matched dart-sass. There were two defects:
 
 - `removed` and `retained`: `MediaQuery::merge` compared the modifiers where
@@ -179,6 +190,8 @@ between two of its children. The comment on that call in `visit_style` (line
 4215) explains the split and why it exists; the at-rule branch predates it.
 Route the childless at-rule through `add_child` as well.
 
+**Closed by #61.**
+
 ## 7. `@import` is hoisted past the comments above it
 
 `libsass-closed-issues/issue_{469,1080}`
@@ -193,6 +206,8 @@ then both comments. Plain CSS imports are collected and emitted ahead of
 the rest of the document, and the comments written between them are left
 behind.
 
+**Closed by #65.**
+
 ## 8. `if()` does not take a rest argument
 
 `libsass-closed-issues/issue_2321`,
@@ -206,6 +221,8 @@ positional arguments as written. A rest argument is one entry in that
 count no matter how many values it holds, so a call that supplies
 `$if-false` through `c...` is rejected before anything is expanded.
 
+**Closed by #62**, which expands the rest argument before verifying the call.
+
 ## 9. A hex colour with alpha keeps its source text
 
 `values/colors/alpha_hex/{initial_digit,initial_letter}`
@@ -216,6 +233,8 @@ that back, which is right for `#abc` and wrong once there is an alpha
 channel: dart-sass drops the original text for four- and eight-digit hex
 and falls back to the `rgba()` form. The channel values themselves are
 right -- the same fixtures read them back correctly.
+
+**Closed by #63.**
 
 ## 10. A named argument does not reach a variadic parameter
 
@@ -230,7 +249,7 @@ mirror-image case, where an unknown name is accepted instead of rejected;
 both come from builtin signatures being positional lookups rather than
 declared parameter lists.
 
-**Closed by `fix/builtin-parameter-lists`**, together with section 1's
+**Closed by #72 (`fix/builtin-parameter-lists`)**, together with section 1's
 `list/join/error/named`. Every builtin now carries the parameter lists
 dart-sass 1.103.1 declares, overloads included, in
 `crates/compiler/src/builtin/signatures.rs`. The table was generated from
@@ -256,6 +275,8 @@ the character itself, which makes the output non-ASCII and so adds
 `@charset "UTF-8"`. dart-sass writes private-use characters back as escapes
 in expanded mode. `spec/core_functions/string/split/private_use_character`
 needs this too; item 20 records that.
+
+**Closed by #64**, which closed item 20's `split/private_use_character` too.
 
 ## 12. Six singletons
 
@@ -312,8 +333,11 @@ may expand to anything. `needs_parens` lacked that rule.
 
 - Ground truth: each fixture named above at the pinned revision.
 - Add regression tests to `crates/lib/tests/` with `test!` and `error!` for
-  whichever cause you take, and verify every expectation against dart-sass
-  1.103.1 with `npx -y sass@1.103.1`, never bare `npx sass`.
+  whichever cause you take, and verify every expectation against the
+  reference, dart-sass 1.104.0 since
+  [item 25](25-baseline-before-dart-sass-1-104.md), using the native
+  release binary. `npx sass` runs the JavaScript build, which gives
+  different answers in places.
 - Take one cause per branch and pull request. These are unrelated to each
   other, and a branch that fixes three of them cannot be reviewed.
 
