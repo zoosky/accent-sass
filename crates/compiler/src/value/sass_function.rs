@@ -17,8 +17,13 @@ pub enum SassFunction {
     /// User-defined functions are those that have been implemented in Sass using
     /// the @function rule.
     UserDefined(UserDefinedFunction),
+    /// A plain CSS function: a call to a name no Sass function has, written
+    /// back as it was.
     Plain {
-        name: Identifier,
+        /// The name as written. It is kept apart from an [`Identifier`]
+        /// because that turns `_` into `-`, and dart-sass prints a plain
+        /// function with the spelling it had: `file_join(...)`.
+        name: String,
     },
 }
 
@@ -43,9 +48,8 @@ impl SassFunction {
     /// Used mainly in debugging and `inspect()`
     pub fn name(&self) -> Identifier {
         match self {
-            Self::Builtin(_, name)
-            | Self::UserDefined(UserDefinedFunction { name, .. })
-            | Self::Plain { name } => *name,
+            Self::Builtin(_, name) | Self::UserDefined(UserDefinedFunction { name, .. }) => *name,
+            Self::Plain { name } => Identifier::from(name.as_str()),
         }
     }
 

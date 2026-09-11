@@ -210,8 +210,9 @@ pub(crate) fn function_exists(
 
 pub(crate) fn get_function(mut args: ArgumentResult, visitor: &mut Visitor) -> SassResult<Value> {
     args.max_args(3)?;
-    let name: Identifier = match args.get_err(0, "name")? {
-        Value::String(s, _) => s.into(),
+    // The text as given, for a plain function, which keeps its spelling.
+    let text = match args.get_err(0, "name")? {
+        Value::String(s, _) => s,
         v => {
             return Err((
                 format!("$name: {} is not a string.", v.inspect(args.span())?),
@@ -241,8 +242,10 @@ pub(crate) fn get_function(mut args: ArgumentResult, visitor: &mut Visitor) -> S
             .into());
     }
 
+    let name = Identifier::from(text.as_str());
+
     let func = if css {
-        Some(SassFunction::Plain { name })
+        Some(SassFunction::Plain { name: text })
     } else if let Some(module_name) = module {
         visitor.env.get_fn(
             name,
@@ -271,14 +274,15 @@ pub(crate) fn call(mut args: ArgumentResult, visitor: &mut Visitor) -> SassResul
     let span = args.span();
     let func = match args.get_err(0, "function")? {
         Value::FunctionRef(f) => *f,
-        Value::String(name, ..) => {
-            let name = Identifier::from(name);
+        Value::String(text, ..) => {
+            let name = Identifier::from(text.as_str());
 
             match visitor.env.get_fn(name, None, args.span())? {
                 Some(f) => f,
                 None => match GLOBAL_FUNCTIONS.get(name.as_str()) {
                     Some(f) => SassFunction::Builtin(f.clone(), name),
-                    None => SassFunction::Plain { name },
+                    // A plain function keeps the spelling it was given.
+                    None => SassFunction::Plain { name: text },
                 },
             }
         }

@@ -28,6 +28,13 @@ pub struct ListExpr {
 pub struct FunctionCallExpr {
     pub namespace: Option<Spanned<Identifier>>,
     pub name: Identifier,
+    /// The name as written, before [`Identifier`] turns `_` into `-`.
+    ///
+    /// Sass looks functions up by the normalised name, so `a_b()` finds
+    /// `@function a-b`. A call that finds nothing is plain CSS, though, and
+    /// dart-sass writes it back with the spelling it had: `file_join(...)`
+    /// stays `file_join(...)` (libsass issue 143).
+    pub original_name: String,
     pub arguments: Arc<ArgumentInvocation>,
     pub span: Span,
     /// Whether the name was written with a leading `--`, which reserves it for
