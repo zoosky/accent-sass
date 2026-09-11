@@ -76,6 +76,35 @@ test!(
     "@use \"sass:math\";\na {\n  b: math.atan(-0.0);\n}\n",
     "a {\n  b: -0deg;\n}\n"
 );
+// An infinite divisor keeps the dividend when the two share a sign, and only
+// negative zero counts as negative. This compiler used to count every zero as
+// negative, which gave the opposite for `0`; the native dart-sass binary, 1.103.1
+// included, never did. See item 07, section 1.
+test!(
+    modulo_zero_by_infinity,
+    "@use \"sass:math\";\na {\n  b: 0 % math.div(1, 0);\n}\n",
+    "a {\n  b: 0;\n}\n"
+);
+test!(
+    modulo_zero_by_negative_infinity,
+    "@use \"sass:math\";\na {\n  b: 0 % math.div(-1, 0);\n}\n",
+    "a {\n  b: calc(NaN);\n}\n"
+);
+test!(
+    modulo_negative_zero_by_negative_infinity,
+    "@use \"sass:math\";\na {\n  b: -0 % math.div(-1, 0);\n}\n",
+    "a {\n  b: -0;\n}\n"
+);
+test!(
+    calc_mod_zero_by_infinity,
+    "a {\n  b: mod(0, infinity);\n}\n",
+    "a {\n  b: 0;\n}\n"
+);
+test!(
+    calc_mod_zero_by_negative_infinity,
+    "a {\n  b: mod(0, -infinity);\n}\n",
+    "a {\n  b: calc(NaN);\n}\n"
+);
 // `math.log` divides two natural logarithms, and `ln(0)` is `-infinity`.
 test!(
     math_log_base_zero_above_one,

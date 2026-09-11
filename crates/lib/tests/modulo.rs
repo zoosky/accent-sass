@@ -191,8 +191,10 @@ error!(
 );
 
 // An infinite divisor keeps the dividend when the operands share a sign and
-// is NaN otherwise; an infinite dividend is always NaN. Cross-checked against
-// Dart Sass 1.103.1.
+// is NaN otherwise; an infinite dividend is always NaN. Positive zero counts
+// as positive. Cross-checked against the native dart-sass 1.103.1 and 1.104.0
+// binaries; the JavaScript build of 1.103.1 (`npx sass@1.103.1`) counts
+// positive zero as negative and gives NaN for `0 % infinity`.
 test!(
     positive_finite_mod_negative_infinity_is_nan,
     "@use \"sass:math\";\na {\n  color: 5 % math.div(-1, 0);\n}\n",
@@ -204,9 +206,9 @@ test!(
     "a {\n  color: -5;\n}\n"
 );
 test!(
-    zero_mod_infinity_is_nan,
+    zero_mod_infinity_keeps_dividend,
     "@use \"sass:math\";\na {\n  color: 0 % math.div(1, 0);\n}\n",
-    "a {\n  color: calc(NaN);\n}\n"
+    "a {\n  color: 0;\n}\n"
 );
 
 // A lone `%` is an unquoted string value, not the modulo operator. Every

@@ -2,9 +2,10 @@
 
 This item moves the reference implementation from dart-sass 1.103.1 to
 1.104.0. It records the baseline taken before the move, what the release
-changes, and what following it took. It closes no failure the ranking counts,
-so it is listed under "Reference moves" in the [README](README.md) rather than
-in the ranking.
+changes, and what following it took. It is listed under "Reference moves" in
+the [README](README.md) rather than in the ranking, which counts failures
+against 1.103.1. It does close one failure the ranking counts, the last in
+[item 07](07-calculation-long-tail.md), described below.
 
 ## Baseline before the move
 
@@ -38,6 +39,14 @@ list two changes, and the only library commit between the two tags is
    `NaN` and negative zero in any channel, and positive or negative infinity
    in a polar hue. dart-sass does this in `SassColor.forSpaceInternal` only.
 
+The same commit also rewrote `signIncludingZero` to use a cross-platform
+identity check. That changes nothing for the native binary, which is the
+reference: 1.103.1 and 1.104.0 give the same result for every sign of zero
+against an infinite divisor. It fixed the JavaScript build, which `npx sass`
+runs. `npx sass@1.103.1` counted positive zero as negative, so `0 % infinity`
+was `NaN` and `0 % -infinity` was `0` there. Review of this item's pull
+request ran through `npx` and first read that as a 1.104.0 change.
+
 ## Measured before any change
 
 - `frameworks.sh` against the native 1.104.0 binary gave the same counts as
@@ -51,8 +60,9 @@ list two changes, and the only library commit between the two tags is
 ## What following it took
 
 The two release-note changes are the first three items below. The rest
-surfaced when a probe of about 125 declarations was compared against the
-1.104.0 binary, or from the spec: each is a place where this compiler
+surfaced when a probe of about 125 declarations was
+compared against the 1.104.0 binary, from the spec, or in review: each is a
+place where this compiler
 produced a sign or a `NaN` differently from Dart, which printing `-0` or
 normalizing a channel made visible.
 
@@ -76,26 +86,40 @@ normalizing a channel made visible.
   `min`, as Dart's `math.max` and `math.min` do. Rust's skip it, which made a
   `NaN` red print `hsl(0, 24.6376811594%, 27.0588235294%)` where dart-sass
   prints `hsl(0, 0%, 0%)`.
+- Sass's `%`, and the calculation `mod()` that shares it, count only negative
+  zero as negative when the divisor is infinite. This compiler counted every
+  zero as negative, which matched the JavaScript build of 1.103.1 but not the
+  native binary. That was [item 07](07-calculation-long-tail.md)'s section 1,
+  and its fixture, `values/calculation/mod/nan/zero_and_negative_infinity`,
+  passes now. Review found it.
+- The legacy channel accessors `red()`, `green()` and `blue()` return an
+  integer, as Dart's `SassColor.red` does through `round()`, so a `-0`
+  channel that `color.change()` keeps reads back as `0`. Review found this
+  too: until negative zero printed as `-0`, the difference was invisible.
 - `math.asin` and `math.atan` keep the sign of a zero argument.
 - `math.log` with a base divides the two natural logarithms, as dart-sass
   does. Its special case for a base of zero returned `0`, which was wrong for
   `math.log(0, 0)` and `math.log(-2, 0)` under 1.103.1 as well; both are
   `NaN`.
 
-Eight existing tests expected 1.103.1's output and were updated, each with a
-comment naming both versions: two in `color_css4.rs`, two in `color_hsl.rs`,
-one in `color_interpolation.rs`, one in `number.rs` and two in
-`math-module.rs`. New regression tests are in `negative-zero.rs` and
+Nine existing tests were updated, each with a comment naming what it now
+follows. Eight expected 1.103.1's output: two in `color_css4.rs`, two in
+`color_hsl.rs`, one in `color_interpolation.rs`, one in `number.rs` and two
+in `math-module.rs`. The ninth, `zero_mod_infinity_is_nan` in `modulo.rs`,
+expected the JavaScript build's answer for `0 % infinity`; both native
+binaries give `0`, and it is now `zero_mod_infinity_keeps_dividend`. New regression tests are in `negative-zero.rs` and
 `degenerate-colors.rs`. Every expectation was checked against the 1.104.0
 binary.
 
 ## After
 
-- sass-spec pinned to `b39c32768`: 14,266 runs, 14,084 passing, 174 failures
+- sass-spec pinned to `b39c32768`: 14,266 runs, 14,085 passing, 173 failures
   locally. Against the failure list at the old pin, no fixture newly fails.
-  All 48 of 1.104.0's new failures pass, and so does
-  `core_functions/color/hwb/four_args/blackness/degenerate/negative_infinity`,
-  which failed at the old pin too. Expect CI to read two higher.
+  All 48 of 1.104.0's new failures pass, and so do two that failed at the old
+  pin too:
+  `core_functions/color/hwb/four_args/blackness/degenerate/negative_infinity`
+  and `values/calculation/mod/nan/zero_and_negative_infinity`. Expect CI to
+  read two higher.
 - `frameworks.sh` against the native 1.104.0 binary: 5, 0, 0 and 903
   differing lines, none colour-bearing, and 0 across the 106 Foundation
   function results. Unchanged from the baseline.

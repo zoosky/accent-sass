@@ -71,6 +71,18 @@ test!(
     "@use \"sass:color\";\na {\n  b: color.channel(color.change(#123456, $red: -0), \"red\");\n}\n",
     "a {\n  b: -0;\n}\n"
 );
+// The legacy channel accessors round to an integer, which has no negative
+// zero, so a kept `-0` channel reads back as `0`.
+test!(
+    red_of_negative_zero_channel,
+    "@use \"sass:color\";\na {\n  b: red(color.change(#123456, $red: -0));\n}\n",
+    "a {\n  b: 0;\n}\n"
+);
+test!(
+    color_red_of_channel_rounding_to_zero,
+    "@use \"sass:color\";\na {\n  b: color.red(color.change(#123456, $red: -0.4));\n}\n",
+    "a {\n  b: 0;\n}\n"
+);
 // `rgb()` clamps its channels, and Dart's `clamp` orders `-0` below `0`.
 test!(
     rgb_negative_zero_channel_clamps_to_zero,

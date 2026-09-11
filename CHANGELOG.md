@@ -23,9 +23,14 @@ at `0.13.4` and below are upstream's and are kept for lineage.
   zero becomes `0`, and so does a hue that is infinite:
   `hsl(math.div(1, 0), 50%, 50%)` is now `hsl(0, 50%, 50%)` rather than
   `hsl(calc(NaN), 50%, 50%)`. As in dart-sass, `color.change()` on an rgb
-  colour keeps such a channel until the colour is converted to another space
+  colour keeps such a channel until the colour is converted to another space,
+  and `red()`, `green()` and `blue()` read a `-0` channel back as `0`
 
 ### Fixed
+
+- `%` and the calculation `mod()` with an infinite divisor no longer count
+  positive zero as negative. `0 % infinity` is `0` rather than `NaN`, and
+  `0 % -infinity` is `NaN` rather than `0`, as dart-sass gives
 
 - unit names are case-sensitive, as they are in dart-sass. Only the canonical
   spelling names a known unit, so `1Q` now prints as `1Q` rather than `1q`,
