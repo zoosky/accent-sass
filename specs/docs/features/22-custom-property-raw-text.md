@@ -6,6 +6,8 @@ and this compiler folds it onto one line.
 
 Measured 2026-09-10 against master (`31361d7`), the pinned sass-spec
 revision `4a9eea66`, and dart-sass 1.103.1 run as `npx -y sass@1.103.1`.
+Re-measured 2026-09-11 on master (`f55ace41`) against sass-spec `b39c32768`:
+all 6 still fail.
 
 Item 11 recorded this divergence when it landed and left it open; the
 `silent_comment_with_following_line` test in
@@ -104,8 +106,10 @@ SassScript, and item 11's tests depend on it.
   folding. Verify its new expectation against the binary first: it is
   exactly the kind of test that gets re-baselined to whatever the new code
   prints.
-- Verify every new expectation against dart-sass 1.103.1 with
-  `npx -y sass@1.103.1`, never bare `npx sass`.
+- Verify every new expectation against the reference, dart-sass 1.104.0
+  since [item 25](25-baseline-before-dart-sass-1-104.md), using the native
+  release binary. `npx sass` runs the JavaScript build, which gives
+  different answers in places.
 
 ## Acceptance criteria
 

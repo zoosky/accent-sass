@@ -6,6 +6,8 @@ contains; all of them are about where it is printed.
 
 Measured 2026-09-10 against master (`31361d7`), the pinned sass-spec
 revision `4a9eea66`, and dart-sass 1.103.1 run as `npx -y sass@1.103.1`.
+Re-measured 2026-09-11 on master (`f55ace41`) against sass-spec `b39c32768`:
+all 9 still fail, and so does item 05's `css/comment/weird_indentation`.
 
 | Section | Cause | Failures |
 |---|---|---:|
@@ -117,15 +119,20 @@ this is specifically about a comment at the end of the prelude.
   nothing about the blast radius.
 - Add regression tests to `crates/lib/tests/` with `test!`, one per row of
   the table in section 1 and one multi-line comment for section 2.
-- Verify every new expectation against dart-sass 1.103.1 with
-  `npx -y sass@1.103.1`, never bare `npx sass`.
+- Verify every new expectation against the reference, dart-sass 1.104.0
+  since [item 25](25-baseline-before-dart-sass-1-104.md), using the native
+  release binary. `npx sass` runs the JavaScript build, which gives
+  different answers in places.
 
 ## Acceptance criteria
 
 - The six fixtures in section 1, the two in section 2 and the one in
   section 3 pass.
-- `spec/css/comment` drops from 10 failures to 9, the rest being indented
-  syntax (item 19) and strictness (item 24).
+- `spec/css/comment` drops from 10 failures to 9. On `f55ace41`, item 19's
+  section 1 names one of the nine left, `loud/multi_line/sass`. The other
+  eight are named by no document: five loud comments in the indented syntax,
+  under `block/loud/sass` and `error/loud/sass`, and three under
+  `sourcemap`.
 - `spec/css/font-face/bubble/empty` needs section 1 as well as item 23; it
   is counted under item 23, not here.
 - The whole-suite count does not rise anywhere else. The serializer change

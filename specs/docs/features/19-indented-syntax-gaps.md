@@ -5,8 +5,10 @@
 `consumeNewlines` family; what is left is what that parameter did not
 reach.
 
-Section 2 has since been closed from another branch -- see the note under
-that heading before you start on it. Six of the nine remain.
+Section 2 was closed by #68, from another branch -- see the note under that
+heading. Six of the nine remain: re-measured 2026-09-11 on master
+(`f55ace41`) against sass-spec `b39c32768`, sections 1, 3 and 4 still fail
+in full, and so does item 05's `css/comment/loud/multi_line/sass`.
 
 Measured 2026-09-10 against master (`31361d7`), the pinned sass-spec
 revision `4a9eea66`, and dart-sass 1.103.1 run as `npx -y sass@1.103.1`.
@@ -64,7 +66,7 @@ closing `*/` at column 1 and are equally valid.
 
 ## 2. A selector may not span lines inside brackets -- closed
 
-**Closed by #68, which is open at the time of writing.** That branch is
+**Closed by #68.** That branch is
 item 24's cause 1, and it needed dart-sass's bracket stack in
 `almost_any_value` to reject an unbalanced bracket in a selector. Once the
 stack exists, dart-sass's newline case reads
@@ -152,14 +154,16 @@ not a parse error.
   indented syntax, covering both the indented and the no-indent variants
   of section 1. Section 2's three indentation levels are already covered,
   in `crates/lib/tests/selectors.rs`.
-- Verify every new expectation against dart-sass 1.103.1 with
-  `npx -y sass@1.103.1`, never bare `npx sass`.
+- Verify every new expectation against the reference, dart-sass 1.104.0
+  since [item 25](25-baseline-before-dart-sass-1-104.md), using the native
+  release binary. `npx sass` runs the JavaScript build, which gives
+  different answers in places.
 
 ## Acceptance criteria
 
 - `spec/expressions/comments`, `spec/directives/at_root` and
   `spec/non_conformant/sass/import` are clear of the six that remain.
-  `spec/parser/indentation` was section 2's, and is clear once #68 lands.
+  `spec/parser/indentation` was section 2's, and has been clear since #68.
 - `spec/css/comment` drops by 1 through section 1.
 - The whole-suite "Test case should succeed but it did not" count drops by
   at least 6, and the "Expected test to fail but it did not" count has not
