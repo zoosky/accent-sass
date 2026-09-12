@@ -1,8 +1,18 @@
 # The browser demo
 
 A page that compiles Bulma and USWDS from source in the browser, using the
-WebAssembly build of this compiler. It is published to GitHub Pages by
-`.github/workflows/pages.yml`.
+WebAssembly build of this compiler.
+
+It is published as part of the [documentation site](../README.md), at `/demo`.
+The workflow builds the site with Accent CMS, builds this page's wasm and
+framework bundles, and copies the second into the first -- the page is not
+rendered by the CMS and has no template, which is why it carries its own
+stylesheet and its own link back to the site.
+
+That back-link is relative (`../`), so it lands on the documentation site when
+the page is served inside it. Serving this directory on its own for
+development, the link points above the server root and goes nowhere; nothing
+else on the page depends on it.
 
 ## What is committed and what is built
 

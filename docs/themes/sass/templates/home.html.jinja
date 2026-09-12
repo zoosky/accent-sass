@@ -1,0 +1,167 @@
+{# The landing page.
+
+   The prose of this page lives in frontmatter rather than in the body, because
+   a landing page is a layout with slots and not a document: the headline, the
+   pipeline stages, the four figures and the six cards each need to land in a
+   specific place. `page.content` is still rendered, near the bottom, so the
+   page can grow a written section without a template change. #}
+{% extends "base.html.jinja" %}
+
+{% set c = page.custom %}
+
+{% block body %}
+
+<section class="hero">
+  <div class="container">
+    <div class="hero-grid">
+      <div>
+        <p class="eyebrow"><span class="dot"></span>{{ c.eyebrow }}</p>
+
+        <h1>{{ c.headline }} <em>{{ c.headline_accent }}</em></h1>
+
+        {# `page.lead`, not `c.lead`. `lead` is one of Accent's own page fields,
+           so a `lead:` in frontmatter never reaches `page.custom`. Every other
+           slot on this page is a custom field and does use `c.`. #}
+        <p class="hero-lead">{{ page.lead }}</p>
+
+        <div class="cta-row">
+          <a class="btn btn-primary" href="{{ url('/demo/') }}">Compile Bulma in your browser</a>
+          <a class="btn btn-ghost" href="{{ url('/guide') }}">Read the guide</a>
+        </div>
+
+        <p style="margin-top:1.5rem">
+          <span class="install">
+            <span class="prompt">$</span>
+            <code id="install-cmd">cargo add accent-sass</code>
+            <button type="button" data-copy="install-cmd">Copy</button>
+          </span>
+        </p>
+      </div>
+
+      <div class="code-card">
+        <div class="code-card-head">
+          <span class="lamps"><span></span><span></span><span></span></span>
+          main.rs
+        </div>
+        <pre><code><span class="tok-kw">use</span> accent_sass<span class="tok-pn">::{</span>Options<span class="tok-pn">,</span> from_string<span class="tok-pn">};</span>
+
+<span class="tok-kw">let</span> css <span class="tok-pn">=</span> <span class="tok-fn">from_string</span><span class="tok-pn">(</span>
+    <span class="tok-str">"$gap: 1rem;\na { padding: $gap * 2; }"</span><span class="tok-pn">.</span><span class="tok-fn">to_owned</span><span class="tok-pn">(),</span>
+    <span class="tok-pn">&amp;</span>Options<span class="tok-pn">::</span><span class="tok-fn">default</span><span class="tok-pn">(),</span>
+<span class="tok-pn">)?;</span>
+
+<span class="tok-fn">assert_eq!</span><span class="tok-pn">(</span>css<span class="tok-pn">,</span> <span class="tok-str">"a {\n  padding: 2rem;\n}\n"</span><span class="tok-pn">);</span>
+
+<span class="tok-cm">// No Node, no libsass, no subprocess. The same</span>
+<span class="tok-cm">// compiler runs in a browser:</span>
+<span class="tok-cm">//   import { compileString } from "accent-sass";</span></code></pre>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="container">
+    <div class="section-head">
+      <p class="kicker">The pipeline</p>
+      <h2>{{ c.pipeline_title }}</h2>
+      <p>{{ c.pipeline_lead }}</p>
+    </div>
+
+    <ol class="pipeline">
+      {% for stage in c.stages %}
+      <li class="stage">
+        <h3>{{ stage.name }}</h3>
+        <p>{{ stage.description }}</p>
+      </li>
+      {% endfor %}
+    </ol>
+  </div>
+</section>
+
+<section class="section section-sunken">
+  <div class="container">
+    <div class="section-head">
+      <p class="kicker">Conformance</p>
+      <h2>{{ c.figures_title }}</h2>
+      <p>{{ c.figures_lead }}</p>
+    </div>
+
+    <div class="figures">
+      {% for figure in c.figures %}
+      <div class="figure">
+        <span class="n n-{{ figure.tone }}">{{ figure.value }}</span>
+        <span class="l">{{ figure.label }}</span>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="container">
+    <div class="section-head">
+      <p class="kicker">What you get</p>
+      <h2>{{ c.features_title }}</h2>
+      <p>{{ c.features_lead }}</p>
+    </div>
+
+    <div class="grid">
+      {% for feature in c.features %}
+      <div class="card">
+        <h3>{{ feature.title }}</h3>
+        <p>{{ feature.body | safe }}</p>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+{% if page.content %}
+<section class="section section-sunken">
+  <div class="container">
+    <div class="prose">
+      {{ page.content | safe }}
+    </div>
+  </div>
+</section>
+{% endif %}
+
+<section class="section">
+  <div class="container">
+    <div class="band">
+      <div>
+        <h2>{{ c.band_title }}</h2>
+        <p>{{ c.band_lead }}</p>
+      </div>
+      <div class="cta-row">
+        <a class="btn btn-primary" href="{{ url('/demo/') }}">Open the demo</a>
+        <a class="btn btn-ghost" href="{{ url('/reference/javascript-api') }}">JavaScript API</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+{% endblock %}
+
+{% block head %}
+<script>
+  // Copy-to-clipboard for the install line. Inline because a request for
+  // twelve lines costs more than the lines do, and delegated from `document`
+  // so it can run here in the head: the listener needs no element to exist
+  // yet, which is what would otherwise force this to the end of the body.
+  document.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-copy]");
+    if (!button) return;
+    const text = document.getElementById(button.dataset.copy).textContent;
+    navigator.clipboard.writeText(text).then(() => {
+      button.dataset.copied = "true";
+      button.textContent = "Copied";
+      setTimeout(() => {
+        button.dataset.copied = "false";
+        button.textContent = "Copy";
+      }, 1600);
+    });
+  });
+</script>
+{% endblock %}

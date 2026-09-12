@@ -1,0 +1,170 @@
+{# The shell every page shares.
+
+   The navigation is written out rather than looped over `pages`, because part
+   of it leaves the site -- the demo is a static page the CMS does not own, and
+   docs.rs and GitHub are elsewhere entirely. Five links do not need a data
+   structure. #}
+<!DOCTYPE html>
+<html lang="{{ page.language or 'en' }}" dir="{{ page.direction or 'ltr' }}">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% if page.title and page.title != site.name %}{{ page.title }} - {% endif %}{{ site.name }}</title>
+  {# The browser paints the page background before any CSS arrives; without
+     this the first frame of a dark page is white. It names both schemes
+     because the stylesheet supports both. #}
+  <meta name="color-scheme" content="dark light">
+
+  {# Applied before the stylesheet so a reader who chose light does not get a
+     frame of dark first. This is the one script here that has to be inline and
+     blocking: a deferred one runs after first paint, which is exactly the
+     flash it exists to prevent. Wrapped in try/catch because a browser with
+     site data blocked throws on `localStorage` rather than returning null, and
+     a theme preference is not worth a blank page. #}
+  <script>
+    try {
+      var t = localStorage.getItem("theme");
+      if (t === "light" || t === "dark") {
+        document.documentElement.setAttribute("data-theme", t);
+      }
+    } catch (e) {}
+  </script>
+
+  {# The Accent mark. The link order and the `mask-icon` colour match the other
+     sites in the family, so they share one tab icon rather than one that
+     merely looks similar. #}
+  <link rel="icon" type="image/x-icon" href="{{ url('/theme/assets/favicon.ico') }}">
+  <link rel="icon" type="image/png" sizes="32x32" href="{{ url('/theme/assets/favicon-32x32.png') }}">
+  <link rel="icon" type="image/png" sizes="16x16" href="{{ url('/theme/assets/favicon-16x16.png') }}">
+  <link rel="apple-touch-icon" sizes="180x180" href="{{ url('/theme/assets/apple-touch-icon.png') }}">
+  <link rel="mask-icon" href="{{ url('/theme/assets/safari-pinned-tab.svg') }}" color="#FF4F3E">
+
+  {% include "partials/head_meta.html.jinja" %}
+  {% for css in theme.assets.css %}
+  <link rel="stylesheet" href="{{ url('/theme/assets/' ~ css) }}">
+  {% endfor %}
+  {% block head %}{% endblock %}
+</head>
+
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="site-header">
+    <div class="container">
+      <a class="wordmark" href="{{ url('/') }}">accent<span class="mark">-</span>sass</a>
+
+      <nav class="site-nav" aria-label="Main">
+        <a href="{{ url('/guide') }}" {% if page.url and '/guide' in page.url %}class="active"{% endif %}>Guide</a>
+        <a href="{{ url('/reference') }}" {% if page.url and '/reference' in page.url %}class="active"{% endif %}>Reference</a>
+        {# Not `url()`-wrapped by accident: the demo is a static directory the
+           workflow copies into the build output, so it is a real path on this
+           site and takes the same prefix every other internal link does. #}
+        <a href="{{ url('/demo/') }}" {% if page.url and '/demo' in page.url %}class="active"{% endif %}>Demo</a>
+        <a class="ext hide-sm" href="https://docs.rs/accent-sass">API</a>
+        <a class="ext" href="https://github.com/zoosky/accent-sass">GitHub</a>
+
+        <button type="button" class="icon-btn search-trigger" id="search-trigger"
+                aria-label="Search" aria-expanded="false" aria-controls="search-overlay">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5 14 14"/></svg>
+          <span class="label">Search</span>
+          <kbd>/</kbd>
+        </button>
+
+        {# Not `aria-pressed`: this does not turn a setting on and off, it
+           switches between two named themes. The label is rewritten by the
+           script to name the one you get next. #}
+        <button type="button" class="icon-btn theme-toggle" id="theme-toggle" aria-label="Switch theme">
+          <svg class="icon-sun" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="3.2"/><path d="M8 .8v1.8M8 13.4v1.8M15.2 8h-1.8M2.6 8H.8M13.09 2.91l-1.27 1.27M4.18 11.82l-1.27 1.27M13.09 13.09l-1.27-1.27M4.18 4.18 2.91 2.91"/></svg>
+          <svg class="icon-moon" viewBox="0 0 16 16" aria-hidden="true"><path d="M13.5 9.6A5.8 5.8 0 0 1 6.4 2.5a5.8 5.8 0 1 0 7.1 7.1Z"/></svg>
+        </button>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main">
+    {% block body %}{% endblock %}
+  </main>
+
+  {# The `acms-search-*` class names are the generated search script's
+     contract (`/_search/search.js`, produced by `accent build` from
+     `search.backend` in config.yaml). It finds every `.acms-search-form`,
+     reads `data-limit` and `data-search-backend` from it, and writes results
+     into `.acms-search-results`. The dialog around them and the styling are
+     this theme's; those three names are not ours to rename. #}
+  <div id="search-overlay" hidden role="dialog" aria-modal="true" aria-label="Search this site">
+    <div id="search-backdrop"></div>
+    <div id="search-card">
+      <div class="acms-search-form" data-search-backend="simple" data-limit="8">
+        <div class="search-field">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5 14 14"/></svg>
+          <input class="acms-search-input" type="search" placeholder="Search the documentation"
+                 aria-label="Search this site" autocomplete="off" spellcheck="false">
+        </div>
+        <div class="acms-search-results"></div>
+      </div>
+      <p class="search-hint">
+        <span><kbd>Enter</kbd> open</span>
+        <span><kbd>Esc</kbd> close</span>
+      </p>
+    </div>
+  </div>
+
+  <footer class="site-footer">
+    <div class="container">
+      <div class="foot-grid">
+        <div>
+          <h2>accent-sass</h2>
+          <p style="margin:0;max-width:34ch">
+            A Sass compiler written in Rust, at parity with dart-sass. MIT
+            licensed, and a fork of connorskees/grass.
+          </p>
+        </div>
+
+        <div>
+          <h2>Guide</h2>
+          <ul>
+            <li><a href="{{ url('/guide') }}">Overview</a></li>
+            <li><a href="{{ url('/guide/install') }}">Install</a></li>
+            <li><a href="{{ url('/guide/command-line') }}">Command line</a></li>
+            <li><a href="{{ url('/guide/rust') }}">Rust library</a></li>
+            <li><a href="{{ url('/guide/browser') }}">In a browser</a></li>
+          </ul>
+        </div>
+
+        <div>
+          <h2>Reference</h2>
+          <ul>
+            <li><a href="{{ url('/reference') }}">Overview</a></li>
+            <li><a href="{{ url('/reference/command-line') }}">CLI flags</a></li>
+            <li><a href="{{ url('/reference/rust-api') }}">Rust API</a></li>
+            <li><a href="{{ url('/reference/javascript-api') }}">JavaScript API</a></li>
+            <li><a href="{{ url('/reference/compatibility') }}">Compatibility</a></li>
+          </ul>
+        </div>
+
+        <div>
+          <h2>Project</h2>
+          <ul>
+            <li><a href="https://github.com/zoosky/accent-sass">Source</a></li>
+            <li><a href="https://crates.io/crates/accent-sass">crates.io</a></li>
+            <li><a href="https://docs.rs/accent-sass">docs.rs</a></li>
+            <li><a href="https://github.com/zoosky/accent-sass/blob/master/CHANGELOG.md">Changelog</a></li>
+            <li><a href="https://sass-lang.com/documentation/">Sass</a></li>
+          </ul>
+        </div>
+      </div>
+
+      <p class="colophon">
+        Part of the <a href="https://accentcms.dev">Accent CMS</a> family, and
+        built with it -- including this stylesheet, which Accent compiled with
+        accent-sass. The <a href="{{ url('/demo/') }}">demo</a> runs the same
+        compiler in your browser.
+      </p>
+    </div>
+  </footer>
+  <script src="{{ url('/_search/search.js') }}" defer></script>
+  <script src="{{ url('/theme/assets/js/chrome.js') }}" defer></script>
+</body>
+
+</html>

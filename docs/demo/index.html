@@ -3,6 +3,35 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <!--
+      Pin the base URL to this document's own directory.
+
+      This page is served from a directory, and hosts disagree about whether
+      that URL carries a trailing slash: `accent serve-static` redirects
+      /demo/ to /demo, and other static hosts redirect the other way. Without
+      a slash the browser resolves `styles.css` against the *parent*
+      directory, so the page loads unstyled, the compiler never loads, and the
+      link back to the site goes to the wrong place.
+
+      Setting <base> here makes every relative reference below resolve against
+      /demo/ whichever URL the host settled on. It must come before the
+      stylesheet and the script that follow it, because <base> only affects
+      elements parsed after it.
+
+      Requests the worker makes are unaffected either way: they resolve
+      against worker.js's own absolute URL, not this document's.
+    -->
+    <script>
+      (function () {
+        var path = location.pathname.replace(/index\.html$/, "");
+        if (path.charAt(path.length - 1) !== "/") path += "/";
+        var base = document.createElement("base");
+        base.href = path;
+        document.head.appendChild(base);
+      })();
+    </script>
+
     <title>accent-sass in the browser</title>
     <meta
       name="description"
@@ -13,6 +42,11 @@
   <body>
     <header class="site-header">
       <div class="wrap">
+        <!-- The demo is served inside the documentation site, but it is a
+             static page the CMS does not render, so it carries its own way
+             back. A relative link, because the site sits at a path prefix
+             (/accent-sass) that this page has no way to know. -->
+        <p class="back"><a href="../">&larr; accent-sass documentation</a></p>
         <h1>accent-sass in the browser</h1>
         <p class="lede">
           A Sass compiler written in Rust, built to WebAssembly. Everything

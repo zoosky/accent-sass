@@ -1,0 +1,107 @@
+# The accent-sass project website, built with Accent CMS.
+#
+# The dogfooding here is not decorative. Accent compiles this theme's
+# `main.scss` with accent-sass, so the stylesheet you are reading the site
+# through was produced by the compiler the site documents, and `/demo`
+# compiles Bulma and USWDS in the reader's browser with the same engine built
+# to WebAssembly.
+#
+# Nothing here is read by `cargo`. The site is built by
+# `.github/workflows/pages.yml`, which never touches the crate.
+
+server:
+  address: "127.0.0.1"
+  # Not 4400 (the Accent starter), 4440 (the Accent docs site) or 4450
+  # (accent-proust): those are sibling sites that may be running at the same
+  # time, and a collision surfaces as a confusing "address in use".
+  port: 4460
+
+content:
+  directory: "./content"
+
+theme:
+  name: "sass"
+  directory: "./themes"
+
+site:
+  name: "accent-sass"
+  # The GitHub Pages project URL. Its path component is what tells
+  # `accent build` to prefix every internal link with `/accent-sass`, so a
+  # build with no flags already produces the artifact Pages wants. The
+  # workflow passes `--base-url` anyway, because a value that matters this
+  # much should not be reachable only through a default.
+  url: https://zoosky.github.io/accent-sass
+  description: >-
+    A Sass compiler written in Rust, at parity with dart-sass. Compiles Bulma,
+    Pico, Foundation and USWDS, and runs in a browser through WebAssembly.
+  language: en-US
+  meta:
+    og:locale: "en_US"
+
+build:
+  # Off deliberately, for the same reason accent-proust turns it off:
+  # fingerprinting rewrites asset URLs to content-hashed names, and the
+  # demo's WebAssembly glue resolves `index_bg.wasm` relative to its own URL
+  # at runtime -- a name no build can rewrite, because it lives inside a
+  # generated JavaScript string rather than in an href a template renders.
+  # Pages sends its own `Cache-Control` and this site is small.
+  fingerprint:
+    enabled: false
+  routing:
+    error_document: /404.html
+
+markdown:
+  tables: true
+  footnotes: true
+  strikethrough: true
+  tasklists: true
+  heading_attributes: true
+  # Off: these pages quote CLI flags, Sass operators and code all the way
+  # through, and smart quotes would rewrite them into something that does not
+  # run.
+  smart_punctuation: false
+  gfm: true
+  definition_lists: true
+  metadata_blocks: true
+
+code:
+  theme: "base16-ocean.dark"
+
+search:
+  backend: simple
+  # The default is 200 characters, which indexes roughly the first paragraph
+  # and leaves the rest of a reference page unfindable -- `loadPaths`,
+  # `MemoryFs`, `--load-path` and every other term worth searching for lives
+  # further down. These pages are a few thousand words at most.
+  content_length: 50000
+  exclude:
+    - "/404"
+    - "/tags/*"
+
+llms:
+  enabled: true
+  description: |
+    accent-sass is a Sass compiler written in Rust, at parity with dart-sass
+    1.104.0. It is a fork of connorskees/grass that carries the modern Dart
+    Sass features upstream has not released. It runs as a library, as a
+    command-line binary, and in a browser through WebAssembly. These pages
+    cover installation, the command line, the Rust API, the browser API, and
+    what the compiler is and is not compatible with.
+  extra_links:
+    - title: "Source"
+      url: "https://github.com/zoosky/accent-sass"
+    - title: "API documentation (docs.rs)"
+      url: "https://docs.rs/accent-sass"
+    - title: "crates.io"
+      url: "https://crates.io/crates/accent-sass"
+
+diagrams:
+  render_mode: server
+  renderers:
+    mermaid:
+      theme: dark
+
+dev:
+  hot_reload: true
+  browser_reload: true
+  debounce_ms: 50

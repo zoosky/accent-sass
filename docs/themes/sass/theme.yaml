@@ -1,0 +1,18 @@
+name: Sass
+description: >-
+  The accent-sass project site. Accent's palette, dark first. Derived from
+  accent-proust's Proust theme so the family shares one look.
+version: "1.0.0"
+author: AccentX GmbH
+license: MIT
+assets:
+  css:
+    - css/main.scss
+  js: []
+styling:
+  # Accent compiles this with accent-sass, which is the compiler this site
+  # documents. The stylesheet is the site's own dogfood.
+  sass:
+    enabled: true
+    load_paths:
+      - css
