@@ -47,6 +47,18 @@ at `0.13.4` and below are upstream's and are kept for lineage.
   bindings themselves exist only on `wasm32-unknown-unknown`. It also stands on
   its own for a host that already holds its stylesheets, such as a CMS
   compiling a theme out of a database
+- `--check` on the command line, which compiles and writes nothing. Given an
+  output file it compares the CSS it produced against what that file already
+  holds, so a job can ask whether committed CSS is still what the Sass produces
+  without a build step, a temporary file or a `diff`. It exits `3` on a stale
+  or missing output file and `1` on a stylesheet that does not compile, which
+  keeps "your CSS is out of date" and "your Sass is broken" apart in a log;
+  `2` is still clap's usage error. Writing nothing is the point of the mode:
+  it reports whether a build is current without being able to change the answer
+- `--indented` works, and is no longer hidden. It reads the entry point as the
+  indented syntax whatever the file is called. That matters most for `--stdin`,
+  which is the one input route with no extension to infer a syntax from, and
+  the route the flag exists to serve
 
 ### Changed
 
@@ -101,6 +113,27 @@ at `0.13.4` and below are upstream's and are kept for lineage.
 
 ### Fixed
 
+- ten command-line flags consumed the argument after them. `--indented`,
+  `--update`, `--no-error-css`, `--no-source-map`, `--embed-sources`,
+  `--embed-source-map`, `--watch`, `--poll`, `--no-stop-on-error` and
+  `-i`/`--interactive` were each declared with no action, and clap 4 defaults
+  to an action that takes a value, so `accent-sass --watch style.scss` read
+  `style.scss` as the value of `--watch` and then failed with `the following
+  required arguments were not provided: <INPUT>`. A script written against
+  dart-sass's command line failed on the argument parse rather than on the
+  missing feature, and the error named the input file rather than the flag
+  that ate it. All ten are switches now. Six of them -- `--update`, `--watch`,
+  `--poll`, `-i`/`--interactive`, `--embed-sources` and `--embed-source-map`
+  -- say they are ignored rather than passing in silence, because each would
+  change what the program does if it worked; `--no-error-css`,
+  `--no-source-map` and `--no-stop-on-error` already describe what this binary
+  does and stay quiet
+- a failed compile truncated the output file. `accent-sass style.scss app.css`
+  opened `app.css` with `truncate(true)` before running the compile, so a
+  stylesheet that stopped compiling left an empty `app.css` behind. It
+  destroyed the last good CSS at the moment you most want to keep it, and a
+  missing input file did the same. The output file is opened only after the
+  compile succeeds
 - `@warn` and `@debug` report a string message as its text rather than with
   its quotes, as dart-sass does: `@warn "careful"` says `careful`, not
   `"careful"`. Only the outermost value is unwrapped, so a string inside a
