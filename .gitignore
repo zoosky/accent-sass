@@ -8,6 +8,10 @@
 # than build output.
 !docs/demo/**/*.s[ac]ss
 !docs/demo/**/*.css
+# ...and the documentation site's theme, whose stylesheet is its source. Accent
+# compiles it with accent-sass at build time.
+!docs/themes/**/*.s[ac]ss
+!docs/themes/**/*.css
 
 # devops
 /target
@@ -15,6 +19,11 @@
 # .github/workflows/pages.yml. Binaries and vendored framework sources do not
 # belong in the tree; `pkg` below already covers the wasm-pack output.
 /docs/demo/vendor
+# The documentation site's build output and Accent's caches.
+/docs/output
+/docs/.build-manifest.json
+/docs/.media-cache
+/docs/.diagram-cache
 coverage
 pkg
 flamegraph.svg

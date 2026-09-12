@@ -17,6 +17,12 @@ It is built for and maintained alongside [Accent CMS](https://accentcms.dev),
 the single-binary markdown CMS, which compiles theme Sass in-process through
 this crate. It is a general-purpose library, and does not depend on Accent.
 
+**Documentation: <https://zoosky.github.io/accent-sass>** -- a usage guide, a
+reference, and a [demo](https://zoosky.github.io/accent-sass/demo/) that
+compiles Bulma and USWDS from source in your browser. The site is built from
+[`docs/`](docs/README.md) with Accent CMS, which compiles its stylesheet with
+this compiler.
+
 ## Install
 
 ```toml

@@ -19,7 +19,7 @@ on:
       - master
     paths:
       - 'crates/**'
-      - 'docs/demo/**'
+      - 'docs/**'
       - 'Cargo.toml'
       - 'Cargo.lock'
       - '.github/workflows/pages.yml'
@@ -30,7 +30,7 @@ on:
   pull_request:
     paths:
       - 'crates/**'
-      - 'docs/demo/**'
+      - 'docs/**'
       - '.github/workflows/pages.yml'
       - '.github/scripts/demo-bundle.mjs'
 
@@ -42,6 +42,14 @@ permissions:
 concurrency:
   group: 'pages'
   cancel-in-progress: false
+
+env:
+  # The Accent CMS release the site is built with. Pinned rather than "latest"
+  # for the reason accent-proust pins it: a template that renders differently
+  # after a CMS release should be a change someone made, not a deployment
+  # nobody triggered. This is the newest stable release -- v0.26.0 is at rc.2 --
+  # and the site was verified to build with it.
+  ACCENT_VERSION: v0.25.1
 
 jobs:
   build:
@@ -91,6 +99,38 @@ jobs:
       - name: 'Compile the frameworks the page ships'
         run: node .github/scripts/demo-check.mjs
 
+      # The documentation site, which is what Pages actually serves. Accent
+      # compiles the theme's Sass with accent-sass, so a stylesheet the
+      # compiler cannot build fails the deploy rather than shipping unstyled.
+      - name: 'Install Accent CMS'
+        run: |
+          # The asset name embeds the version, so it is derived from the tag
+          # rather than written twice.
+          curl -sSL -o accent.tar.gz \
+            "https://github.com/AccentCMS/accent/releases/download/${ACCENT_VERSION}/accent-${ACCENT_VERSION}-x86_64-unknown-linux-gnu.tar.gz"
+          tar xf accent.tar.gz
+          sudo install -m 755 accent /usr/local/bin/accent
+          accent --version
+
+      - name: 'Build the site'
+        run: |
+          accent build \
+            --config docs/config.yaml \
+            --output docs/output \
+            --base-url "${{ steps.pages.outputs.base_url }}" \
+            --clean
+
+      # The demo is copied in rather than placed in `media/`, which Accent
+      # would serve from `/media/demo`. It is also 2.8 MB of generated wasm and
+      # framework JSON that is deliberately not committed, so it is built above
+      # and staged here.
+      - name: 'Stage the demo inside the site'
+        run: |
+          cp -R docs/demo docs/output/demo
+          rm -f docs/output/demo/README.md
+          test -f docs/output/demo/vendor/pkg/index_bg.wasm
+          test -f docs/output/demo/vendor/frameworks/manifest.json
+
       - name: 'Report what the site carries'
         run: |
           {
@@ -108,7 +148,7 @@ jobs:
       - name: 'Upload the site'
         uses: actions/upload-pages-artifact@v3
         with:
-          path: docs/demo
+          path: docs/output
 
   # Only `master` publishes. A pull request stops after `build`, which is
   # enough to catch a demo that no longer builds.
