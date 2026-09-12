@@ -106,10 +106,10 @@ USWDS from source in the browser.
 
 ## Status
 
-13,813 of 14,218 sass-spec tests pass against the pinned spec revision
-(measured 2026-09-05). CI compiles Bulma, Pico, Foundation and USWDS with both
-engines on every commit and fails on any colour-value difference; that corpus
-currently shows none.
+14,085 of 14,266 sass-spec tests pass against the pinned spec revision
+`b39c32768`, leaving 173 failures (measured 2026-09-11). CI compiles Bulma,
+Pico, Foundation and USWDS with both engines on every commit and fails on any
+colour-value difference; that corpus currently shows none.
 
 | Job | Gates? | What it checks |
 |---|---|---|

@@ -22,14 +22,23 @@ Allow a minute between publishes for the index to update.
 ## Before you publish
 
 1. **Gates.** Clippy runs on both the MSRV and stable, matching CI and
-   `release.sh`; the MSRV alone cannot see lints added after it:
+   `release.sh`; the MSRV alone cannot see lints added after it. The feature
+   set matches CI too: `wasi-exports` is in it so the WebAssembly C ABI in
+   `crates/lib/src/wasi_exports.rs` is linted and tested on the host, rather
+   than only in the `wasi` job.
 
    ```bash
    cargo fmt --all -- --check
-   cargo +1.96.1 clippy --features=macro --all-targets -- -D warnings
-   cargo +stable  clippy --features=macro --all-targets -- -D warnings
-   cargo test --features=macro
+   cargo +1.96.1 clippy --features=macro,wasi-exports --all-targets -- -D warnings
+   cargo +stable  clippy --features=macro,wasi-exports --all-targets -- -D warnings
+   cargo test --features=macro,wasi-exports
+   cargo audit
    ```
+
+   `cargo audit` exits non-zero for a vulnerability and zero for a
+   warning-level advisory, such as a crate that is merely unmaintained. A
+   warning is worth reading before a release without being a reason to stop
+   one, which is the behaviour `release.sh` relies on.
 
 2. **Versions.** All three crates carry the same version, and two `=` pins
    reference it:

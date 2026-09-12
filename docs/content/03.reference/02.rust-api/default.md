@@ -148,13 +148,66 @@ Turning off `random` removes four Sass functions from the build. A stylesheet
 that calls one then fails to compile, which is a compile error rather than a
 missing feature, so turn it off deliberately.
 
+### Custom builtin functions are not reachable here {#custom-builtin-fns}
+
+`accent_sass_compiler` has a fifth feature, `custom-builtin-fns`, which is on
+by default *for that crate* and gates `Options::add_custom_fn`. The
+`accent-sass` crate depends on the compiler with `default-features = false`
+and forwards no such feature, so `add_custom_fn` and the `Builtin` type it
+takes cannot be reached through `accent-sass` as published. Depending on
+`accent_sass_compiler` directly is the only way to them today, against a crate
+this project documents as an internal.
+
 ## The WASI C ABI
 
 `wasi-exports` exposes a C ABI for `wasm32-wasip1`, for a plugin host that
 instantiates the compiler once and compiles many stylesheets without paying
-process startup for each. Strings cross as UTF-8 in linear memory: allocate,
-write, call, read three 32-bit words (status, pointer, length), free. An
-options handle carries the same knobs as `Options` and is reusable.
+process startup for each.
+
+Strings cross as UTF-8 in linear memory: allocate, write, call, read the
+result, free. A result is three 32-bit words -- status, pointer, length.
+
+| Export | Does |
+|---|---|
+| `accent_sass_alloc(len)` | Reserve `len` bytes in the guest and return the pointer |
+| `accent_sass_dealloc(ptr, len)` | Release what `accent_sass_alloc` returned |
+| `accent_sass_compile_string(ptr, len)` | Compile the source at that range, with defaults |
+| `accent_sass_compile_path(ptr, len)` | Compile the file at that guest path, with defaults |
+| `accent_sass_result_free(res)` | Release a result |
+| `accent_sass_options_new()` | A handle, filled in by the setters below |
+| `accent_sass_options_free(opts)` | Release a handle |
+| `accent_sass_compile_string_with_options(ptr, len, opts)` | As above, with a handle |
+| `accent_sass_compile_path_with_options(ptr, len, opts)` | As above, with a handle |
+
+Status words:
+
+| Constant | Value | Meaning |
+|---|---:|---|
+| `ACCENT_SASS_OK` | 0 | The call succeeded |
+| `ACCENT_SASS_REJECTED` | 1 | A null handle, or a value the ABI does not define |
+| `ACCENT_SASS_NOT_UTF8` | 2 | The bytes were not valid UTF-8 |
+
+The setters are named after dart-sass's JavaScript API wherever the two have
+the same knob, so this ABI and the [JavaScript
+API](/reference/javascript-api) do not drift apart:
+
+| Setter | dart-sass | Values |
+|---|---|---|
+| `accent_sass_options_set_style` | `style` | 0 expanded, 1 compressed |
+| `accent_sass_options_set_syntax` | `syntax` | 0 scss, 1 indented, 2 css |
+| `accent_sass_options_add_load_path` | `loadPaths` | One path per call |
+| `accent_sass_options_set_charset` | `charset` | Non-zero is true. Default true |
+| `accent_sass_options_set_alert_ascii` | `alertAscii` | Non-zero is true. Default false |
+| `accent_sass_options_set_quiet` | -- | Non-zero is true. Default false |
+
+A value the ABI does not define is refused rather than rounded to a default,
+so a host that ignores the status word keeps what it had. A handle is
+reusable and carries no borrowed state: set it up once and compile a whole
+theme through it.
+
+Load paths are **guest** paths. Under WASI a path is readable only if a
+preopen covers it, so a host wanting `/shared` on the load path must map a
+directory onto that name when it instantiates the module.
 
 Both release profiles set `panic = "abort"`, so a panic reaches the host as a
 trap and leaves the instance unusable. A host compiling untrusted input should
