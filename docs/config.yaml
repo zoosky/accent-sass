@@ -37,6 +37,13 @@ site:
   language: en-US
   meta:
     og:locale: "en_US"
+    # Google Search Console ownership, by the HTML-tag method. Google reads the
+    # token from the site root, so it has to be in every build rather than
+    # pasted in once; deleting this line un-verifies the property. It lives here
+    # rather than in a template because `head_meta.html.jinja` renders this map
+    # into the head of every page, and a key with no `og:` or `twitter:` prefix
+    # becomes `name=`, which is the form Google looks for.
+    google-site-verification: "yS18C91qoSaQvcIS0JI33YvZ-KKx_kDXfJarTH7dqGw"
 
 build:
   # Off deliberately, for the same reason accent-proust turns it off:
