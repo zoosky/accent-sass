@@ -13,6 +13,41 @@ at `0.13.4` and below are upstream's and are kept for lineage.
 
 ## [Unreleased]
 
+### Added
+
+- a C ABI for WebAssembly hosts, behind the `wasi-exports` feature.
+  `accent_sass_alloc`, `accent_sass_dealloc`, `accent_sass_compile_string`,
+  `accent_sass_compile_path` and `accent_sass_result_free` turn the
+  `wasm32-wasip1` cdylib into a reactor a plugin host instantiates once and
+  calls many times, instead of paying process startup per stylesheet. Strings
+  cross as UTF-8 in linear memory and a result is three 32-bit words: status,
+  pointer, length. Built with the workspace's `small` profile, the module is
+  1.31 MiB against 2.42 MiB under `release`
+- options for that C ABI. `accent_sass_options_new` returns an opaque handle a
+  host fills in and passes to `accent_sass_compile_string_with_options` or
+  `accent_sass_compile_path_with_options`, which covers output style, entry
+  point syntax, load paths, `charset`, `alertAscii` and `quiet`. The setters
+  are named after dart-sass's JavaScript API so this ABI and the browser
+  binding do not drift apart; a value the ABI does not define is refused rather
+  than rounded to a default. `accent_sass_compile_string` and
+  `accent_sass_compile_path` are unchanged and still compile with defaults
+- a JavaScript API for the browser build. `compileString(source, options)` and
+  `compile(path, options)` join `from_string`, which keeps working. The options
+  are `style`, `syntax`, `loadPaths`, `files`, `url`, `charset`, `alertAscii`,
+  `quiet` and `logger`, named after dart-sass's JavaScript API wherever it has
+  a name for the same knob; a failed compile throws an `Error` carrying
+  `message`, `formatted`, `file`, `line` and `column`, and `index.d.ts`
+  declares the surface with real types. Before this the package exported one
+  function with `StdFs` behind it, so every `@use` failed at run time with
+  `Can't find stylesheet to import.` and a page could compile a single
+  stylesheet and nothing else
+- `MemoryFs` and `from_string_with_file_name` are public. The browser binding
+  resolves imports through `MemoryFs`, and making it a public type rather than
+  something private to the binding is what lets `cargo test` reach it: the
+  bindings themselves exist only on `wasm32-unknown-unknown`. It also stands on
+  its own for a host that already holds its stylesheets, such as a CMS
+  compiling a theme out of a database
+
 ### Changed
 
 - the reference implementation is dart-sass 1.104.0, and both of its changes
@@ -25,6 +60,44 @@ at `0.13.4` and below are upstream's and are kept for lineage.
   `hsl(calc(NaN), 50%, 50%)`. As in dart-sass, `color.change()` on an rgb
   colour keeps such a channel until the colour is converted to another space,
   and `red()`, `green()` and `blue()` read a `-0` channel back as `0`
+- **Breaking: `@extend` across a media query is an error.** An `@extend`
+  written inside `@media` may only extend a selector in the identical query;
+  extending across queries would need the extended rule to exist in a context
+  it was never written for. It extended silently before, which is worse than
+  refusing: the check was commented out and the store never recorded a
+  selector's media context at all, so every selector looked top-level.
+  `!optional` does not silence it, since it says the extension need not match
+  anything rather than that a wrong match is allowed
+- **Breaking: builtin calls are checked against dart-sass's parameter lists.**
+  Builtins read their arguments by position with no declared parameter list, so
+  an unknown name could not be rejected and a real one could not be found:
+  `map.remove($key: 1)` and `list.join(c, d, $invalid: true)` compiled. All 196
+  registrations now carry the parameter list dart-sass 1.103.1 declares,
+  overloads included, and a call picks its overload, is verified against it,
+  and has its named arguments bound to their declared positions. The
+  unknown-name error says "parameter", as dart-sass does, for user-defined
+  functions too
+- **Breaking: seven inputs dart-sass refuses are rejected.** A style rule
+  inside a keyframe block, `@mixin --a` and `@include --a` (plain CSS is
+  getting mixins of its own and `--` names are reserved for them), a custom
+  property nested beneath another declaration, and an unbalanced bracket in a
+  selector. The bracket tracking also closes ten fixtures in the indented
+  syntax, where a newline inside a bracket no longer ends the selector
+- **Breaking: a selector whose combinators cannot match is omitted.** Two
+  combinators in a row, more than one leading combinator, or a trailing one
+  make a selector bogus, so a rule left with nothing visible is not printed and
+  a useless selector can no longer act as an extender. The rules are ported
+  from the dart-sass 1.104.0 source, which hides such selectors when writing
+  CSS rather than in the evaluator, so `selector.parse(":is(.a > + .b)")` still
+  keeps its argument. `selector.replace()` raises dart-sass's "components may
+  not be empty" where it used to panic
+- a loud comment written above `@use` or `@forward` is repeated before every
+  module that loads it, as dart-sass 1.104.0 does. This is what Bulma's five
+  differing lines in the framework corpus were; Bulma now compiles
+  byte-identically to the reference. The repeats are written only at the top
+  level, because dart-sass writes them while combining modules. dart-sass
+  itself calls this a bug and fixed it for the unreleased 1.104.1, so it costs
+  two sass-spec fixtures and is to be reverted when the reference moves
 
 ### Fixed
 
@@ -34,11 +107,9 @@ at `0.13.4` and below are upstream's and are kept for lineage.
   list still prints quoted, and every other value is reported as before. The
   command line and the `Logger` trait are both affected, because the quoting
   happened in the evaluator
-
 - `%` and the calculation `mod()` with an infinite divisor no longer count
   positive zero as negative. `0 % infinity` is `0` rather than `NaN`, and
   `0 % -infinity` is `NaN` rather than `0`, as dart-sass gives
-
 - unit names are case-sensitive, as they are in dart-sass. Only the canonical
   spelling names a known unit, so `1Q` now prints as `1Q` rather than `1q`,
   `math.div(1kHz, 1hz)` no longer simplifies, and `1PX + 1px` is an error
@@ -56,18 +127,112 @@ at `0.13.4` and below are upstream's and are kept for lineage.
   and `calc(1px % 2px)` are rejected as the values and operators they are
   rather than as parse failures, and a keyword argument is named as one:
   `sqrt($x: 1)` reports `Keyword arguments can't be used with calculations.`
-
-### Added
-
-- options for the WebAssembly C ABI (`wasi-exports`). `accent_sass_options_new`
-  returns an opaque handle a host fills in and passes to
-  `accent_sass_compile_string_with_options` or
-  `accent_sass_compile_path_with_options`, which covers output style, entry
-  point syntax, load paths, `charset`, `alertAscii` and `quiet`. The setters
-  are named after dart-sass's JavaScript API so this ABI and the browser
-  binding do not drift apart; a value the ABI does not define is refused rather
-  than rounded to a default. `accent_sass_compile_string` and
-  `accent_sass_compile_path` are unchanged and still compile with defaults
+- a stylesheet may use `&` at the top level. CSS nesting made `&` meaningful to
+  the browser, so dart-sass passes a top-level one through as text rather than
+  raising "Top-level selectors may not contain the parent selector", which it
+  no longer emits anywhere. A parent selector carrying a suffix is still an
+  error, with dart-sass's message, and the check looks inside a
+  pseudo-selector's argument, because `:is(&--x)` is an error too
+- five defects in `sass:math`. A fuzzy `is_zero()` stood in for an exact zero
+  in `asin`, `atan` and `log`, so `math.log(0.000000000001)` returned
+  `calc(-infinity)` where its value is `-27.63`, and `acos` had the same defect
+  through `is_one()`. `clamp()` had no case for `$min >= $max` and returned
+  `$number` on a tie, so `clamp(1, 2, 0)` gave `0` rather than `1`; it also
+  compared `$min` against `$number` and `$min` against `$max`, which let
+  `clamp(0, 1, 2px)` through. `$min-number` was the smallest normal double
+  where Dart's `double.minPositive` is the smallest subnormal, 16 orders of
+  magnitude apart. `math.unit()` bracketed a denominator only when the
+  numerator was empty, so `math.unit(1px * 1em / 1rad / 1s)` printed
+  `px*em/rad*s`
+- three defects in `string.split()`. Rust's `str::split("")` matches at every
+  character boundary, so an empty separator returned an empty piece at each
+  end; it now splits into code points, and `$limit` is ignored on that path as
+  in dart-sass. An empty string yields an empty list rather than one empty
+  piece, and each piece keeps the input's quotedness rather than being quoted
+  regardless
+- a map, and an arglist, is the list of elements each is. `Value::separator`
+  reported a comma for every map, `list.join` hard-coded one, and
+  `list.append` turned a map or an arglist into a one-element list holding a
+  container -- which then refused to serialize with "isn't a valid CSS value".
+  An empty map, an empty arglist and an empty list are now equal in every
+  direction, `!=` included, while an empty arglist is still not equal to `()`,
+  the one pairing where the separator counts
+- an arglist takes the separator of the list splatted into it, a comma only
+  when nothing decided one, so `@include foo(1, 2, $list...)` with a
+  space-separated `$list` prints `2 3 4 5` rather than `2, 3, 4, 5`. The
+  separator was lost in four places, and equality compared an arglist to any
+  comma-separated list whatever its own separator. An arglist nested inside
+  another list keeps the parentheses that keep the two separators apart
+- a childless at-rule keeps its place in the rule. It went into the tree
+  without the check that splits a style rule when a nested rule comes between
+  two of its children, so `a { b {c: d} @e f; }` emitted `a {@e f}` first;
+  source order decides the cascade
+- `if()` expands a rest argument before verifying the call, so
+  `if(true, b, c...)` no longer fails with `Missing argument $if-false.` The
+  arguments written in the call stay unevaluated, so the branch not taken
+  still never runs
+- a hex colour written with an alpha channel drops its source spelling:
+  `#0123` prints as `rgba(0, 17, 34, 0.2)`, and an opaque `#abcf` as
+  `#aabbcc`. Four- and eight-digit hex is not yet well supported in browsers,
+  so dart-sass lets the serializer infer the form. The trigger is that an alpha
+  channel was written, not that it is transparent
+- a private-use character is written back as an escape in expanded mode, as
+  dart-sass does, so `content: "\e600"` no longer emits the character itself
+  and no longer adds a `@charset "UTF-8"` the reference does not emit.
+  Compressed mode writes the character. Escaping is a serialization concern, so
+  such a character is still one character to `string.split()`
+- the comments above a plain CSS `@import` stay with it. Imports were collected
+  and emitted ahead of the whole document, leaving the comments written between
+  them behind. An `@import` written after a rule still moves up, but to the end
+  of the import block rather than to the top of the document
+- `@extend` produces dart-sass's selector set. `ComplexSelector::is_super_selector`
+  is now a port of dart-sass 1.103.1's `complexIsSuperselector`, whose old
+  check rejected `.d > .e` as a superselector of `.b .d > .e`;
+  `extend_complex` returns a single-selector path's selector itself, so it
+  keeps its identity; and `add_extension` reads the target's
+  extensions-by-extender list after adding the new extenders, so an extension
+  loop closes
+- nested `@media` queries merge and are kept the way dart-sass does.
+  `MediaQuery::merge` compared the modifiers where dart-sass compares the
+  types in the branch where exactly one query is negated, so `not screen`
+  inside `screen` came out as `screen`; and the following-sibling test counted
+  invisible siblings, so an empty bubbled `@media` split its parent
+- a plain CSS function keeps its spelling. Interning rewrites `_` to `-`, which
+  is right for looking a function up and loses the spelling of a call that
+  finds nothing and is written back as plain CSS, so `file_join(...)` printed
+  as `file-join(...)`. The spelling survives `meta.call` with a string,
+  `get-function($css: true)` and inspecting the reference
+- whitespace inside an unknown at-rule's value is collapsed, so
+  `@apply  (  --bar  );` prints `@apply ( --bar );`. The value was read with
+  dart-sass's reader for selectors, which does not collapse, rather than its
+  reader for declaration values, which does
+- a style rule's selector is read before `@extend` rewrites it, for `&` in
+  SassScript and for resolving nested rules, so `--&` no longer prints the
+  extender that `@extend` added. dart-sass keeps each rule's original selector
+  beside the live one for exactly this; `@extend` still reads the live one
+- `@at-root` inside an unknown at-rule no longer leaves an empty copy of it
+  beside the one holding the body. dart-sass's `_trimIncluded` removes the
+  trailing run of included parents that already enclose the rule; this port
+  returned the innermost node but never removed the run
+- a selector list keeps its line break wherever the newline falls, not only
+  when the whitespace after a comma holds one, so `a\n, b` nested under `z &`
+  prints on two lines as dart-sass does. The check searches tokens rather than
+  building a string at every comma, which had made a long single-line list
+  parse in quadratic time: 40,000 selectors took 8 s and now take 0.04 s
+- units convert part by part when either side is complex, so
+  `(23in/2fu) > (23cm/2fu)` is `true` rather than
+  `Incompatible units cm/fu and in/fu.` Each unit in the target's numerator
+  pairs with the first convertible unit left in the source's numerator, and
+  likewise for denominators; comparison, equality, `+`, `-`, `%`, `clamp` and
+  `math.compatible` all go through it
+- an inlined nested `calc()` keeps parentheses around a leading `var()` call,
+  so `calc(1 + calc(var(--c)))` prints `calc(1 + (var(--c)))`. A variable may
+  expand to anything, which is why dart-sass keeps them
+- a nested `@font-face` does not get the enclosing selector. A nested at-rule
+  normally gets a copy of the style rule so that declarations written inside it
+  have somewhere to go; `@font-face` is the exception, because its descriptors
+  belong to the at-rule itself. The comparison is on the plain name, so
+  `@-moz-font-face` and `@FONT-FACE` still bubble
 
 ## [0.15.0] - 2026-09-08
 
