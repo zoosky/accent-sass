@@ -269,6 +269,34 @@ checkThat(
   String(badFiles),
 );
 
+// --- entropy --------------------------------------------------------------
+
+// `random()` and `unique-id()` are the only builtins that need a random
+// source, and on wasm32-unknown-unknown getrandom cannot deduce one from the
+// target name: the backend is opt-in through a crate feature, spelled `js` by
+// getrandom 0.2 and `wasm_js` by 0.4. Get it wrong and the module still
+// builds and still compiles every stylesheet above this line; only these two
+// functions fail, so they need a check of their own.
+const entropyInput = "a {\n  b: random();\n  c: unique-id();\n}\n";
+let firstDraw;
+let secondDraw;
+try {
+  firstDraw = compileString(entropyInput).css;
+  secondDraw = compileString(entropyInput).css;
+} catch (e) {
+  firstDraw = `threw ${e}`;
+}
+const drawn = Number((firstDraw?.match(/b: ([0-9.]+);/) ?? [])[1]);
+checkThat("random() returns a number in [0, 1)", drawn >= 0 && drawn < 1, firstDraw);
+checkThat(
+  "unique-id() returns twelve alphanumerics",
+  /c: id-[A-Za-z0-9]{12};/.test(firstDraw ?? ""),
+  firstDraw,
+);
+// A stubbed or failing source is likeliest to return a constant, which one
+// plausible-looking value cannot tell apart from a working one.
+checkThat("two draws differ", firstDraw !== secondDraw, firstDraw);
+
 if (failures > 0) {
   console.error(`\n${failures} check(s) failed`);
   process.exit(1);
