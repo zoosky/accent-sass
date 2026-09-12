@@ -25,11 +25,16 @@ theme:
 
 site:
   name: "accent-sass"
-  # The GitHub Pages project URL. Its path component is what tells
-  # `accent build` to prefix every internal link with `/accent-sass`, so a
-  # build with no flags already produces the artifact Pages wants. The
-  # workflow passes `--base-url` anyway, because a value that matters this
-  # much should not be reachable only through a default.
+  # The GitHub Pages project URL, and the only place it is written down. Its
+  # path component tells `accent build` to prefix every internal link with
+  # `/accent-sass`, and its origin is what makes the sitemap's `<loc>` entries
+  # and robots.txt's `Sitemap:` line absolute, as both specifications require.
+  #
+  # The workflow used to pass `--base-url` as well, which read better than it
+  # behaved: it named a step output that no step produced, so it passed an
+  # empty string and the site shipped a sitemap of relative URLs. It passes
+  # nothing now and this value carries the build, so a repository rename is a
+  # one-line change here.
   url: https://zoosky.github.io/accent-sass
   description: >-
     A Sass compiler written in Rust, at parity with dart-sass. Compiles Bulma,
