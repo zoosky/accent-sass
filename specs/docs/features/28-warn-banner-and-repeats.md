@@ -40,8 +40,15 @@ this item's work.
 The 43rd failure in that scoped run is
 `spec/directives/at_root/sass/empty/no_query`, which fails earlier on an
 indented-syntax parse gap belonging to
-[item 19](19-indented-syntax-gaps.md). Three of the 45 fixtures that
-statically expect a plain `WARNING` pass; why was not investigated.
+[item 19](19-indented-syntax-gaps.md).
+
+The counts reconcile exactly. 45 fixtures statically expect a plain
+`WARNING`; three of them also carry an `error` section --
+`libsass-closed-issues/issue_1683/{function,mixin}` and
+`non_conformant/sass/var-args/error`. Their compile fails, the runner
+compares the error and never reaches the warning, so those three pass. That
+is 42 failing plus 3, and the scoped run's 43 is those 42 plus the parse
+failure above.
 
 ### What the banner alone closes: 18, not 42
 
@@ -54,7 +61,9 @@ defect 2 closes: all 13 of `spec/directives/warn`, plus
 `libsass/debug-directive-nested/{function,mixin}` and `libsass/propsets`.
 
 **27 where nothing is emitted at all.** The warning does not exist in this
-compiler, so a banner fix leaves them failing. Six are
+compiler, so a banner fix leaves them failing -- 24 of them, the other three
+being the error fixtures above, which never reach a warning comparison. Six
+are
 `css/selector/combinator/newline`, which is
 [item 15](15-bogus-combinators.md); the rest are deprecation and
 indented-syntax warnings spread across `core_functions/math/div`,
