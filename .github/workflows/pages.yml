@@ -123,23 +123,28 @@ jobs:
           sudo install -m 755 accent /usr/local/bin/accent
           accent --version
 
-      # No `--base-url` here, deliberately. It used to read
-      # `${{ steps.pages.outputs.base_url }}`, and no step declares
-      # `id: pages` -- `actions/configure-pages` is not used in this workflow
-      # -- so it expanded to the empty string on every build, which is worse
-      # than omitting the flag. The base URL is what makes the sitemap's
-      # `<loc>` entries and robots.txt's `Sitemap:` line absolute; with an
-      # empty one they shipped relative (`<loc>/accent-sass/</loc>`), which
-      # both specifications forbid and which Search Console rejects.
+      # The production URL is written out. Accent's static-build documentation
+      # is direct about it -- "always set it to your production domain" --
+      # because the base URL is what makes the sitemap's `<loc>` entries, the
+      # feed, the canonical links and robots.txt's `Sitemap:` line absolute.
       #
-      # Omitted, it falls back to `site.url` in the config, which produces
-      # byte-identical output to passing that URL explicitly -- checked by
-      # building three ways (no flag, empty, real URL) and diffing the trees.
+      # This flag used to read `${{ steps.pages.outputs.base_url }}`, and no
+      # step declares `id: pages` -- `actions/configure-pages` is not used in
+      # this workflow -- so it expanded to the empty string on every build.
+      # That is worse than omitting the flag, because an empty value replaces
+      # the `site.url` fallback rather than deferring to it: the site shipped
+      # `<loc>/accent-sass/</loc>` and `Sitemap: /accent-sass/sitemap.xml`,
+      # which both specifications forbid and which Search Console rejects.
+      #
+      # The path component also derives the `/accent-sass` prefix that every
+      # internal link carries, so this URL and `site.url` in the config have
+      # to agree; the config says the same thing on its side.
       - name: 'Build the site'
         run: |
           accent build \
             --config docs/config.yaml \
             --output docs/output \
+            --base-url https://zoosky.github.io/accent-sass \
             --clean
 
       # The demo is copied in rather than placed in `media/`, which Accent
