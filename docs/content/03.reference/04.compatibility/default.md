@@ -88,10 +88,12 @@ over the expanded output.
 
 The message text of `@warn` and `@debug` matches dart-sass, including the rule
 that a string message is reported as its text: `@warn "careful"` says
-`careful`. What surrounds that text does not. This compiler writes
+`careful`. `@debug` matches in full, down to the line it writes:
+`file.scss:2 DEBUG: careful`.
+
+What surrounds a `@warn` message does not. This compiler writes
 `Warning: ...` above an `./file:line:column` location, where dart-sass writes
-`WARNING: ...` above an indented stack trace. Do not match on the surrounding
-lines.
+`WARNING: ...` above an indented stack trace. Do not match on those two lines.
 
 ### Error messages and spans
 
