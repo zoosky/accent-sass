@@ -32,6 +32,13 @@ over individual module paths rather than one entry file. Its `with (...)`
 overrides, its `@forward` list and its trailing `@import url(...)` all matched
 already; the same five comments were its whole difference.
 
+**It reached USWDS as well, which was not measured when this landed.** That
+framework stood at 903 differing lines, and 759 of them were this cause: the
+output was 32,781 lines against dart-sass's 33,684, so the comments were
+missing rather than misplaced. It is 144 now, and every one of those is a
+comment in a different position -- with comments stripped the two outputs are
+byte-identical. [Item 27](27-uswds-parity.md) records that measurement.
+
 ## The rule
 
 dart-sass records the loud comments written above a `@use` or `@forward` and
