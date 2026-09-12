@@ -254,6 +254,21 @@ checkThat(
   String(badOption),
 );
 
+// `is_object()` is true for arrays, so without an explicit check this stored a
+// file named "0" and failed later with `Can't find stylesheet to import.`,
+// which points at the stylesheet rather than at the malformed option.
+let badFiles;
+try {
+  compileString('@use "theme";', { files: ["theme/_colors.scss"] });
+} catch (e) {
+  badFiles = e;
+}
+checkThat(
+  "an array as files is a TypeError",
+  badFiles instanceof TypeError,
+  String(badFiles),
+);
+
 if (failures > 0) {
   console.error(`\n${failures} check(s) failed`);
   process.exit(1);

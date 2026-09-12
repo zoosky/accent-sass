@@ -34,7 +34,6 @@ const FRAMEWORKS = [
     // Copied from node_modules/bulma into the bundle as bulma/...
     from: "bulma",
     to: "bulma",
-    entry: '@use "bulma/sass";\n',
     loadPaths: [],
   },
   {
@@ -42,7 +41,6 @@ const FRAMEWORKS = [
     spec: "@uswds/uswds@3.13.0",
     from: "@uswds/uswds/packages",
     to: "uswds",
-    entry: '@use "uswds";\n',
     loadPaths: ["uswds"],
   },
 ];
@@ -121,7 +119,9 @@ for (const framework of FRAMEWORKS) {
   manifest.push({
     name: framework.name,
     version: pkg.version,
-    entry: framework.entry,
+    // No `entry` here: the page and `demo-check.mjs` each build their own
+    // configured entry point, so a copy in the manifest would be a third
+    // declaration that nothing executes.
     loadPaths: framework.loadPaths,
     files: count,
     bytes,

@@ -453,6 +453,14 @@ fn read_files(value: &JsValue, fs: &mut MemoryFs) -> Result<(), JsValue> {
         return Ok(());
     }
 
+    // `is_object` is true for arrays and functions as well as plain objects.
+    // Letting an array through would store a file named `0` whose contents are
+    // the first element, and the compile would then fail with `Can't find
+    // stylesheet to import.` -- an error pointing anywhere but at the mistake.
+    if Array::is_array(value) || value.is_function() {
+        return Err(type_error("files must be a Map or an object"));
+    }
+
     if value.is_object() {
         for entry in Object::entries(&Object::from(value.clone())).iter() {
             let pair: Array = entry

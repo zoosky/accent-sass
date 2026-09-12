@@ -84,6 +84,13 @@ jobs:
       - name: 'Build the framework bundles'
         run: node .github/scripts/demo-bundle.mjs
 
+      # The bundle layout, the entry stylesheet and the JavaScript API are each
+      # checked above or in `cargo test`; nothing else checks that the three
+      # agree. A mismatch between them shows up only as a blank published page,
+      # so compile both frameworks the way the page compiles them.
+      - name: 'Compile the frameworks the page ships'
+        run: node .github/scripts/demo-check.mjs
+
       - name: 'Report what the site carries'
         run: |
           {

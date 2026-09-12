@@ -27,12 +27,21 @@ function bundle(url) {
   if (!bundles.has(url)) {
     bundles.set(
       url,
-      fetch(url).then((response) => {
-        if (!response.ok) {
-          throw new Error(`could not load ${url}: ${response.status}`);
-        }
-        return response.json();
-      }),
+      fetch(url)
+        .then((response) => {
+          if (!response.ok) {
+            throw new Error(`could not load ${url}: ${response.status}`);
+          }
+          return response.json();
+        })
+        .catch((error) => {
+          // Drop the cached promise so a retry can succeed. Keeping a rejected
+          // promise here would make one transient failure permanent: every
+          // later compile of this framework would re-reject without asking the
+          // network again.
+          bundles.delete(url);
+          throw error;
+        }),
     );
   }
 

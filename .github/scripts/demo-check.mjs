@@ -26,17 +26,36 @@ const { initSync, compileString } = await import(
 );
 initSync(readFileSync(join(vendor, "pkg", "index_bg.wasm")));
 
-// The presets the page offers, kept here as the single place that states what
-// each framework's entry point looks like. `docs/demo/app.js` reads the same
-// manifest and builds the same entry.
+// The entry points the page sends, in their *configured* form.
+//
+// A bare `@use "bulma/sass"` would compile even if every variable the page
+// offers had been renamed. The configured form is the one that breaks: an
+// unknown name in `@use ... with (...)` is a hard error, so these must stay in
+// step with the defaults in `docs/demo/app.js`.
+const USWDS_CDN = "https://cdn.jsdelivr.net/npm/@uswds/uswds@3.13.0/dist";
+
 const PRESETS = {
   bulma: {
-    entry: '@use "bulma/sass";\n',
+    entry:
+      '@use "bulma/sass" with (\n' +
+      "  $primary: #00d1b2,\n" +
+      "  $link: #485fc7,\n" +
+      '  $family-primary: ("Inter", system-ui, sans-serif),\n' +
+      "  $radius: 6px,\n" +
+      "  $scheme-h: 221\n" +
+      ");\n",
     // Bulma's whole stylesheet, which has been stable across 1.0.x.
     minLines: 20000,
   },
   uswds: {
-    entry: '@use "uswds-core";\n@forward "uswds";\n',
+    entry:
+      '@use "uswds-core" with (\n' +
+      '  $theme-color-primary: "blue-60v",\n' +
+      '  $theme-color-secondary: "red-50v",\n' +
+      `  $theme-font-path: "${USWDS_CDN}/fonts",\n` +
+      `  $theme-image-path: "${USWDS_CDN}/img"\n` +
+      ");\n" +
+      '@forward "uswds";\n',
     // 33,684 lines, which is what dart-sass 1.104.0 produces for USWDS
     // 3.13.0. See specs/docs/features/27-uswds-parity.md.
     minLines: 33000,

@@ -65,10 +65,14 @@ const PRESETS = {
         name: "family",
         label: "$family-primary",
         type: "select",
-        value: "Inter, system-ui, sans-serif",
+        // Each value is a Sass font stack, with the family names quoted
+        // individually. Quoting the stack as a whole would make it one family
+        // name that matches nothing: Bulma writes `$family-primary` straight
+        // into the `.is-family-primary` helper, where the quotes survive.
+        value: '"Inter", system-ui, sans-serif',
         options: [
-          "Inter, system-ui, sans-serif",
-          "Georgia, serif",
+          '"Inter", system-ui, sans-serif',
+          '"Georgia", serif',
           "ui-monospace, monospace",
         ],
       },
@@ -87,7 +91,10 @@ const PRESETS = {
       `@use "bulma/sass" with (\n` +
       `  $primary: ${t.primary},\n` +
       `  $link: ${t.link},\n` +
-      `  $family-primary: "${t.family}",\n` +
+      // Parenthesised: inside `@use ... with (...)` a bare comma separates
+      // arguments, so an unwrapped font stack is read as several arguments
+      // rather than one list.
+      `  $family-primary: (${t.family}),\n` +
       `  $radius: ${t.radius},\n` +
       `  $scheme-h: ${t.hue}\n` +
       `);\n`,
@@ -307,10 +314,28 @@ worker.onerror = (event) => {
     event.message ??
       "The worker failed to load. This page needs an http origin and a browser that supports module workers.",
   );
+
+  // Release anything waiting on a reply that will never arrive. Without this
+  // the page locks: `state.busy` stays true, so every later compile returns at
+  // its first line, and the Compile button stays disabled forever.
+  for (const [id, resolve] of waiting) {
+    waiting.delete(id);
+    resolve({
+      ok: false,
+      message: "the compiler worker stopped",
+      formatted: null,
+      line: null,
+      column: null,
+    });
+  }
+
+  state.busy = false;
+  state.pending = false;
+  els.compile.disabled = false;
 };
 
 /** Sends one compile to the worker and resolves with its reply. */
-function sendCompile(source, framework) {
+function sendCompile(source, framework, preset) {
   const id = state.nextId++;
 
   return new Promise((resolve) => {
@@ -321,7 +346,7 @@ function sendCompile(source, framework) {
       bundleUrl: framework ? `vendor/${framework.bundle}` : null,
       loadPaths: framework ? framework.loadPaths : [],
     });
-  });
+  }).then((reply) => ({ ...reply, preset }));
 }
 
 /** Renders the theme controls for the current preset. */
@@ -419,11 +444,38 @@ async function compile() {
   setStatus("working", "Compiling…");
   els.compile.disabled = true;
 
-  const framework = state.manifest.get(state.preset);
-  const reply = await sendCompile(els.source.value, framework);
+  const preset = state.preset;
+  const framework = state.manifest.get(preset);
+
+  // A framework preset with no manifest entry means the bundle never loaded.
+  // Compiling anyway would resolve no imports and report `Can't find
+  // stylesheet to import.` against the user's own source, which points at the
+  // wrong thing entirely.
+  if (!framework && PRESETS[preset].preview !== playgroundMarkup) {
+    state.busy = false;
+    els.compile.disabled = false;
+    showError(
+      "The framework bundle is missing",
+      `vendor/frameworks/manifest.json did not load, so ${PRESETS[preset].label}'s ` +
+        `stylesheets are not available. Run \`node .github/scripts/demo-bundle.mjs\` ` +
+        `and serve the page over http.`,
+      "bundle missing",
+    );
+    return;
+  }
+
+  const reply = await sendCompile(els.source.value, framework, preset);
 
   state.busy = false;
   els.compile.disabled = false;
+
+  // A newer compile is already queued, so this result is stale. Rendering it
+  // would paint one preset's CSS into another preset's markup, and on USWDS
+  // the correction is seconds away rather than a frame.
+  if (state.pending) {
+    compile();
+    return;
+  }
 
   if (reply.ok) {
     showResult(reply);
@@ -434,8 +486,6 @@ async function compile() {
       reply.message,
     );
   }
-
-  if (state.pending) compile();
 }
 
 /** Shows a successful compile. */
@@ -493,12 +543,12 @@ function showResult(reply) {
     }
   }
 
-  renderPreview(reply.css);
+  renderPreview(reply.css, reply.preset ?? state.preset);
 }
 
-/** Puts the compiled CSS and the preset's markup into the preview frame. */
-function renderPreview(css) {
-  const markup = PRESETS[state.preset].preview();
+/** Puts the compiled CSS and the markup of the preset it came from into the frame. */
+function renderPreview(css, preset) {
+  const markup = PRESETS[preset].preview();
   els.preview.srcdoc =
     `<!doctype html><html><head><meta charset="utf-8">` +
     `<style>${css}</style></head><body>${markup}</body></html>`;
