@@ -18,6 +18,15 @@ server:
 
 content:
   directory: "./content"
+  # Off: Accent otherwise emits a `<page>.md/index.html` meta-refresh stub
+  # beside every page, so a GitHub-style `.md` link bounces to the clean URL.
+  # Nothing links to this site that way -- its pages are reached through its
+  # own navigation -- and the stubs surfaced as ten extra routes carrying no
+  # head metadata. They are excluded from `sitemap.xml` and `feed.xml` either
+  # way, so this changes what the build emits rather than what is indexed.
+  # The cost is the redirect itself: `/guide.md` now 404s instead of bouncing
+  # to `/guide`.
+  md_extension_redirects: false
 
 theme:
   name: "sass"
@@ -25,16 +34,18 @@ theme:
 
 site:
   name: "accent-sass"
-  # The GitHub Pages project URL, and the only place it is written down. Its
-  # path component tells `accent build` to prefix every internal link with
-  # `/accent-sass`, and its origin is what makes the sitemap's `<loc>` entries
-  # and robots.txt's `Sitemap:` line absolute, as both specifications require.
+  # The GitHub Pages project URL. Its path component tells `accent build` to
+  # prefix every internal link with `/accent-sass`, and its origin is what
+  # makes the sitemap's `<loc>` entries and robots.txt's `Sitemap:` line
+  # absolute, as both specifications require.
   #
-  # The workflow used to pass `--base-url` as well, which read better than it
-  # behaved: it named a step output that no step produced, so it passed an
-  # empty string and the site shipped a sitemap of relative URLs. It passes
-  # nothing now and this value carries the build, so a repository rename is a
-  # one-line change here.
+  # `pages.yml` passes this same URL to `--base-url`, which Accent's
+  # documentation asks for on a production build rather than leaving it to
+  # this fallback, so the two have to agree -- a repository rename is a change
+  # in both places. The workflow once passed a step output that no step
+  # produced, which sent an empty string and shipped a sitemap of relative
+  # URLs: an empty value is worse than no flag, because it replaces this
+  # value instead of deferring to it.
   url: https://zoosky.github.io/accent-sass
   description: >-
     A Sass compiler written in Rust, at parity with dart-sass. Compiles Bulma,
