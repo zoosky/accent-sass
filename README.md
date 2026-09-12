@@ -44,14 +44,59 @@ fn main() -> Result<(), Box<accent_sass::Error>> {
 }
 ```
 
-The API is deliberately small: `from_string`, `from_path`, and an `Options`
-builder.
+The API is deliberately small: `from_string`, `from_path`,
+`from_string_with_file_name`, and an `Options` builder. `Options::fs` takes any
+`Fs` implementation, so a host that already holds its stylesheets can compile
+them without writing them to disk first -- `MemoryFs` is one such
+implementation, and is what the browser build resolves imports through.
 
 As a binary, intended as a drop-in for the `sass` executable:
 
 ```bash
 accent-sass input.scss
 ```
+
+As a browser package, built with `wasm-pack`:
+
+```js
+import init, { compileString } from "accent-sass";
+
+await init();
+
+const { css, loadedUrls } = compileString('@use "theme";', {
+  files: {
+    "theme/_colors.scss": "$brand: #bada55 !default;",
+    "theme/_index.scss": '@forward "colors";',
+  },
+  style: "expanded",
+  logger: (event) => console.warn(event.message),
+});
+```
+
+**Every file a compile might touch must be in `files` before you call it.**
+Reads are synchronous: the compiler asks for a file and gets bytes back, with
+nothing to await, so an importer cannot `fetch`, cannot `await`, and cannot
+reach the File System Access API. An editor loads the theme's stylesheets into
+the map first, then compiles. Making imports async would mean an async
+evaluator, which is a rewrite rather than a binding change.
+
+Options are named after dart-sass's JavaScript API wherever the two have the
+same knob: `style`, `syntax`, `loadPaths`, `charset`, `alertAscii` and `url`,
+plus `files`, `logger`, and `quiet` for the one knob dart-sass has no name for.
+A failed compile throws an `Error` carrying `message`, `formatted`, `file`,
+`line` and `column`.
+
+Build it with:
+
+```bash
+wasm-pack build crates/lib --release --target web --out-name index -- \
+  --no-default-features --features wasm-exports,random
+```
+
+`wasm-exports` is not a default feature. Without it wasm-bindgen exports
+nothing and the module contains no compiler at all.
+[`docs/demo`](docs/demo/README.md) is a page built on it, compiling Bulma and
+USWDS from source in the browser.
 
 ## Status
 
@@ -82,6 +127,8 @@ to be.
 | `random` | yes | the builtin [`random([$limit])`](https://sass-lang.com/documentation/modules/math/#random) and [`unique-id()`](https://sass-lang.com/documentation/modules/string/#unique-id) |
 | `macro` | no | the `accent_sass::include!` macro, compiling Sass at build time |
 | `nightly` | no | lets `include!` use [`proc_macro::tracked_path`](https://github.com/rust-lang/rust/issues/99515) |
+| `wasm-exports` | no | the JavaScript API for a `wasm32-unknown-unknown` browser build |
+| `wasi-exports` | no | a C ABI for embedding the `wasm32-wasip1` module in a host |
 
 ## Testing
 

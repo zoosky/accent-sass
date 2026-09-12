@@ -1,0 +1,131 @@
+name: 'Demo site'
+
+# Builds the browser demo in `docs/demo` and publishes it to GitHub Pages.
+#
+# The demo's two large inputs -- the wasm module and the framework Sass
+# bundles -- are built here rather than committed. Together they are about
+# 2.8 MB, and the module changes with every compiler change, so committing
+# them would add a new copy of a binary to the history on each release.
+# `docs/demo/vendor` is ignored for that reason.
+#
+# This publishes through the Pages *action* rather than the "deploy from a
+# branch" setting, because that setting can only serve files that are in the
+# tree. Set Settings -> Pages -> Source to "GitHub Actions" for this to take
+# effect.
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - 'crates/**'
+      - 'docs/demo/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.github/workflows/pages.yml'
+      - '.github/scripts/demo-bundle.mjs'
+
+  # The demo is worth checking on a pull request that can break it, even
+  # though only `master` publishes.
+  pull_request:
+    paths:
+      - 'crates/**'
+      - 'docs/demo/**'
+      - '.github/workflows/pages.yml'
+      - '.github/scripts/demo-bundle.mjs'
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: 'pages'
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 'Checkout'
+        uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: '1.96.1'
+          targets: wasm32-unknown-unknown
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: 'Install wasm-pack'
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+
+      # `wasm-exports` is what defines the bindings, and it is not a default
+      # feature: without it wasm-bindgen exports nothing and the page loads a
+      # module with no compiler in it. `commandline` is dropped because clap
+      # has no place in a browser build; `random` is kept, because dropping it
+      # would quietly remove `math.random()` and `unique-id()`.
+      - name: 'Build the wasm package'
+        run: |
+          wasm-pack build crates/lib --release --target web --out-name index \
+            --out-dir ../../docs/demo/vendor/pkg -- \
+            --no-default-features --features wasm-exports,random
+
+      # Run the package before shipping it. The demo is the one place a broken
+      # binding would be invisible until a user opened the page.
+      - name: 'Check the package works'
+        run: |
+          node .github/scripts/wasm-smoke.mjs docs/demo/vendor/pkg
+          node .github/scripts/wasm-api-smoke.mjs docs/demo/vendor/pkg
+
+      - name: 'Build the framework bundles'
+        run: node .github/scripts/demo-bundle.mjs
+
+      # The bundle layout, the entry stylesheet and the JavaScript API are each
+      # checked above or in `cargo test`; nothing else checks that the three
+      # agree. A mismatch between them shows up only as a blank published page,
+      # so compile both frameworks the way the page compiles them.
+      - name: 'Compile the frameworks the page ships'
+        run: node .github/scripts/demo-check.mjs
+
+      - name: 'Report what the site carries'
+        run: |
+          {
+            echo "### Demo site payload"
+            echo
+            echo "| file | bytes | gzipped |"
+            echo "|---|---:|---:|"
+            for f in docs/demo/vendor/pkg/index_bg.wasm \
+                     docs/demo/vendor/frameworks/bulma.json \
+                     docs/demo/vendor/frameworks/uswds.json; do
+              echo "| \`$(basename "$f")\` | $(stat -c%s "$f") | $(gzip -9 -c "$f" | wc -c) |"
+            done
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: 'Upload the site'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/demo
+
+  # Only `master` publishes. A pull request stops after `build`, which is
+  # enough to catch a demo that no longer builds.
+  deploy:
+    if: github.ref == 'refs/heads/master' && github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+
+    permissions:
+      pages: write
+      id-token: write
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: 'Deploy to GitHub Pages'
+        id: deployment
+        uses: actions/deploy-pages@v4

@@ -8,6 +8,54 @@ compiles Sass where there is no filesystem and no process.
 conformance work, and it is ranked by who wants the artifact rather than by
 failure count. Nothing here changes what the compiler accepts or prints.
 
+## Status: gaps 1, 2 and 3 are closed
+
+Measured 2026-09-12 on `feature/wasm-browser-api`, aarch64 macOS, wasm-pack
+0.13.1, node 24.
+
+The package exposes `compileString(source, options)` and
+`compile(path, options)` beside the original `from_string`. Options are
+`style`, `syntax`, `loadPaths`, `files`, `url`, `charset`, `alertAscii`,
+`quiet` and `logger`, named after dart-sass where dart-sass has a name.
+Imports resolve against a caller-supplied file map, errors arrive as an
+`Error` carrying `message`, `formatted`, `file`, `line` and `column`, and
+`index.d.ts` declares the surface with real types rather than `any`.
+
+The filesystem is [`MemoryFs`](../../../crates/compiler/src/memory_fs.rs), a
+public type rather than something private to the binding. That is what makes
+it testable: the bindings only exist on `wasm32-unknown-unknown`, so
+`cargo test` cannot reach them, but it can reach `MemoryFs` through
+`crates/lib/tests/memory_fs.rs`. `from_string_with_file_name` became public
+in the same change, because `url` needs it.
+
+| | before | after |
+|---|---:|---:|
+| module | 1.67 MB, 0.60 MB gzipped | 1.69 MB, 0.60 MB gzipped |
+| exports | `from_string` | `compileString`, `compile`, `from_string` |
+
+What it costs to resolve imports is 24 KB of module. Two checks gate it:
+`.github/scripts/wasm-api-smoke.mjs` covers the API surface, and
+`.github/scripts/demo-check.mjs` compiles Bulma and USWDS through the built
+package.
+
+Gap 4, size, is untouched.
+
+### What it made possible
+
+`docs/demo` compiles Bulma 1.0.4 and USWDS 3.13.0 from source in a browser
+tab, and is published by `.github/workflows/pages.yml`. Measured in Chrome on
+the same machine, against the native binary:
+
+| | files | native | in the browser | output |
+|---|---:|---:|---:|---:|
+| Bulma | 78 | 0.35 s | 2.5 s | 21,562 lines |
+| USWDS | 605 | 1.54 s | 6.6 s | 33,685 lines |
+
+The earlier "roughly native speed" reading came from a single synthetic
+stylesheet, where the WebAssembly build ran at 1.09x the native wall time. A
+real framework is several times slower than that, so the synthetic number
+should not be quoted for framework work.
+
 ## What works today
 
 The pipeline exists and, since `zoosky/accent-sass` #47, is honest about what
