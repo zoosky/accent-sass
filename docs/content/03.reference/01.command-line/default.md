@@ -60,7 +60,33 @@ the stylesheet contains non-ASCII characters. `--no-charset` suppresses both.
 ## Differences from `sass`
 
 The flags above take the same names and values as dart-sass's command line.
-Flags dart-sass has that this binary does not accept are not silently ignored;
-`clap` rejects an unknown flag.
-
 Source maps and `--watch` are not implemented.
+
+A flag neither compiler has is rejected: `accent-sass --bogus style.scss` is
+`error: unexpected argument '--bogus' found`.
+
+**Fourteen of dart-sass's own flags are accepted and then ignored.**
+`--update`, `--no-error-css`, `--no-source-map`, `--source-map-urls`,
+`--embed-sources`, `--embed-source-map`, `--watch`, `--poll`,
+`--no-stop-on-error`, `-i`/`--interactive`, `--indented`, `--precision`,
+`-c`/`--no-color` and `--verbose` all parse and change nothing. The compiler
+reads only the flags in the table above, so `--indented` does not switch the
+syntax of `--stdin` input and `--precision` does not change a number.
+
+**Twelve of those fourteen also want a value, which dart-sass does not ask
+for.** Only `--no-color` and `--verbose` are declared as switches; the rest
+are declared as taking one, so passing a flag the way dart-sass accepts it
+swallows the argument after it:
+
+```
+$ accent-sass --watch style.scss
+error: the following required arguments were not provided:
+```
+
+The stylesheet was read as the value of `--watch`, leaving no input file.
+Writing `--watch=1 style.scss` compiles the stylesheet and ignores the flag.
+
+Treat this as a defect rather than as an interface. A script written against
+dart-sass's command line fails here on the flag rather than on the missing
+feature, and the wording above describes what the binary does today, not what
+it should do.

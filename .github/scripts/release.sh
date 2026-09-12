@@ -122,14 +122,30 @@ echo "  fmt: clean"
 # Clippy on both toolchains, matching CI. The MSRV alone is not enough: it
 # cannot see lints added after it, which is how sixteen findings once sat in
 # the tree while every gate reported clean.
+# The feature set matches CI. `wasi-exports` belongs in it because the
+# WebAssembly C ABI is ordinary Rust on the host: left out, a leak or a
+# mismatched free in it is invisible to every gate here.
 for tc in "$MSRV" stable; do
-  cargo "+$tc" clippy --features=macro --all-targets -- -D warnings \
+  cargo "+$tc" clippy --features=macro,wasi-exports --all-targets -- -D warnings \
     || die "clippy failed on $tc"
   echo "  clippy ($tc): clean"
 done
 
-cargo "+$MSRV" test --features=macro || die "tests failed"
+cargo "+$MSRV" test --features=macro,wasi-exports || die "tests failed"
 echo "  tests: pass"
+
+# A release is the moment to look at the advisory database. `cargo audit`
+# exits non-zero for a vulnerability and zero for a warning-level advisory,
+# such as a crate that is only unmaintained -- which is the behaviour wanted
+# here, since an unmaintained dev-dependency should be visible without
+# blocking a release.
+if command -v cargo-audit >/dev/null 2>&1; then
+  cargo audit || die "cargo audit reported a vulnerability"
+  echo "  audit: no vulnerabilities"
+else
+  echo "  warning: cargo-audit is not installed, so advisories went unchecked"
+  echo "           (cargo install cargo-audit)"
+fi
 
 # --- Package check -----------------------------------------------------------
 #
