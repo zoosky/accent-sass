@@ -252,6 +252,17 @@ builds, and put it on pull requests. That is the reason item 13's acceptance
 criteria insist on *running* the artifact: for a target nothing exercises, a
 green build says very little.
 
+### Framework corpus -- no ranking impact
+
+What the `frameworks` job compiles is real-world Sass, not fixtures, so a
+finding there closes no spec failure and is kept out of the ranking. It is
+the broadest check the project has that the compiler is usable, which is
+worth recording in its own right.
+
+| Doc | What it is | State |
+|---|---|---|
+| [27-uswds-parity.md](27-uswds-parity.md) | USWDS 3.13.0 compiles to the same CSS as dart-sass 1.104.0: identical once comments are stripped. What is left is where 20 doc-comment blocks sit, plus a separate list of compressed-mode gaps | recorded 2026-09-12 |
+
 ### Reference moves -- no ranking impact
 
 Moving to a new dart-sass release changes what the suite expects rather than
