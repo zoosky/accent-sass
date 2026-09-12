@@ -16,6 +16,7 @@ on:
       - 'Cargo.lock'
       - '.github/workflows/build_wasm.yml'
       - '.github/scripts/wasm-smoke.mjs'
+      - '.github/scripts/wasm-api-smoke.mjs'
 
   workflow_dispatch:
 
@@ -55,6 +56,13 @@ jobs:
       run: |
         ls -la crates/lib/pkg
         node .github/scripts/wasm-smoke.mjs
+
+    # The API around the compiler needs its own check. The bindings only exist
+    # on wasm32-unknown-unknown, so `cargo test` cannot reach them: if `files`
+    # stopped being wired through to the filesystem, every multi-file compile
+    # would fail and nothing else in CI would notice.
+    - name: 'Exercise the JavaScript API'
+      run: node .github/scripts/wasm-api-smoke.mjs
         
     - name: 'Upload Artifacts'
       uses: actions/upload-artifact@v4

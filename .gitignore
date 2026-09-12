@@ -4,9 +4,17 @@
 !crates/static/_index.scss
 # ...and the stylesheets CI scripts compile, such as the Foundation probe.
 !.github/scripts/*.scss
+# ...and the browser demo's own stylesheets, which are part of the site rather
+# than build output.
+!docs/demo/**/*.s[ac]ss
+!docs/demo/**/*.css
 
 # devops
 /target
+# The demo's wasm package and framework bundles, rebuilt by
+# .github/workflows/pages.yml. Binaries and vendored framework sources do not
+# belong in the tree; `pkg` below already covers the wasm-pack output.
+/docs/demo/vendor
 coverage
 pkg
 flamegraph.svg

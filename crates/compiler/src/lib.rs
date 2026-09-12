@@ -64,8 +64,6 @@ use std::path::Path;
 use parse::{CssParser, SassParser, StylesheetParser};
 use sass_ast::StyleSheet;
 use serializer::Serializer;
-#[cfg(feature = "wasm-exports")]
-use wasm_bindgen::prelude::*;
 
 use codemap::CodeMap;
 
@@ -74,6 +72,7 @@ pub use crate::error::{
 };
 pub use crate::fs::{Fs, NullFs, StdFs};
 pub use crate::logger::{Logger, NullLogger, StdLogger};
+pub use crate::memory_fs::MemoryFs;
 pub use crate::options::{InputSyntax, Options, OutputStyle};
 pub use crate::{builtin::Builtin, evaluate::Visitor};
 pub(crate) use crate::{context_flags::ContextFlags, lexer::Token};
@@ -109,6 +108,7 @@ mod fs;
 mod interner;
 mod lexer;
 mod logger;
+mod memory_fs;
 mod options;
 mod parse;
 mod selector;
@@ -116,6 +116,10 @@ mod serializer;
 mod unit;
 mod utils;
 mod value;
+/// The JavaScript API for the browser build. See the module documentation for
+/// the option names and the synchronous-filesystem constraint.
+#[cfg(feature = "wasm-exports")]
+pub mod wasm_exports;
 
 fn raw_to_parse_error(map: &CodeMap, err: Error, unicode: bool) -> Box<Error> {
     let (message, span) = err.raw();
@@ -158,7 +162,44 @@ pub fn parse_stylesheet<P: AsRef<Path>>(
     Ok(stylesheet)
 }
 
-fn from_string_with_file_name<P: AsRef<Path>>(
+/// Compile CSS from a string, as though it were the file at `file_name`.
+///
+/// [`from_string`] compiles a string that has no place in the filesystem, and
+/// names it `stdin`. This names it something else, which changes two things:
+///
+/// - **Relative imports resolve against `file_name`'s directory.** A string
+///   compiled as `theme/app.scss` can `@use "colors"` to reach
+///   `theme/_colors.scss`, which is what an editor compiling an unsaved buffer
+///   needs.
+/// - **The syntax is inferred from the extension**, unless
+///   [`Options::input_syntax`] overrides it. A `file_name` ending in `.sass`
+///   is parsed as the indented syntax.
+///
+/// The file does not have to exist. `file_name` is a name for the input, and
+/// the input is the string you pass; only the imports it makes are looked up,
+/// through [`Options::fs`].
+///
+/// # Errors
+///
+/// Returns an error when the stylesheet does not parse or evaluate, including
+/// when one of its imports cannot be resolved.
+///
+/// ```
+/// # use accent_sass_compiler as accent_sass;
+/// use accent_sass::{MemoryFs, Options, from_string_with_file_name};
+///
+/// let mut fs = MemoryFs::new();
+/// fs.insert("theme/_colors.scss", "$brand: #bada55;");
+///
+/// let css = from_string_with_file_name(
+///     "@use \"colors\";\na { color: colors.$brand; }".to_owned(),
+///     "theme/app.scss",
+///     &Options::default().fs(&fs),
+/// )?;
+/// assert_eq!(css, "a {\n  color: #bada55;\n}\n");
+/// # Ok::<(), Box<accent_sass::Error>>(())
+/// ```
+pub fn from_string_with_file_name<P: AsRef<Path>>(
     input: String,
     file_name: P,
     options: &Options,
@@ -252,10 +293,4 @@ pub fn from_path<P: AsRef<Path>>(p: P, options: &Options) -> Result<String> {
 #[inline]
 pub fn from_string<S: Into<String>>(input: S, options: &Options) -> Result<String> {
     from_string_with_file_name(input.into(), "stdin", options)
-}
-
-#[cfg(feature = "wasm-exports")]
-#[wasm_bindgen(js_name = from_string)]
-pub fn from_string_js(input: String) -> std::result::Result<String, String> {
-    from_string(input, &Options::default()).map_err(|e| e.to_string())
 }

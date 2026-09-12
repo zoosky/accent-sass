@@ -30,6 +30,7 @@ version = "0.15.0"
 dependencies = [
  "codemap",
  "indexmap",
+ "js-sys",
  "lasso",
  "once_cell",
  "phf",
