@@ -53,6 +53,11 @@ use super::{
     env::Environment,
 };
 
+/// Loud comments written before a module's `@use` or `@forward` rules, keyed
+/// by the module each group was written above. See
+/// [`Visitor::pre_module_comments`].
+type PreModuleComments = Rc<RefCell<HashMap<*const RefCell<Module>, Vec<CssStmt>>>>;
+
 trait UserDefinedCallable {
     fn name(&self) -> Identifier;
     fn arguments(&self) -> &ArgumentDeclaration;
@@ -193,6 +198,30 @@ pub struct Visitor<'a> {
     /// remains at the end is the root document's, the starting point for
     /// `apply_module_extensions`.
     current_upstream: Vec<Arc<RefCell<Module>>>,
+    /// Loud comments written before `@use` and `@forward` rules, keyed by the
+    /// module that loaded first after them.
+    ///
+    /// A port of dart-sass 1.104.0's `_preModuleComments`, including a quirk
+    /// its output depends on. dart-sass saves and restores the map around
+    /// each module it executes but never resets it on entry, so a module run
+    /// while its loader holds a map shares that same map. When such a module
+    /// loads an upstream that is already loaded and the shared map has
+    /// comments for it, dart-sass writes them again before the module's own
+    /// CSS. That is why Bulma's `/* Bulma Form */`, written once above
+    /// `@forward "shared"`, prints before every form module that also uses
+    /// `shared`. This compiler emits CSS as modules execute rather than
+    /// combining it afterwards, so the first copy is the comment as written,
+    /// and [`Visitor::emit_pre_module_comments`] writes the repeats.
+    pre_module_comments: Option<PreModuleComments>,
+    /// The loud comments the executing module has written at the top level
+    /// since it last registered comments for a module. dart-sass reads the
+    /// module's root for these, which holds only comments before a `@use`
+    /// or `@forward`; this list stands in for it. Fresh for each module.
+    pending_top_comments: Vec<CssStmt>,
+    /// The modules whose CSS, or whose upstream modules' CSS, is non-empty:
+    /// dart-sass's `transitivelyContainsCss`. Comments are registered for,
+    /// and repeated before, only these.
+    modules_with_css: HashSet<*const RefCell<Module>>,
     /// The CSS each cached module emitted when it first executed, recorded
     /// with hermetic selectors (resolved without any enclosing style rule),
     /// so an `@import` or `meta.load-css` of an already-loaded module can
@@ -268,6 +297,9 @@ impl<'a> Visitor<'a> {
             modules: BTreeMap::new(),
             module_configurations: BTreeMap::new(),
             current_upstream: Vec::new(),
+            pre_module_comments: None,
+            pending_top_comments: Vec::new(),
+            modules_with_css: HashSet::new(),
             module_css: BTreeMap::new(),
             in_import_context: false,
             active_modules: BTreeSet::new(),
@@ -545,6 +577,7 @@ impl<'a> Visitor<'a> {
                 forward_rule.url.as_path(),
                 Some(Rc::clone(&new_configuration)),
                 false,
+                true,
                 forward_rule.span,
                 |visitor, module, _| visitor.env.forward_module(module, forward_rule.clone()),
             )?;
@@ -590,6 +623,7 @@ impl<'a> Visitor<'a> {
                 url.as_path(),
                 None,
                 false,
+                true,
                 forward_rule.span,
                 move |visitor, module, _| visitor.env.forward_module(module, forward_rule.clone()),
             )?;
@@ -921,6 +955,12 @@ impl<'a> Visitor<'a> {
             ))
         };
 
+        // dart-sass gives every module a fresh root, so the comments pending
+        // registration start empty. The pre-module comment map is saved but
+        // deliberately not reset: see `pre_module_comments`.
+        let old_pending_top_comments = mem::take(&mut self.pending_top_comments);
+        let old_pre_module_comments = self.pre_module_comments.clone();
+
         let css_start = self.css_tree.stmt_count();
 
         let execution = self.with_environment::<SassResult<()>, _>(env.new_closure(), |visitor| {
@@ -1006,9 +1046,21 @@ impl<'a> Visitor<'a> {
             None => (ExtensionStore::new(self.empty_span), Vec::new()),
         };
 
+        self.pending_top_comments = old_pending_top_comments;
+        self.pre_module_comments = old_pre_module_comments;
+
         execution?;
 
+        let contains_css = self.css_tree.stmt_count() > css_start
+            || module_upstream
+                .iter()
+                .any(|upstream| self.modules_with_css.contains(&Arc::as_ptr(upstream)));
+
         let module = env.to_module(module_store, module_upstream);
+
+        if contains_css {
+            self.modules_with_css.insert(Arc::as_ptr(&module));
+        }
 
         // Record what the module emitted -- including CSS from modules it
         // loaded in turn, matching how Dart Sass combines a module's CSS with
@@ -1193,6 +1245,9 @@ impl<'a> Visitor<'a> {
         url: &Path,
         configuration: Option<Rc<RefCell<Configuration>>>,
         names_in_errors: bool,
+        // Whether this load is a `@use` or `@forward`, the only rules that
+        // take part in pre-module comments; `meta.load-css` does not.
+        registers_comments: bool,
         span: Span,
         callback: impl Fn(&mut Self, Arc<RefCell<Module>>, StyleSheet) -> SassResult<()>,
     ) -> SassResult<()> {
@@ -1250,23 +1305,83 @@ impl<'a> Visitor<'a> {
 
         self.active_modules.insert(canonical_url.clone());
 
+        // `execute` caches modules under this key.
+        let already_loaded = self.modules.get(&stylesheet.url).map(Arc::clone);
+
+        // Loading a module that is already loaded repeats the comments
+        // registered for it, on every `@use` or `@forward` of it: dart-sass
+        // lists an upstream module once per rule that loads it, even twice
+        // from one file. They go before anything `execute` replays.
+        if registers_comments && let Some(loaded) = &already_loaded {
+            self.emit_pre_module_comments(loaded);
+        }
+
         let module = self.execute(stylesheet.clone(), configuration, names_in_errors)?;
 
         self.active_modules.remove(&canonical_url);
 
-        // Record the load as a module-graph edge -- for a cache hit too, since
-        // this context's extensions reach the module either way.
-        if !self
+        if registers_comments && already_loaded.is_none() {
+            self.register_comments_for_module(&module);
+        }
+
+        let newly_upstream = !self
             .current_upstream
             .iter()
-            .any(|upstream| Arc::ptr_eq(upstream, &module))
-        {
+            .any(|upstream| Arc::ptr_eq(upstream, &module));
+
+        // Record the load as a module-graph edge -- for a cache hit too, since
+        // this context's extensions reach the module either way.
+        if newly_upstream {
             self.current_upstream.push(Arc::clone(&module));
         }
 
         callback(self, module, stylesheet)?;
 
         Ok(())
+    }
+
+    /// Registers the comments written above the first load of `module`, as
+    /// dart-sass's `_registerCommentsForModule` does.
+    ///
+    /// Nothing is registered for a module without CSS: the comments stay
+    /// pending and go to the next module that has some, or remain the
+    /// loading module's own output. The comments were already written where
+    /// they appear, so registering only records them for repeats.
+    fn register_comments_for_module(&mut self, module: &Arc<RefCell<Module>>) {
+        let key = Arc::as_ptr(module);
+        if self.pending_top_comments.is_empty() || !self.modules_with_css.contains(&key) {
+            return;
+        }
+
+        let comments = mem::take(&mut self.pending_top_comments);
+        self.pre_module_comments
+            .get_or_insert_with(Default::default)
+            .borrow_mut()
+            .entry(key)
+            .or_default()
+            .extend(comments);
+    }
+
+    /// Writes again the comments registered for `module`, which is already
+    /// loaded and is being loaded again here.
+    ///
+    /// This is dart-sass's `_combineCss` emitting `preModuleComments[upstream]`
+    /// for an upstream it has already visited, which puts the comments just
+    /// before the loading module's own CSS.
+    fn emit_pre_module_comments(&mut self, module: &Arc<RefCell<Module>>) {
+        let key = Arc::as_ptr(module);
+        if !self.modules_with_css.contains(&key) {
+            return;
+        }
+
+        let comments = match &self.pre_module_comments {
+            Some(map) => map.borrow().get(&key).cloned(),
+            None => None,
+        };
+
+        for comment in comments.into_iter().flatten() {
+            self.add_loud_comment(comment);
+        }
     }
 
     /// Loads a stylesheet for `meta.load-css`.
@@ -1301,9 +1416,14 @@ impl<'a> Visitor<'a> {
 
         let old_in_import_context = mem::replace(&mut self.in_import_context, true);
 
-        let result = self.load_module(url.as_ref(), Some(configuration), true, span, |_, _, _| {
-            Ok(())
-        });
+        let result = self.load_module(
+            url.as_ref(),
+            Some(configuration),
+            true,
+            false,
+            span,
+            |_, _, _| Ok(()),
+        );
 
         self.in_import_context = old_in_import_context;
 
@@ -1339,6 +1459,7 @@ impl<'a> Visitor<'a> {
             &use_rule.url,
             Some(Rc::clone(&configuration)),
             false,
+            true,
             span,
             |visitor, module, _| {
                 visitor.env.add_module(namespace, module, span)?;
@@ -2803,6 +2924,25 @@ impl<'a> Visitor<'a> {
             return Ok(None);
         }
 
+        let comment = CssStmt::Comment(
+            self.perform_interpolation(comment.text, false)?,
+            comment.span,
+        );
+
+        // A top-level comment may sit above a `@use` or `@forward`, which
+        // registers it for the module loaded there.
+        if self.parent.is_none() || self.parent == Some(CssTree::ROOT) {
+            self.pending_top_comments.push(comment.clone());
+        }
+
+        self.add_loud_comment(comment);
+
+        Ok(None)
+    }
+
+    /// Adds an evaluated loud comment at the current position: one just
+    /// written, or a repeat from [`Self::emit_pre_module_comments`].
+    fn add_loud_comment(&mut self, comment: CssStmt) {
         // Comments are allowed to appear between CSS imports, so one written
         // while the `@import` block is still open belongs to it. Without
         // this, a comment above an import would be left behind when a later
@@ -2813,19 +2953,12 @@ impl<'a> Visitor<'a> {
             self.end_of_imports += 1;
         }
 
-        let comment = CssStmt::Comment(
-            self.perform_interpolation(comment.text, false)?,
-            comment.span,
-        );
-
         // Route through `add_child` for the same reason a style declaration
         // does (see `visit_style`): a loud comment holds its place in source
         // order, so a nested rule written between two of them splits the
         // enclosing rule rather than letting the second comment hoist back up
         // beside the first.
         self.add_child_after_sibling(comment);
-
-        Ok(None)
     }
 
     fn visit_variable_decl(&mut self, decl: AstVariableDecl) -> SassResult<Option<Value>> {
