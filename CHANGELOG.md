@@ -128,6 +128,11 @@ at `0.13.4` and below are upstream's and are kept for lineage.
   change what the program does if it worked; `--no-error-css`,
   `--no-source-map` and `--no-stop-on-error` already describe what this binary
   does and stay quiet
+- `--stdin` with a named file writes to it. The lone positional was read as the
+  input, so `accent-sass --stdin out.css` tried to compile `out.css` and failed
+  with `No such file or directory` rather than writing the CSS it read from
+  standard input, which is what dart-sass does. A second positional alongside
+  `--stdin` is refused now rather than silently ignored
 - a failed compile truncated the output file. `accent-sass style.scss app.css`
   opened `app.css` with `truncate(true)` before running the compile, so a
   stylesheet that stopped compiling left an empty `app.css` behind. It

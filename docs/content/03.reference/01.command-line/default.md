@@ -19,8 +19,8 @@ accent-sass [OPTIONS] [INPUT] [OUTPUT]
 
 | Argument | Meaning |
 |---|---|
-| `INPUT` | The stylesheet to compile. Omit it with `--stdin` to read standard input |
-| `OUTPUT` | Where to write the CSS. Omit it to write to standard output |
+| `INPUT` | The stylesheet to compile. With `--stdin` the stylesheet comes from standard input instead, and this positional names the CSS file to write |
+| `OUTPUT` | Where to write the CSS. Omit it to write to standard output. `--stdin` takes only one positional, so the two cannot be combined |
 
 ## Options
 

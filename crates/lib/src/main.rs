@@ -14,6 +14,7 @@ use std::{
     io::{ErrorKind, Read, Write, stdin, stdout},
     path::Path,
     process::ExitCode,
+    str,
 };
 
 use clap::{Arg, ArgAction, ArgMatches, Command, ValueEnum, builder::PossibleValue, value_parser};
@@ -267,10 +268,15 @@ fn cli() -> Command {
             Arg::new("INPUT")
                 .value_parser(value_parser!(String))
                 .required_unless_present("STDIN")
-                .help("Sass files"),
+                .help("The stylesheet to compile. With --stdin, the CSS file to write"),
         )
         .arg(
+            // With `--stdin` the stylesheet arrives on standard input and the
+            // lone positional is the destination, as in dart-sass, so a second
+            // one means the command line was misread. Without this conflict it
+            // binds here and is silently ignored.
             Arg::new("OUTPUT")
+                .conflicts_with("STDIN")
                 .help("Output CSS file")
         )
 
@@ -311,15 +317,27 @@ fn main() -> ExitCode {
         options = options.input_syntax(InputSyntax::Sass);
     }
 
+    // With `--stdin` the stylesheet comes from standard input and the lone
+    // positional names the destination, as in dart-sass. Reading it as the
+    // input instead is not a harmless mix-up: `--stdin --check app.css` then
+    // compiles app.css, never reads standard input, finds no output file left
+    // to compare against, and reports success having verified nothing.
+    let (input, output) = if matches.get_flag("STDIN") {
+        (None, matches.get_one::<String>("INPUT").map(String::as_str))
+    } else {
+        (
+            matches.get_one::<String>("INPUT").map(String::as_str),
+            matches.get_one::<String>("OUTPUT").map(String::as_str),
+        )
+    };
+
     // Compile before touching the output file. Opening it first, as this once
     // did, means a stylesheet that stops compiling takes the last good CSS with
     // it: the file is truncated and then nothing is written.
-    let css = match compile(&matches, &options) {
+    let css = match compile(input, &options) {
         Ok(css) => css,
         Err(code) => return ExitCode::from(code),
     };
-
-    let output = matches.get_one::<String>("OUTPUT").map(String::as_str);
 
     if matches.get_flag("CHECK") {
         return check(&css, output);
@@ -351,14 +369,13 @@ fn warn_about_unimplemented(matches: &ArgMatches) {
     }
 }
 
-/// Compile the entry point named on the command line.
+/// Compile the entry point, reading standard input when `input` is `None`.
 ///
 /// The error case is the process exit code to use, the message having already
 /// been printed: a compile error goes to standard error in the compiler's own
 /// words, unchanged, because sass-spec compares that text byte for byte.
-fn compile(matches: &ArgMatches, options: &Options) -> Result<String, u8> {
-    // clap guarantees one of the two, `INPUT` being required unless `--stdin`.
-    let result = if let Some(name) = matches.get_one::<String>("INPUT") {
+fn compile(input: Option<&str>, options: &Options) -> Result<String, u8> {
+    let result = if let Some(name) = input {
         from_path(name, options)
     } else {
         let mut buffer = String::new();
@@ -386,7 +403,11 @@ fn check(css: &str, output: Option<&str>) -> ExitCode {
         return ExitCode::from(EXIT_OK);
     };
 
-    let existing = match fs::read_to_string(path) {
+    // Bytes rather than text. A file that is not valid UTF-8 cannot be what
+    // this compile produced, so it is stale; `read_to_string` calls it an I/O
+    // failure and exits 1, collapsing the distinction between a broken
+    // stylesheet and an out-of-date file that the separate codes exist to draw.
+    let existing = match fs::read(path) {
         Ok(existing) => existing,
         // Under `--check`, absent means the build has not run rather than that
         // anything failed. A file that exists and cannot be read is a real I/O
@@ -401,28 +422,44 @@ fn check(css: &str, output: Option<&str>) -> ExitCode {
         }
     };
 
-    if existing == css {
+    if existing == css.as_bytes() {
         return ExitCode::from(EXIT_OK);
     }
 
     eprintln!("{path} is out of date.");
-    match first_difference(&existing, css) {
-        Some((number, on_disk, compiled)) => {
-            eprintln!("  first difference on line {number}:");
-            eprintln!("    on disk:  {}", on_disk.unwrap_or("<end of file>"));
-            eprintln!("    compiled: {}", compiled.unwrap_or("<end of file>"));
-        }
-        None => eprintln!("  every line matches; the files differ in a trailing newline"),
+    match str::from_utf8(&existing) {
+        Ok(existing) => report_difference(existing, css),
+        Err(_) => eprintln!("  {path} is not valid UTF-8, so it cannot be this stylesheet's CSS"),
     }
 
     ExitCode::from(EXIT_STALE)
 }
 
+/// Say where the file on disk and the compiled CSS part company.
+fn report_difference(existing: &str, css: &str) {
+    match first_difference(existing, css) {
+        Some((number, on_disk, compiled)) => {
+            eprintln!("  first difference on line {number}:");
+            eprintln!("    on disk:  {}", on_disk.unwrap_or("<end of file>"));
+            eprintln!("    compiled: {}", compiled.unwrap_or("<end of file>"));
+        }
+        // `str::lines` strips a carriage return along with the newline, so two
+        // files differing only in their line endings have no differing line.
+        // Blaming a trailing newline for that sends a Windows checkout, where
+        // `core.autocrlf` makes it the usual case, hunting for the wrong thing.
+        None if existing.contains('\r') != css.contains('\r') => {
+            eprintln!("  every line matches; the files differ in their line endings");
+        }
+        None => eprintln!("  every line matches; the files differ in a trailing newline"),
+    }
+}
+
 /// The 1-based number of the first line that differs, and both versions of it.
 ///
 /// `None` where one side runs out first; `None` for the whole result means
-/// every line matched, which for two strings known to differ leaves only a
-/// trailing newline.
+/// every line matched, which for two strings known to differ leaves a trailing
+/// newline or a line-ending difference -- `str::lines` strips a carriage return
+/// along with the newline, so CRLF and LF text compare equal line by line.
 ///
 /// Diffing the whole file is deliberately not attempted. The mode answers
 /// whether the output is current, and one line separates a stale build from a

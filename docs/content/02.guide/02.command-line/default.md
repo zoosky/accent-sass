@@ -51,11 +51,17 @@ is still what the Sass produces, without a build step, a temporary file or a
 `diff`:
 
 ```sh
-accent-sass --check -I node_modules app.scss app.css || {
-  echo "app.css is stale; run the build" >&2
-  exit 1
-}
+accent-sass --check -I node_modules app.scss app.css
+case $? in
+  0) ;;
+  3) echo "app.css is stale; run the build" >&2; exit 1 ;;
+  *) echo "app.scss does not compile" >&2; exit 1 ;;
+esac
 ```
+
+Test for `3` rather than for any non-zero status. `|| echo "stale"` would
+report a stylesheet that does not compile as a stale file, which is the
+confusion the two codes exist to prevent.
 
 On a mismatch it names the first differing line and prints both versions of it,
 then exits `3`. A stylesheet that does not compile exits `1` instead, so a log

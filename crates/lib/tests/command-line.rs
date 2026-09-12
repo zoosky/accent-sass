@@ -317,3 +317,112 @@ fn an_unknown_flag_is_a_usage_error() {
 
     assert_eq!(code(&output), 2);
 }
+
+/// With `--stdin` the lone positional is the destination, as in dart-sass.
+///
+/// Reading it as the input instead made `--check` report success having
+/// compared nothing: it compiled the file named for comparison, never read
+/// standard input, and found no output file left to check against.
+#[test]
+fn check_with_stdin_compares_the_named_file() {
+    let dir = fixture();
+    fs::write(dir.path().join("out.css"), "a {\n  color: blue;\n}\n").unwrap();
+
+    let output = run(
+        dir.path(),
+        &["--stdin", "--check", "out.css"],
+        Some("a { color: red; }\n"),
+    );
+
+    assert_eq!(code(&output), 3, "stderr: {}", stderr(&output));
+    assert!(stderr(&output).contains("out.css is out of date."));
+}
+
+#[test]
+fn check_with_stdin_accepts_a_current_file() {
+    let dir = fixture();
+    fs::write(dir.path().join("out.css"), RED).unwrap();
+
+    let output = run(
+        dir.path(),
+        &["--stdin", "--check", "out.css"],
+        Some("a { color: red; }\n"),
+    );
+
+    assert_eq!(code(&output), 0, "stderr: {}", stderr(&output));
+}
+
+#[test]
+fn stdin_writes_to_the_named_file() {
+    let dir = fixture();
+
+    let output = run(
+        dir.path(),
+        &["--stdin", "out.css"],
+        Some("a { color: red; }\n"),
+    );
+
+    assert_eq!(code(&output), 0, "stderr: {}", stderr(&output));
+    assert_eq!(fs::read_to_string(dir.path().join("out.css")).unwrap(), RED);
+}
+
+/// A second positional alongside `--stdin` would go unused, so it is refused
+/// rather than silently ignored.
+#[test]
+fn stdin_rejects_a_second_positional() {
+    let dir = fixture();
+    let output = run(
+        dir.path(),
+        &["--stdin", "a.css", "b.css"],
+        Some("a { color: red; }\n"),
+    );
+
+    assert_eq!(code(&output), 2);
+}
+
+/// `str::lines` strips the carriage return along with the newline, so two files
+/// differing only in line endings have no differing line. Blaming that on a
+/// trailing newline sends a Windows checkout hunting for the wrong thing.
+#[test]
+fn check_names_line_endings_rather_than_a_trailing_newline() {
+    let dir = fixture();
+    fs::write(dir.path().join("out.css"), "a {\r\n  color: red;\r\n}\r\n").unwrap();
+
+    let output = run(dir.path(), &["--check", "good.scss", "out.css"], None);
+
+    assert_eq!(code(&output), 3);
+    assert!(
+        stderr(&output).contains("differ in their line endings"),
+        "{}",
+        stderr(&output)
+    );
+}
+
+#[test]
+fn check_still_names_a_trailing_newline() {
+    let dir = fixture();
+    fs::write(dir.path().join("out.css"), "a {\n  color: red;\n}").unwrap();
+
+    let output = run(dir.path(), &["--check", "good.scss", "out.css"], None);
+
+    assert_eq!(code(&output), 3);
+    assert!(
+        stderr(&output).contains("differ in a trailing newline"),
+        "{}",
+        stderr(&output)
+    );
+}
+
+/// Compiled CSS is always UTF-8, so a file that is not cannot be current. That
+/// makes it stale rather than unreadable, and collapsing it into the error code
+/// would undo the 1-against-3 distinction the mode is built around.
+#[test]
+fn check_reports_a_non_utf8_output_file_as_stale() {
+    let dir = fixture();
+    fs::write(dir.path().join("out.css"), b"a {\n  color: \xe9;\n}\n").unwrap();
+
+    let output = run(dir.path(), &["--check", "good.scss", "out.css"], None);
+
+    assert_eq!(code(&output), 3, "stderr: {}", stderr(&output));
+    assert!(stderr(&output).contains("not valid UTF-8"));
+}
