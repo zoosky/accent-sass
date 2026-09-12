@@ -26,12 +26,24 @@ jobs:
 
     steps:
     - name: 'Checkout Repository'
-      uses: actions/checkout@v4
+      uses: actions/checkout@v7
         
+    # `curl ... | sh` reports the exit status of `sh`, not of `curl`, and `sh`
+    # fed an empty script exits 0, so a failed download would leave this step
+    # green with nothing installed and fail the build below with
+    # `wasm-pack: command not found`. That is what happened to the sibling
+    # workflow on master on 2026-09-12. `pipefail` makes the download's
+    # failure this step's failure, and the version check proves something was
+    # installed.
+    #
+    # The `export PATH` that stood here did nothing: it applied to this step's
+    # own shell, which ends with the step, and the runner already has
+    # `~/.cargo/bin` on PATH.
     - name: 'Install wasm-pack'
       run: |
+        set -o pipefail
         curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
-        export PATH="$HOME/.cargo/bin:$PATH"
+        wasm-pack --version
     
     # `wasm-exports` is what defines the `from_string` binding, and it is not a
     # default feature: without it wasm-bindgen exports nothing, every symbol is
@@ -65,7 +77,7 @@ jobs:
       run: node .github/scripts/wasm-api-smoke.mjs
         
     - name: 'Upload Artifacts'
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: 'wasm'
         path: artifacts/*
