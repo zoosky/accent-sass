@@ -84,12 +84,16 @@ Every one is valid CSS meaning the same thing; the file is simply larger than
 dart-sass's. If byte-for-byte minification matters, run a dedicated minifier
 over the expanded output.
 
-### `@warn` and `@debug` quote their message
+### Warning and debug formatting
 
-`@warn "careful"` reports `"careful"` with its quotes, where dart-sass reports
-`careful`. This affects the command line and the `Logger` alike. The message
-text is unstable by policy, so this is a divergence rather than a bug in
-output, but it is a real difference and it is not emulated silently.
+The message text of `@warn` and `@debug` matches dart-sass, including the rule
+that a string message is reported as its text: `@warn "careful"` says
+`careful`. `@debug` matches in full, down to the line it writes:
+`file.scss:2 DEBUG: careful`.
+
+What surrounds a `@warn` message does not. This compiler writes
+`Warning: ...` above an `./file:line:column` location, where dart-sass writes
+`WARNING: ...` above an indented stack trace. Do not match on those two lines.
 
 ### Error messages and spans
 

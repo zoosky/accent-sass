@@ -168,18 +168,18 @@ const events = [];
 compileString('@warn "careful";\n@debug "looking";\na { color: red; }', {
   logger: (event) => events.push(event),
 });
-// The message arrives with its quotes: this compiler hands the logger
-// `"careful"` where dart-sass 1.104.0 reports `careful`. That divergence is
-// older than this API and applies to the command-line output too, so it is
-// asserted here as it is rather than silently accepted -- if `@warn` is ever
-// brought to parity, this is the line that should fail and be updated.
+// The message arrives as its text, the way dart-sass 1.104.0 reports it:
+// `@warn "careful"` hands the logger `careful` rather than `"careful"`. This
+// assertion carried the old quoted form and is the line that caught the
+// change, which is what it was written for. Only a top-level string is
+// unwrapped, so a string nested in a list still arrives quoted.
 checkThat(
   "logger receives @warn and @debug",
   events.length === 2 &&
     events[0].type === "warn" &&
-    events[0].message === '"careful"' &&
+    events[0].message === "careful" &&
     events[1].type === "debug" &&
-    events[1].message === '"looking"' &&
+    events[1].message === "looking" &&
     events[0].line === 1,
   `got ${JSON.stringify(events)}`,
 );
