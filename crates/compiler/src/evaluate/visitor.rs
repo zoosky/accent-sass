@@ -1369,6 +1369,14 @@ impl<'a> Visitor<'a> {
     /// for an upstream it has already visited, which puts the comments just
     /// before the loading module's own CSS.
     fn emit_pre_module_comments(&mut self, module: &Arc<RefCell<Module>>) {
+        // dart-sass writes these while combining modules, which puts them at
+        // the top level of the document. A `@use` inside a file `@import`ed
+        // within a style rule loads at that rule's position, so writing the
+        // comment there would put it inside a rule dart-sass never touches.
+        if self.parent.is_some_and(|parent| parent != CssTree::ROOT) {
+            return;
+        }
+
         let key = Arc::as_ptr(module);
         if !self.modules_with_css.contains(&key) {
             return;

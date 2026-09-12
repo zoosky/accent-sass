@@ -53,9 +53,16 @@ Two details make the comment repeat, and both are ported here:
 
 This compiler emits CSS as modules execute rather than combining it
 afterwards, so the first copy is simply the comment where it was written, and
-[`Visitor::emit_pre_module_comments`] writes the repeats at the load site.
+`Visitor::emit_pre_module_comments` writes the repeats at the load site.
 `Visitor::pending_top_comments` stands in for the module root dart-sass reads,
 and `Visitor::modules_with_css` for its `transitivelyContainsCss`.
+
+A repeat is written only at the top level of the document. dart-sass writes
+these comments while combining modules, which is always top level, whereas a
+load site here can sit anywhere: a `@use` inside a file `@import`ed within a
+style rule loads at that rule's position. A code review caught the first
+version writing the comment into that rule, which dart-sass never does. A
+top-level `@import` of such a file still repeats, as the reference does.
 
 ## What it costs
 
