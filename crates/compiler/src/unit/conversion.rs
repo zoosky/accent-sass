@@ -6,14 +6,13 @@ use std::{
     collections::{HashMap, HashSet},
     f64::consts::PI,
     iter::FromIterator,
+    sync::LazyLock,
 };
-
-use once_cell::sync::Lazy;
 
 use crate::unit::Unit;
 
-pub(crate) static UNIT_CONVERSION_TABLE: Lazy<HashMap<Unit, HashMap<Unit, f64>>> =
-    Lazy::new(|| {
+pub(crate) static UNIT_CONVERSION_TABLE: LazyLock<HashMap<Unit, HashMap<Unit, f64>>> =
+    LazyLock::new(|| {
         let mut from_in = HashMap::new();
         from_in.insert(Unit::In, 1.0);
         from_in.insert(Unit::Cm, 1.0 / 2.54);
@@ -159,7 +158,7 @@ pub(crate) static UNIT_CONVERSION_TABLE: Lazy<HashMap<Unit, HashMap<Unit, f64>>>
         m
     });
 
-pub(crate) static KNOWN_COMPATIBILITIES: Lazy<[HashSet<Unit>; 5]> = Lazy::new(|| {
+pub(crate) static KNOWN_COMPATIBILITIES: LazyLock<[HashSet<Unit>; 5]> = LazyLock::new(|| {
     let dimensions = HashSet::from_iter([
         Unit::Em,
         Unit::Ex,

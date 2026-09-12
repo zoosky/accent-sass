@@ -26,10 +26,8 @@ bench = false
 rustdoc-args = ["--cfg", "doc_cfg"]
 
 [dependencies]
-# todo: replace with std::cell::LazyCell (msrv 1.80.0)
-once_cell = "1.15.0"
 # todo: use xorshift for random numbers
-rand = { version = "0.8", optional = true }
+rand = { version = "0.10", optional = true }
 # todo: update to use asref<path>
 # todo: update to expose more info (for eww)
 # todo: update to use text_size::TextRange
@@ -39,7 +37,7 @@ wasm-bindgen = { version = "0.2.68", optional = true }
 # and the logger callback all cross the boundary as JavaScript values.
 js-sys = { version = "0.3", optional = true }
 # todo: benchmark using phf for global functions
-phf = { version = "0.11", features = ["macros"] }
+phf = { version = "0.14", features = ["macros"] }
 indexmap = "2"
 # todo: do we really need interning for things?
 lasso = "0.7"

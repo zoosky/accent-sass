@@ -231,5 +231,22 @@ check(
   `${got.status}|${got.body}`,
 );
 
+// 14. Entropy. `random()` and `unique-id()` are the only builtins that need
+//     it, and they are the only part of the module that can fail for want of
+//     a random source while everything above still passes. On this target it
+//     arrives through WASI's `random_get`, with no opt-in backend, which is
+//     what makes it worth running: the browser target needs a feature to get
+//     one, so the two targets reach entropy by different routes.
+const entropy = "a {\n  b: random();\n  c: unique-id();\n}\n";
+const roll1 = call(accent_sass_compile_string, entropy);
+const roll2 = call(accent_sass_compile_string, entropy);
+check("compiles a stylesheet that needs entropy", 0, roll1.status);
+const drawn = Number((roll1.body.match(/b: ([0-9.]+);/) ?? [])[1]);
+check("random() returns a number in [0, 1)", true, drawn >= 0 && drawn < 1);
+check("unique-id() returns twelve alphanumerics", true, /c: id-[A-Za-z0-9]{12};/.test(roll1.body));
+// A stubbed or failing source is likeliest to return a constant, which one
+// plausible-looking value cannot tell apart from a working one.
+check("two draws differ", true, roll1.body !== roll2.body);
+
 await rm(work, { recursive: true, force: true });
 process.exit(failed);

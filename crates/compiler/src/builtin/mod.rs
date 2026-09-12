@@ -16,7 +16,7 @@ mod builtin_imports {
     pub(crate) use codemap::{Span, Spanned};
 
     #[cfg(feature = "random")]
-    pub(crate) use rand::{Rng, distributions::Alphanumeric, thread_rng};
+    pub(crate) use rand::{RngExt, distr::Alphanumeric};
 
     pub(crate) use crate::{
         Options,

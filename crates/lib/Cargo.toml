@@ -43,10 +43,18 @@ rustdoc-args = ["--cfg", "doc_cfg"]
 
 [dependencies]
 wasm-bindgen = { version = "0.2", optional = true }
-getrandom = { version = "0.2", features = ["js"] }
 accent_sass_compiler = { path = "../compiler", version = "=0.15.0", default-features = false }
 accent-sass-macro = { path = "../accent-sass-macro", version = "0.15.0", optional = true }
 clap = { version = "4.3.10", optional = true }
+
+# Entropy for `random()` and `unique-id()` in a browser build. `getrandom`
+# cannot deduce a JavaScript interface from the target name alone, so its
+# `wasm32-unknown-unknown` backend is opt-in. The dependency is scoped to that
+# target deliberately: enabling `wasm_js` everywhere pulls `wasm-bindgen` into
+# every build and breaks non-web WebAssembly targets, `wasm32-wasip1` among
+# them, which reaches entropy through WASI instead.
+[target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
+getrandom = { version = "0.4", features = ["wasm_js"] }
 
 [features]
 # todo: no commandline by default

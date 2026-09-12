@@ -19,7 +19,17 @@ rust-version = "1.96.1"
 proc-macro = true
 
 [dependencies]
-syn = { version = "2", default-features = false }
+# `parse_macro_input!` is gated on `parsing` + `proc-macro`, and
+# `Error::into_compile_error` on `printing`. With syn 2 this crate compiled
+# without naming them, because another crate in the graph enabled syn's
+# defaults and feature unification handed them over. syn 3 resolves as its own
+# package with no such enabler, so the features this crate uses are declared
+# here rather than borrowed.
+syn = { version = "3", default-features = false, features = [
+    "parsing",
+    "printing",
+    "proc-macro",
+] }
 accent_sass_compiler = { path = "../compiler", version = "=0.15.0" }
 quote = { version = "1.0.23", default-features = false }
 
