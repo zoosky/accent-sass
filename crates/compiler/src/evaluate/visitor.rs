@@ -1827,8 +1827,11 @@ impl<'a> Visitor<'a> {
             return Ok(None);
         }
 
-        let message = self.visit_expr(debug_rule.value)?;
-        let message = message.inspect(debug_rule.span)?;
+        let value = self.visit_expr(debug_rule.value)?;
+        let message = match value {
+            Value::String(text, _) => text,
+            value => value.inspect(debug_rule.span)?,
+        };
 
         let loc = self.map.look_up_span(debug_rule.span);
         self.options.logger.debug(loc, message.as_str());
@@ -2445,10 +2448,21 @@ impl<'a> Visitor<'a> {
         self.options.logger.warn(loc, message);
     }
 
+    /// Evaluate a `@warn` rule and hand its message to the logger.
+    ///
+    /// A top-level string is reported as its text, so `@warn "careful"` says
+    /// `careful` rather than `"careful"`; every other value is serialized as
+    /// CSS, which is why `@warn null` says nothing and `@warn (a: 1)` is the
+    /// error `(a: 1) isn't a valid CSS value.` dart-sass draws the same
+    /// distinction in `_EvaluateVisitor.visitWarnRule`, and it unwraps only
+    /// the outermost value: a string inside a list keeps its quotes.
     fn visit_warn_rule(&mut self, warn_rule: AstWarn) -> SassResult<()> {
         if self.warnings_emitted.insert(warn_rule.span) {
             let value = self.visit_expr(warn_rule.value)?;
-            let message = value.to_css_string(warn_rule.span, self.options.is_compressed())?;
+            let message = match value {
+                Value::String(text, _) => text,
+                value => value.to_css_string(warn_rule.span, self.options.is_compressed())?,
+            };
             self.emit_warning(&message, warn_rule.span);
         }
 

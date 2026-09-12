@@ -28,6 +28,13 @@ at `0.13.4` and below are upstream's and are kept for lineage.
 
 ### Fixed
 
+- `@warn` and `@debug` report a string message as its text rather than with
+  its quotes, as dart-sass does: `@warn "careful"` says `careful`, not
+  `"careful"`. Only the outermost value is unwrapped, so a string inside a
+  list still prints quoted, and every other value is reported as before. The
+  command line and the `Logger` trait are both affected, because the quoting
+  happened in the evaluator
+
 - `%` and the calculation `mod()` with an infinite divisor no longer count
   positive zero as negative. `0 % infinity` is `0` rather than `NaN`, and
   `0 % -infinity` is `NaN` rather than `0`, as dart-sass gives
