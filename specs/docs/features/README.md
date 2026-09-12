@@ -260,6 +260,7 @@ closing a gap the ranking counts, so these are kept out of it as well.
 | Doc | What it is | State |
 |---|---|---|
 | [25-baseline-before-dart-sass-1-104.md](25-baseline-before-dart-sass-1-104.md) | 1.103.1 to 1.104.0: negative zero prints as `-0`, and degenerate colour channels become `0`. Also records the baseline measured before the move | landed |
+| [26-pre-module-comment-repeats.md](26-pre-module-comment-repeats.md) | A loud comment above `@use` or `@forward` is written again before every module that loads the registered one, which is what Bulma's five differing lines were. Matches 1.104.0 and costs two fixtures that expect the 1.104.1 fix | landed; **revert when the reference moves to 1.104.1** |
 
 ### Landed -- residue only
 
