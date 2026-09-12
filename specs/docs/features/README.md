@@ -149,6 +149,7 @@ of the job, not a live count. The "Left" column is measured on `f55ace41`.
 | [19-indented-syntax-gaps.md](19-indented-syntax-gaps.md) | `.sass` parse gaps left after item 10: comments spanning lines, `@import` lists, a bare `@at-root`. Section 2, brackets spanning lines, was closed by #68 | 9, plus 1 of item 05's residue | 6, plus the 1 | `expressions/comments`, `non_conformant/sass`, `directives/at_root` |
 | [22-custom-property-raw-text.md](22-custom-property-raw-text.md) | A custom property's value is folded onto one line instead of being reindented | 6 | 6 | `css/custom_properties` |
 | [08-calculation-warnings-and-error-wording.md](08-calculation-warnings-and-error-wording.md) | Deprecation warnings (none exist); the error wording is done | 22, invisible under the standard flags | 22, all missing warnings | `spec/values/calculation` |
+| [28-warn-banner-and-repeats.md](28-warn-banner-and-repeats.md) | A repeated `@warn` is swallowed, and the banner reads `Warning:` where dart-sass writes `WARNING:` | 18, invisible under the standard flags | 18 | `directives/warn`, `libsass-closed-issues`, `libsass` |
 
 Items 15 to 24 are not disjoint from the residue the landed items left: items
 18 and 19 each close one failure in `spec/css/comment`, which item 05 counts
