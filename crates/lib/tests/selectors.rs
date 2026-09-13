@@ -402,7 +402,7 @@ test!(
 );
 error!(
     combinator_alone_missing_closing_curly_brace,
-    "a {\n  + {\n    b {\n      color: red;\n  }\n}\n", "Error: expected \"}\"."
+    "a {\n  + {\n    b {\n      color: red;\n  }\n}\n", "Error: expected end of rule."
 );
 test!(
     simple_multiple_newline,

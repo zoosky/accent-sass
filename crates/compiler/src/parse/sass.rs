@@ -110,11 +110,15 @@ impl<'a> StylesheetParser<'a> for SassParser<'a> {
     fn parse_style_rule_selector(&mut self) -> SassResult<Interpolation> {
         let mut buffer = Interpolation::new();
 
+        // A newline joins lines only between a trailing comma and the next
+        // line, never after the last one, so a missing selector stays empty
+        // and reaches the "unrecognized syntax" check. dart-sass 1.104.1.
         loop {
             buffer.add_interpolation(self.almost_any_value(true)?);
-            buffer.add_char('\n');
 
-            if !(buffer.trailing_string().trim_end().ends_with(',') && self.scan_char('\n')) {
+            if buffer.trailing_string().trim_end().ends_with(',') && self.scan_char('\n') {
+                buffer.add_char('\n');
+            } else {
                 break;
             }
         }

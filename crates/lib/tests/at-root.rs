@@ -277,7 +277,7 @@ test!(
 );
 error!(
     missing_closing_curly_brace,
-    "@at-root {", "Error: expected \"}\"."
+    "@at-root {", "Error: expected end of rule."
 );
 error!(
     style_at_toplevel_without_selector,

@@ -134,7 +134,12 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
             }
         }
 
+        // dart-sass hands end of input to the child parser as well, so an
+        // unclosed block reports what that parser expected: `expected end of
+        // rule.` for a statement from 1.104.1 on. The fallback covers a child
+        // parser that accepts empty input.
         if !found_matching_brace {
+            child(self)?;
             return Err(("expected \"}\".", self.toks().current_span()).into());
         }
 
@@ -2802,8 +2807,23 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
             interpolation = existing_buffer;
         }
 
+        // Nothing here starts a selector. dart-sass 1.104.1 reads what follows
+        // as a declaration value to name it: an empty one is a missing end of
+        // rule, anything else is syntax no rule accepts.
         if interpolation.contents.is_empty() {
-            return Err(("expected \"}\".", self.toks().current_span()).into());
+            let unknown_start = self.toks().cursor();
+            let unknown =
+                self.parse_interpolated_declaration_value(false, true, true, false, true, false)?;
+
+            if unknown.contents.is_empty() {
+                return Err(("expected end of rule.", self.toks().current_span()).into());
+            }
+
+            return Err((
+                "unrecognized syntax",
+                self.toks_mut().span_from(unknown_start),
+            )
+                .into());
         }
 
         let was_in_style_rule = self.flags().in_style_rule();

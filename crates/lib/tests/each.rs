@@ -97,7 +97,7 @@ error!(
 );
 error!(
     missing_closing_curly_brace,
-    "@each $i in 1 {", "Error: expected \"}\"."
+    "@each $i in 1 {", "Error: expected end of rule."
 );
 error!(
     in_has_characters_after,

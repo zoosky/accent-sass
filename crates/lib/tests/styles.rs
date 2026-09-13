@@ -38,7 +38,7 @@ test!(
 );
 error!(
     removes_empty_outer_styles_missing_closing_curly_brace,
-    "a {\n  b {\n    color: red;\n  }\n", "Error: expected \"}\"."
+    "a {\n  b {\n    color: red;\n  }\n", "Error: expected end of rule."
 );
 test!(removes_empty_styles, "a {}\n", "");
 test!(

@@ -80,12 +80,37 @@ error!(
     "a {$a", "Error: expected \":\"."
 );
 error!(toplevel_comma, "a {},", "Error: expected \"{\".");
-error!(toplevel_exclamation_alone, "!", "Error: expected \"}\".");
-error!(toplevel_exclamation, "! {}", "Error: expected \"}\".");
+// dart-sass 1.104.1 names what stands where a selector should be; 1.104.0
+// said `expected "}".` for all three.
+error!(
+    toplevel_exclamation_alone,
+    "!", "Error: unrecognized syntax"
+);
+error!(toplevel_exclamation, "! {}", "Error: unrecognized syntax");
 error!(toplevel_backtick, "` {}", "Error: expected selector.");
 error!(
     toplevel_open_curly_brace,
-    "{ {color: red;}", "Error: expected \"}\"."
+    "{ {color: red;}", "Error: expected end of rule."
+);
+// Verified against dart-sass 1.104.1, which highlights `!important`; 1.104.0
+// said `expected "}".`
+error!(
+    unrecognized_syntax_in_block,
+    "a {b: c; !important {}}", "Error: unrecognized syntax"
+);
+// The indented syntax reaches the same check once a selector no longer ends
+// in a newline. dart-sass 1.104.0 said `Expected newline.` for both.
+error!(
+    indented_optional_on_its_own_line,
+    "a\n  @extend b\n  !optional\n",
+    "Error: unrecognized syntax",
+    accent_sass::Options::default().input_syntax(accent_sass::InputSyntax::Sass)
+);
+error!(
+    indented_optional_after_declaration,
+    "a\n  b: c\n  !optional\n",
+    "Error: unrecognized syntax",
+    accent_sass::Options::default().input_syntax(accent_sass::InputSyntax::Sass)
 );
 error!(toplevel_open_paren, "(", "Error: expected \"{\".");
 // A closing bracket with nothing open is rejected where it stands, rather
@@ -235,10 +260,12 @@ error!(
     invalid_binop_in_list,
     "a {color: foo % bar, baz;}", "Error: Undefined operation \"foo % bar\"."
 );
-// note: dart-sass has error "Expected identifier."
+// An unclosed block reports what its child parser expected, as dart-sass
+// does. dart-sass 1.104.0 and 1.104.1 both give this; the compiler said
+// `expected "}".` until it handed end of input to the child parser.
 error!(
     improperly_terminated_nested_style,
-    "a {foo: {bar: red", "Error: expected \"}\"."
+    "a {foo: {bar: red", "Error: Expected identifier."
 );
 error!(toplevel_nullbyte, "\u{0}", "Error: expected \"{\".");
 error!(

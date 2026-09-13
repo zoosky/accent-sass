@@ -103,13 +103,17 @@ at `0.13.4` and below are upstream's and are kept for lineage.
   CSS rather than in the evaluator, so `selector.parse(":is(.a > + .b)")` still
   keeps its argument. `selector.replace()` raises dart-sass's "components may
   not be empty" where it used to panic
-- a loud comment written above `@use` or `@forward` is repeated before every
-  module that loads it, as dart-sass 1.104.0 does. This is what Bulma's five
-  differing lines in the framework corpus were; Bulma now compiles
-  byte-identically to the reference. The repeats are written only at the top
-  level, because dart-sass writes them while combining modules. dart-sass
-  itself calls this a bug and fixed it for the unreleased 1.104.1, so it costs
-  two sass-spec fixtures and is to be reverted when the reference moves
+- the reference implementation is dart-sass 1.104.1. A loud comment written
+  above `@use` or `@forward` is written once, where it stands; 1.104.0 repeated
+  it before every module that also loaded the same module, which this compiler
+  briefly copied and no longer does
+- **Breaking: two parse errors say what dart-sass 1.104.1 says.** Where a
+  selector should start but nothing does, the error is `expected end of rule.`
+  rather than `expected "}".`, and text that starts no rule, such as `! {}` or
+  a `!optional` on a line of its own in the indented syntax, is
+  `unrecognized syntax` over that text. An unclosed block reports what its
+  contents expected, so `@function foo() {` and `a {foo: {bar: red` say
+  `Expected identifier.` as dart-sass does
 
 ### Fixed
 

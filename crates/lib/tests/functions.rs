@@ -95,7 +95,7 @@ error!(
 );
 error!(
     body_missing_closing_curly_brace,
-    "@function foo() {", "Error: expected \"}\"."
+    "@function foo() {", "Error: Expected identifier."
 );
 test!(
     does_not_modify_local_variables,
