@@ -56,9 +56,9 @@ const PRESETS = {
       `  $theme-image-path: "${USWDS_CDN}/img"\n` +
       ");\n" +
       '@forward "uswds";\n',
-    // 33,684 lines, which is what dart-sass 1.104.0 produces for USWDS
+    // 32,781 lines, which is what dart-sass 1.104.1 produces for USWDS
     // 3.13.0. See specs/docs/features/27-uswds-parity.md.
-    minLines: 33000,
+    minLines: 32000,
   },
 };
 

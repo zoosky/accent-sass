@@ -2,9 +2,9 @@
 
 This directory holds one implementation document per work item that closes
 the gap between this project and dart-sass, ranked by the number of
-sass-spec tests each item unlocks. The reference is 1.104.0 since
-[item 25](25-baseline-before-dart-sass-1-104.md); the ranking below was drawn
-up against 1.103.1.
+sass-spec tests each item unlocks. The reference is 1.104.1 since 2026-09-13,
+and 1.104.0 since [item 25](25-baseline-before-dart-sass-1-104.md); the
+ranking below was drawn up against 1.103.1.
 
 It also holds a second kind of item, added 2026-09-08: **delivery items**,
 which unlock no fixtures at all. Items 12, 13 and 14 are the WebAssembly
@@ -263,7 +263,7 @@ worth recording in its own right.
 
 | Doc | What it is | State |
 |---|---|---|
-| [27-uswds-parity.md](27-uswds-parity.md) | USWDS 3.13.0 compiles to the same CSS as dart-sass 1.104.0: identical once comments are stripped. What is left is where 20 doc-comment blocks sit, plus a separate list of compressed-mode gaps | recorded 2026-09-12 |
+| [27-uswds-parity.md](27-uswds-parity.md) | USWDS 3.13.0 compiles byte-identically to dart-sass 1.104.1 in expanded mode. Records the 20 comment blocks 1.104.0 placed differently, and a separate list of compressed-mode gaps | recorded 2026-09-12; updated 2026-09-13 |
 
 ### Reference moves -- no ranking impact
 
@@ -273,7 +273,7 @@ closing a gap the ranking counts, so these are kept out of it as well.
 | Doc | What it is | State |
 |---|---|---|
 | [25-baseline-before-dart-sass-1-104.md](25-baseline-before-dart-sass-1-104.md) | 1.103.1 to 1.104.0: negative zero prints as `-0`, and degenerate colour channels become `0`. Also records the baseline measured before the move | landed |
-| [26-pre-module-comment-repeats.md](26-pre-module-comment-repeats.md) | A loud comment above `@use` or `@forward` is written again before every module that loads the registered one, which is what Bulma's five differing lines were. Matches 1.104.0 and costs two fixtures that expect the 1.104.1 fix | landed; **revert when the reference moves to 1.104.1** |
+| [26-pre-module-comment-repeats.md](26-pre-module-comment-repeats.md) | A loud comment above `@use` or `@forward` is written again before every module that loads the registered one, which is what Bulma's five differing lines were. Matched 1.104.0 and cost two fixtures that expect the 1.104.1 fix | landed 2026-09-12; reverted 2026-09-13 with the move to 1.104.1 |
 
 ### Landed -- residue only
 
@@ -345,7 +345,7 @@ fails now.
 
 ## Ground rules for every item
 
-- dart-sass 1.104.0 is the reference (1.103.1 before item 25). Verify
+- dart-sass 1.104.1 is the reference (1.104.0 from item 25, 1.103.1 before). Verify
   every new or changed expectation against the real binary before
   committing it; never re-baseline a test to whatever the new code prints.
 - Add regression tests to `crates/lib/tests/` using the `test!` and

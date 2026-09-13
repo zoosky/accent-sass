@@ -1,24 +1,21 @@
 //! Loud comments written above `@use` and `@forward` rules.
 //!
-//! dart-sass records such a comment against the module the rule loads, and
-//! writes it again before every module that loads that module. One comment
-//! above Bulma's `@forward "shared"` is printed six times, because each of
-//! the five form modules after it also uses `shared`.
+//! A comment above such a rule is written once, where it stands. dart-sass
+//! 1.104.0 repeated it before every module that also loaded the same module
+//! (dart-sass bug #2851); 1.104.1 fixed that, and these tests pin the fixed
+//! behaviour. See `specs/docs/features/26-pre-module-comment-repeats.md`.
 //!
-//! Every expectation was verified against the dart-sass 1.104.0 binary. The
-//! repeats are dart-sass bug #2851, fixed in the unreleased 1.104.1; see
-//! `specs/docs/features/26-pre-module-comment-repeats.md`, which says to
-//! revert this behaviour when the reference moves.
+//! Every expectation was verified against the dart-sass 1.104.1 binary.
 
 use macros::TestFs;
 
 #[macro_use]
 mod macros;
 
-/// Bulma's shape: the comment is registered for `shared` and written again
-/// before each module that uses `shared`.
+/// Bulma's shape: other modules that use `shared` do not repeat the comment
+/// written above `@forward "shared"`.
 #[test]
-fn repeats_before_each_module_that_uses_the_registered_one() {
+fn not_repeated_before_other_modules_that_use_the_same_one() {
     let mut fs = TestFs::new();
 
     fs.add_file(
@@ -36,14 +33,14 @@ fn repeats_before_each_module_that_uses_the_registered_one() {
     let input = r#"@use "idx";"#;
 
     assert_eq!(
-        "/* C */\ns {\n  x: 0;\n}\n\n/* C */\na {\n  x: 1;\n}\n\n/* C */\nb {\n  x: 2;\n}\n",
+        "/* C */\ns {\n  x: 0;\n}\n\na {\n  x: 1;\n}\n\nb {\n  x: 2;\n}\n",
         &accent_sass::from_string(input.to_string(), &accent_sass::Options::default().fs(&fs))
             .unwrap()
     );
 }
 
-/// Nothing is registered for a module without CSS, so the comment stays with
-/// the first module that has some and is written once.
+/// A module without CSS takes no comment, so the comment stays with the first
+/// module that has some and is written once.
 #[test]
 fn no_repeat_when_the_registered_module_has_no_css() {
     let mut fs = TestFs::new();
@@ -103,10 +100,9 @@ fn module_without_css_leaves_the_comment_in_place() {
     );
 }
 
-/// dart-sass lists an upstream module once per rule that loads it, so a file
-/// that both uses and forwards one module repeats the comment.
+/// A file that both uses and forwards one module writes the comment once.
 #[test]
-fn use_and_forward_of_one_module_repeat_the_comment() {
+fn use_and_forward_of_one_module_write_the_comment_once() {
     let mut fs = TestFs::new();
 
     fs.add_file(
@@ -123,16 +119,15 @@ fn use_and_forward_of_one_module_repeat_the_comment() {
     let input = "@use \"twice\";\n@use \"a\";";
 
     assert_eq!(
-        "/* T */\ns {\n  x: 0;\n}\n\n/* T */\nt {\n  z: 1;\n}\n\na {\n  x: 1;\n}\n",
+        "/* T */\ns {\n  x: 0;\n}\n\nt {\n  z: 1;\n}\n\na {\n  x: 1;\n}\n",
         &accent_sass::from_string(input.to_string(), &accent_sass::Options::default().fs(&fs))
             .unwrap()
     );
 }
 
-/// Two `@use` rules for one module repeat it too, and the repeat comes after
-/// that module's CSS.
+/// Two `@use` rules for one module write the comment once.
 #[test]
-fn two_namespaces_for_one_module_repeat_the_comment() {
+fn two_namespaces_for_one_module_write_the_comment_once() {
     let mut fs = TestFs::new();
 
     fs.add_file("_shared.scss", "s {x: 0}");
@@ -140,7 +135,7 @@ fn two_namespaces_for_one_module_repeat_the_comment() {
     let input = "/* U */\n@use \"shared\";\n@use \"shared\" as s2;";
 
     assert_eq!(
-        "/* U */\ns {\n  x: 0;\n}\n\n/* U */\n",
+        "/* U */\ns {\n  x: 0;\n}\n",
         &accent_sass::from_string(input.to_string(), &accent_sass::Options::default().fs(&fs))
             .unwrap()
     );

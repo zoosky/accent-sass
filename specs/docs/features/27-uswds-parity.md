@@ -1,5 +1,15 @@
 # USWDS parity
 
+**Update, 2026-09-13: USWDS 3.13.0 compiles byte-identically to dart-sass
+1.104.1.** Measured on branch `chore/dart-sass-1.104.1` against the native
+1.104.1 binary through `.github/scripts/frameworks.sh`: 32,781 lines on both
+sides, 0 differing, comments included. Moving the reference reverted
+[item 26](26-pre-module-comment-repeats.md), and the 144 lines below went
+with it. The 20 misplaced blocks were never reduced to a minimal case, so
+which part of 1.104.1's fix placed them is not established; the measurement
+is. The expanded-output analysis below is kept as the record of 1.104.0.
+The compressed-output classes are unchanged by the move.
+
 **USWDS 3.13.0 compiles to the same CSS as dart-sass 1.104.0.** Strip the
 comments from both outputs and they are byte-identical: 27,762 lines each,
 zero differences. Every selector, declaration, at-rule and value matches.

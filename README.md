@@ -173,4 +173,4 @@ The crates are on the Rust 2024 edition. The minimum supported Rust version is
 `1.96.1`, normalised across the Accent crates; CI gates on it. Raising the MSRV
 is a minor version bump.
 
-`accent-sass` targets `dart-sass` version `1.104.0`.
+`accent-sass` targets `dart-sass` version `1.104.1`.

@@ -1,5 +1,9 @@
 # Repeated comments before `@use` and `@forward`
 
+**Reverted 2026-09-13, when the reference moved to dart-sass 1.104.1.** The
+rest of this document records why the port was made and is kept as written.
+See "When 1.104.1 lands" for what the revert measured.
+
 **Landed. Bulma compiles byte-identically to dart-sass 1.104.0.** The
 `frameworks` corpus reported five differing lines for Bulma for as long as the
 job has existed, and all five were one comment. This item ports the rule that
@@ -112,6 +116,18 @@ which is what the two fixtures expect. The check afterwards is the same as the
 one that justified the port -- Bulma, the modular example and the form module
 compiled against the new binary, expecting zero differing lines, and the suite
 back to 111 rather than 113.
+
+**Done 2026-09-13, on branch `chore/dart-sass-1.104.1`.** dart-sass 1.104.1
+was released 2026-09-12 with #2854 in it. Measured against the native 1.104.1
+binary:
+
+- `frameworks.sh`: Bulma, Pico, Foundation and USWDS all 0 differing lines,
+  each byte-identical, and the Foundation function probe 0 across 106 results.
+  USWDS dropped from 144 to 0; see [item 27](27-uswds-parity.md).
+- sass-spec with CI's flags: master `c87ccda0` 113 failures, the branch 111.
+- The six tests in `crates/lib/tests/pre-module-comments.rs` are kept and
+  re-verified against 1.104.1. Three changed to one copy; three were
+  unaffected.
 
 ## Out of scope, found while measuring
 
