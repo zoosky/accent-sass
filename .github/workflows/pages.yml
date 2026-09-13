@@ -170,11 +170,6 @@ jobs:
       # build, so check that it rendered and carries the file's content.
       - name: 'Check the changelog page'
         run: grep -q 'Keep a Changelog' docs/output/changelog/index.html
-|
-          cp -R docs/demo docs/output/demo
-          rm -f docs/output/demo/README.md
-          test -f docs/output/demo/vendor/pkg/index_bg.wasm
-          test -f docs/output/demo/vendor/frameworks/manifest.json
 
       - name: 'Report what the site carries'
         run: |
