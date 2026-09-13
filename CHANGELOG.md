@@ -55,6 +55,21 @@ at `0.13.4` and below are upstream's and are kept for lineage.
   keeps "your CSS is out of date" and "your Sass is broken" apart in a log;
   `2` is still clap's usage error. Writing nothing is the point of the mode:
   it reports whether a build is current without being able to change the answer
+- deprecation warnings, starting with `bogus-combinators`. A style rule whose
+  selector has a leading, trailing or repeated combinator, and an `@extend`
+  inside one, now warn as dart-sass 1.104.1 does: the same message, and a
+  source frame that marks the selector and the declaration, comment or
+  at-rule that makes it a problem. `a > {b: c}` was silently dropped from the
+  output before, and now says why. After five warnings of one deprecation the
+  rest are counted, and the count is reported at the end
+- `Logger::deprecation` and `Logger::repetitive_deprecations_omitted`, with
+  the `Deprecation` and `DeprecationWarning` types they receive. Both methods
+  have defaults, so an existing logger keeps compiling: a deprecation reaches
+  it through `Logger::warn` with the message alone, and the count is dropped.
+  `DeprecationWarning::formatted` holds the full text `StdLogger` prints
+- `Options::verbose` and `--verbose`, which report every deprecation warning
+  instead of counting the ones after the fifth. `--verbose` was accepted and
+  hidden before, and did nothing
 - `--indented` works, and is no longer hidden. It reads the entry point as the
   indented syntax whatever the file is called. That matters most for `--stdin`,
   which is the one input route with no extension to infer a syntax from, and

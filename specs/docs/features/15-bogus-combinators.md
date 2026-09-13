@@ -81,6 +81,14 @@ needs the warning facility that item 08's gap 1 describes and that the
 compiler does not have; it is not required here, and adding the omission
 without the warning closes every one of these tests.
 
+**Update, 2026-09-13:** the warning is emitted now. A style rule and an
+`@extend` inside one report it with dart-sass 1.104.1's message and source
+frame. Measured on the 33 fixture files that expect it, with warnings
+compared: 100 failures before, 48 after. Of the 48, 42 are the warning the
+selector functions give (`$extender: > is not valid CSS.`), and 6 are the
+indented syntax's separate "This selector doesn't have any properties"
+warning; neither is this rule.
+
 ## Where the code is
 
 - `crates/compiler/src/selector/complex.rs` holds `ComplexSelector`. Its

@@ -10,7 +10,11 @@ use std::{
     sync::Arc,
 };
 
-use codemap::{CodeMap, Span, Spanned};
+use codemap::{CodeMap, Span, SpanLoc, Spanned};
+
+/// The lines every `bogus-combinators` warning ends with, as dart-sass words
+/// them.
+const BOGUS_COMBINATORS_FOOTER: &str = "This will be an error in Dart Sass 2.0.0.\n\nMore info: https://sass-lang.com/d/bogus-combinators";
 use indexmap::{IndexMap, IndexSet};
 
 use crate::{
@@ -30,8 +34,10 @@ use crate::{
         unvendor,
     },
     error::{SassError, SassResult},
+    highlight::{Highlight, highlight},
     interner::InternedString,
     lexer::Lexer,
+    logger::{Deprecation, DeprecationWarning},
     parse::{
         AtRootQueryParser, CssParser, KeyframesSelectorParser, SassParser, ScssParser,
         StylesheetParser,
@@ -175,6 +181,16 @@ pub struct Visitor<'a> {
     has_css_nesting: bool,
     // avoid emitting duplicate warnings for the same span
     pub(crate) warnings_emitted: HashSet<Span>,
+    /// The deprecation warnings reported so far, by message and span, so the
+    /// same one reported again from a mixin included twice is dropped, as
+    /// dart-sass's `_warningsEmitted` drops it.
+    deprecations_emitted: HashSet<(String, Span)>,
+    /// How many times each deprecation has been reported, for the limit of
+    /// five and the count left out at the end.
+    deprecation_counts: HashMap<Deprecation, usize>,
+    /// The name the entry stylesheet was added to the code map under, which
+    /// is how a warning tells it apart from a loaded module.
+    entry_file_name: String,
     pub(crate) media_queries: Option<Vec<MediaQuery>>,
     pub(crate) media_query_sources: Option<IndexSet<MediaQuery>>,
     pub(crate) extender: ExtensionStore,
@@ -254,6 +270,9 @@ impl<'a> Visitor<'a> {
             has_css_nesting: false,
             flags,
             warnings_emitted: HashSet::new(),
+            deprecations_emitted: HashSet::new(),
+            deprecation_counts: HashMap::new(),
+            entry_file_name: path.to_string_lossy().into_owned(),
             media_queries: None,
             media_query_sources: None,
             env: Environment::new(),
@@ -766,19 +785,21 @@ impl<'a> Visitor<'a> {
         // already needs a browser that supports nesting, so there is nothing to
         // gain from hoisting this rule out of the style rule it sits in.
         if self.has_css_nesting {
-            return self.with_parent_opt(
-                css_supports_rule,
-                true,
-                |visitor| {
-                    for stmt in children {
-                        let result = visitor.visit_stmt(stmt)?;
-                        debug_assert!(result.is_none());
-                    }
+            return self
+                .with_parent_opt(
+                    css_supports_rule,
+                    true,
+                    |visitor| {
+                        for stmt in children {
+                            let result = visitor.visit_stmt(stmt)?;
+                            debug_assert!(result.is_none());
+                        }
 
-                    Ok(())
-                },
-                None::<fn(&CssStmt) -> bool>,
-            );
+                        Ok(())
+                    },
+                    None::<fn(&CssStmt) -> bool>,
+                )
+                .map(|_| ());
         }
 
         self.with_parent(
@@ -1955,6 +1976,34 @@ impl<'a> Visitor<'a> {
                 .into());
         }
 
+        // dart-sass's `visitExtendRule` warns about a bogus extender before
+        // it looks at the target.
+        if let Some(original) = self.style_rule_original_selector.clone() {
+            for complex in &original.components {
+                if !complex.is_bogus() {
+                    continue;
+                }
+
+                let message = format!(
+                    "The selector \"{}\" is invalid CSS and {} be an extender.\n{}",
+                    complex.to_string().trim(),
+                    if complex.is_useless() {
+                        "can't"
+                    } else {
+                        "shouldn't"
+                    },
+                    BOGUS_COMBINATORS_FOOTER
+                );
+                self.emit_deprecation(
+                    Deprecation::BogusCombinators,
+                    message,
+                    complex.span.unwrap_or(original.span),
+                    Some("invalid selector"),
+                    vec![(extend_rule.span, "@extend rule".to_owned())],
+                );
+            }
+        }
+
         let super_selector = self.style_rule_ignoring_at_root.clone().unwrap();
 
         let target_text = self.interpolation_to_value(extend_rule.value, false, true)?;
@@ -2194,6 +2243,7 @@ impl<'a> Visitor<'a> {
                     params: value.unwrap_or_default(),
                     body: Vec::new(),
                     has_body: false,
+                    span: unknown_at_rule.span,
                 },
                 false,
             );
@@ -2225,6 +2275,7 @@ impl<'a> Visitor<'a> {
             self.flags.set(ContextFlags::IN_UNKNOWN_AT_RULE, true);
         }
 
+        let span = unknown_at_rule.span;
         let children = unknown_at_rule.body.unwrap();
 
         let stmt = CssStmt::UnknownAtRule(
@@ -2233,6 +2284,7 @@ impl<'a> Visitor<'a> {
                 params: value.unwrap_or_default(),
                 body: Vec::new(),
                 has_body: true,
+                span,
             },
             false,
         );
@@ -2317,6 +2369,263 @@ impl<'a> Visitor<'a> {
         }
         let loc = self.map.look_up_span(span);
         self.options.logger.warn(loc, message);
+    }
+
+    /// How many warnings of one deprecation are reported before the rest are
+    /// only counted, unless [`Options::verbose`] is set. dart-sass's
+    /// `_maxRepetitions`.
+    const MAX_DEPRECATION_REPETITIONS: usize = 5;
+
+    /// Reports a deprecation warning, as dart-sass's `_warn` does when given a
+    /// deprecation.
+    ///
+    /// `primary` is the span the warning is about and `primary_label` the
+    /// text written after its underline; `secondary` are further spans drawn
+    /// in the same frame, each with its label. A warning with the same
+    /// message and span as one already reported is dropped. Once a
+    /// deprecation has been reported [`Self::MAX_DEPRECATION_REPETITIONS`]
+    /// times, later ones are counted for [`Self::summarize_deprecations`]
+    /// instead of reported.
+    fn emit_deprecation(
+        &mut self,
+        deprecation: Deprecation,
+        message: String,
+        primary: Span,
+        primary_label: Option<&str>,
+        secondary: Vec<(Span, String)>,
+    ) {
+        if self.options.quiet || !self.deprecations_emitted.insert((message.clone(), primary)) {
+            return;
+        }
+
+        let count = self.deprecation_counts.entry(deprecation).or_insert(0);
+        *count += 1;
+        if *count > Self::MAX_DEPRECATION_REPETITIONS && !self.options.verbose {
+            return;
+        }
+
+        let location = self.map.look_up_span(primary);
+        let mut highlights = vec![Highlight {
+            loc: location.clone(),
+            label: primary_label.map(str::to_owned),
+            primary: true,
+        }];
+        for (span, label) in secondary {
+            let loc = self.map.look_up_span(span);
+            // The frame draws one file; dart-sass would draw a second.
+            if loc.file.name() == location.file.name() {
+                highlights.push(Highlight {
+                    loc,
+                    label: Some(label),
+                    primary: false,
+                });
+            }
+        }
+        let frame = highlight(highlights, self.options.unicode_error_messages);
+
+        let mut trace = format!(
+            "{} {}:{}",
+            location.file.name(),
+            location.begin.line + 1,
+            location.begin.column + 1
+        );
+        if self.is_root_stylesheet_context(&location) {
+            trace.push_str("  root stylesheet");
+        }
+
+        let warning = DeprecationWarning::new(deprecation, message, location, &frame, &trace);
+        self.options.logger.deprecation(&warning);
+    }
+
+    /// Whether a warning at `location` comes from the entry stylesheet itself,
+    /// outside any mixin, function or content block: the only case where
+    /// dart-sass's stack trace is the single frame `root stylesheet`.
+    fn is_root_stylesheet_context(&self, location: &SpanLoc) -> bool {
+        !self.flags.in_mixin()
+            && !self.flags.in_function()
+            && !self.flags.in_content_block()
+            && location.file.name() == self.entry_file_name
+    }
+
+    /// Tells the logger how many deprecation warnings were left out as
+    /// repetitive, if any were. dart-sass prints this once, after compiling.
+    pub(crate) fn summarize_deprecations(&self) {
+        if self.options.quiet || self.options.verbose {
+            return;
+        }
+
+        let omitted = self
+            .deprecation_counts
+            .values()
+            .map(|count| count.saturating_sub(Self::MAX_DEPRECATION_REPETITIONS))
+            .sum::<usize>();
+        if omitted > 0 {
+            self.options.logger.repetitive_deprecations_omitted(omitted);
+        }
+    }
+
+    /// Makes each complex selector in `selector` point at the right source
+    /// for a warning.
+    ///
+    /// The parser records a complex selector's span as offsets into `text`,
+    /// which are offsets into the source only when `text` is the selector as
+    /// written. When interpolation, a comment or the indented syntax makes
+    /// them differ, every complex selector points at the whole selector
+    /// instead, trimmed of surrounding whitespace.
+    fn point_selector_spans_at_source(&self, selector: &mut SelectorList, text: &str, span: Span) {
+        let source = self.map.find_file(span.low()).source_slice(span);
+        if trim_ascii(source, true) == text {
+            return;
+        }
+
+        let leading = source.len() - source.trim_start().len();
+        let trimmed = span.subspan(leading as u64, (leading + source.trim().len()) as u64);
+        for complex in &mut selector.components {
+            complex.span = Some(trimmed);
+        }
+    }
+
+    /// Warns about each bogus complex selector in the style rule at
+    /// `rule_idx`, as dart-sass's `_warnForBogusCombinators` does once the
+    /// rule's children have been evaluated.
+    ///
+    /// Nothing is reported for a rule that would be invisible anyway, such as
+    /// one with a placeholder or one whose children all moved out of it, so
+    /// `a > {b {c: d}}` is legal nesting and quiet. `fallback_span` is used for
+    /// a complex selector with no span of its own, such as one `@extend` added.
+    fn warn_for_bogus_combinators(&mut self, rule_idx: CssTreeIdx, fallback_span: Span) {
+        if self.is_invisible_other_than_bogus_combinators(rule_idx) {
+            return;
+        }
+
+        let selector = match self.css_tree.get(rule_idx).as_ref() {
+            Some(CssStmt::RuleSet { selector, .. }) => selector.as_selector_list().clone(),
+            _ => return,
+        };
+        let children = self
+            .css_tree
+            .parent_to_child
+            .get(&rule_idx)
+            .cloned()
+            .unwrap_or_default();
+
+        for complex in &selector.components {
+            if !complex.is_bogus() {
+                continue;
+            }
+
+            let text = complex.to_string();
+            let text = text.trim();
+            let span = complex.span.unwrap_or(fallback_span);
+
+            if complex.is_useless() {
+                let message = format!(
+                    "The selector \"{text}\" is invalid CSS. It will be omitted from the generated CSS.\n{BOGUS_COMBINATORS_FOOTER}"
+                );
+                self.emit_deprecation(
+                    Deprecation::BogusCombinators,
+                    message,
+                    span,
+                    None,
+                    Vec::new(),
+                );
+            } else if complex.has_leading_combinator() {
+                if !self.is_plain_css {
+                    let message = format!(
+                        "The selector \"{text}\" is invalid CSS.\n{BOGUS_COMBINATORS_FOOTER}"
+                    );
+                    self.emit_deprecation(
+                        Deprecation::BogusCombinators,
+                        message,
+                        span,
+                        None,
+                        Vec::new(),
+                    );
+                }
+            } else {
+                let will_be_omitted = if complex.is_bogus_other_than_leading_combinator() {
+                    " It will be omitted from the generated CSS."
+                } else {
+                    ""
+                };
+                let only_comments = children.iter().all(|&child| {
+                    matches!(
+                        self.css_tree.get(child).as_ref(),
+                        Some(CssStmt::Comment(..))
+                    )
+                });
+                let suggestion = if only_comments {
+                    "\n(try converting to a //-style comment)"
+                } else {
+                    ""
+                };
+                let secondary = children
+                    .first()
+                    .and_then(|&child| self.css_node_span(child))
+                    .map(|child_span| {
+                        vec![(child_span, format!("this is not a style rule{suggestion}"))]
+                    })
+                    .unwrap_or_default();
+
+                let message = format!(
+                    "The selector \"{text}\" is only valid for nesting and shouldn't\nhave children other than style rules.{will_be_omitted}\n{BOGUS_COMBINATORS_FOOTER}"
+                );
+                self.emit_deprecation(
+                    Deprecation::BogusCombinators,
+                    message,
+                    span,
+                    Some("invalid selector"),
+                    secondary,
+                );
+            }
+        }
+    }
+
+    /// Whether the CSS node at `idx` would be left out of the output even if
+    /// bogus combinators were allowed: dart-sass's
+    /// `isInvisibleOtherThanBogusCombinators`, with comments counted as
+    /// visible.
+    ///
+    /// Declarations, comments, imports and unknown at-rules are visible. A
+    /// style rule is invisible if its selector is or all of its children
+    /// are; any other parent node if all of its children are.
+    fn is_invisible_other_than_bogus_combinators(&self, idx: CssTreeIdx) -> bool {
+        let children_invisible = || {
+            self.css_tree
+                .parent_to_child
+                .get(&idx)
+                .is_none_or(|children| {
+                    children
+                        .iter()
+                        .all(|&child| self.is_invisible_other_than_bogus_combinators(child))
+                })
+        };
+
+        match self.css_tree.get(idx).as_ref() {
+            Some(CssStmt::RuleSet { selector, .. }) => {
+                selector.as_selector_list().is_invisible_with(false) || children_invisible()
+            }
+            Some(CssStmt::Media(..) | CssStmt::Supports(..) | CssStmt::KeyframesRuleSet(..)) => {
+                children_invisible()
+            }
+            Some(
+                CssStmt::Style(..)
+                | CssStmt::Comment(..)
+                | CssStmt::Import(..)
+                | CssStmt::UnknownAtRule(..),
+            ) => false,
+            None => true,
+        }
+    }
+
+    /// Where the CSS node at `idx` was written, for the nodes that record it.
+    fn css_node_span(&self, idx: CssTreeIdx) -> Option<Span> {
+        match self.css_tree.get(idx).as_ref() {
+            Some(CssStmt::Style(style)) => Some(style.span),
+            Some(CssStmt::Comment(_, span)) => Some(*span),
+            Some(CssStmt::UnknownAtRule(rule, _)) => Some(rule.span),
+            _ => None,
+        }
     }
 
     /// Evaluate a `@warn` rule and hand its message to the logger.
@@ -2458,6 +2767,7 @@ impl<'a> Visitor<'a> {
         through: FT,
     ) -> SassResult<()> {
         self.with_parent_opt(parent, scope_when, callback, Some(through))
+            .map(|_| ())
     }
 
     /// As `with_parent`, but `through` may be absent, in which case the node is
@@ -2470,13 +2780,13 @@ impl<'a> Visitor<'a> {
         scope_when: bool,
         callback: F,
         through: Option<FT>,
-    ) -> SassResult<()> {
+    ) -> SassResult<CssTreeIdx> {
         let parent_idx = self.add_child(parent, through);
         let old_parent = self.parent;
         self.parent = Some(parent_idx);
         let result = self.with_scope(false, scope_when, callback);
         self.parent = old_parent;
-        result
+        result.map(|()| parent_idx)
     }
 
     fn with_scope<T, F: FnOnce(&mut Self) -> T>(
@@ -4394,6 +4704,11 @@ impl<'a> Visitor<'a> {
             self.is_plain_css,
             ruleset.selector_span,
         )?;
+        self.point_selector_spans_at_source(
+            &mut parsed_selector,
+            &selector_text,
+            ruleset.selector_span,
+        );
 
         // A rule written inside a plain CSS rule is CSS nesting: the browser
         // resolves it, so it is left nested and its selector is left alone. A
@@ -4448,7 +4763,7 @@ impl<'a> Visitor<'a> {
         self.style_rule_is_plain_css = self.is_plain_css;
         self.has_css_nesting = !merge;
 
-        self.with_parent_opt(
+        let rule_idx = self.with_parent_opt(
             rule,
             true,
             |visitor| {
@@ -4470,6 +4785,8 @@ impl<'a> Visitor<'a> {
             ContextFlags::AT_ROOT_EXCLUDING_STYLE_RULE,
             old_at_root_excluding_style_rule,
         );
+
+        self.warn_for_bogus_combinators(rule_idx, ruleset.selector_span);
 
         self.set_group_end();
 
@@ -4548,6 +4865,7 @@ impl<'a> Visitor<'a> {
         }
 
         let parsed_as_sass_script = style.parsed_as_sass_script;
+        let declaration_start = style.span.subspan(0, 0);
 
         let mut name = self.interpolation_to_value(style.name, false, true)?;
 
@@ -4578,6 +4896,7 @@ impl<'a> Visitor<'a> {
                 // earlier one.
                 self.add_child_after_sibling(CssStmt::Style(Style {
                     property: InternedString::get_or_intern(&name),
+                    span: declaration_start.merge(value.span),
                     value: Box::new(value),
                     parsed_as_sass_script,
                 }));

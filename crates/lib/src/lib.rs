@@ -69,8 +69,9 @@ accent-sass input.scss
 pub mod wasi_exports;
 
 pub use accent_sass_compiler::{
-    Error, ErrorKind, Fs, InputSyntax, Logger, MemoryFs, NullFs, NullLogger, Options, OutputStyle,
-    Result, StdFs, StdLogger, from_path, from_string, from_string_with_file_name,
+    Deprecation, DeprecationWarning, Error, ErrorKind, Fs, InputSyntax, Logger, MemoryFs, NullFs,
+    NullLogger, Options, OutputStyle, Result, StdFs, StdLogger, from_path, from_string,
+    from_string_with_file_name,
 };
 
 /// Include CSS in your binary at compile time from a Sass source file

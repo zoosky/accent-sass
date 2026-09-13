@@ -18,6 +18,7 @@ pub struct Options<'a> {
     pub(crate) allows_charset: bool,
     pub(crate) unicode_error_messages: bool,
     pub(crate) quiet: bool,
+    pub(crate) verbose: bool,
     pub(crate) input_syntax: Option<InputSyntax>,
     pub(crate) custom_fns: HashMap<String, Builtin>,
 }
@@ -33,6 +34,7 @@ impl Default for Options<'_> {
             allows_charset: true,
             unicode_error_messages: true,
             quiet: false,
+            verbose: false,
             input_syntax: None,
             custom_fns: HashMap::new(),
         }
@@ -86,6 +88,20 @@ impl<'a> Options<'a> {
     #[inline]
     pub const fn quiet(mut self, quiet: bool) -> Self {
         self.quiet = quiet;
+        self
+    }
+
+    /// Report every deprecation warning.
+    ///
+    /// By default, once the same deprecation has been reported five times,
+    /// further occurrences are counted rather than reported, and the count
+    /// goes to [`crate::Logger::repetitive_deprecations_omitted`] at the end,
+    /// as dart-sass does without `--verbose`. Setting this to `true` reports
+    /// them all.
+    #[must_use]
+    #[inline]
+    pub const fn verbose(mut self, verbose: bool) -> Self {
+        self.verbose = verbose;
         self
     }
 

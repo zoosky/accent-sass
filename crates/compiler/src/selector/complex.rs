@@ -55,6 +55,14 @@ pub(crate) struct ComplexSelector {
     /// Whether a line break should be emitted *before* this selector.
     pub line_break: bool,
 
+    /// Where this selector was written, for a warning that points at it.
+    ///
+    /// Set by the parser and kept when a parent selector is resolved into it,
+    /// so a nested `a >` points at `a >` even though the selector is now
+    /// `.x a >`. `None` for a selector built some other way, such as by
+    /// `@extend`. Not part of equality or hashing.
+    pub span: Option<Span>,
+
     /// A unique identifier for this complex selector. Used to perform a pointer
     /// equality check, like would be done for objects in a language like JavaScript
     /// or dart
@@ -105,8 +113,23 @@ impl ComplexSelector {
         Self {
             components,
             line_break,
+            span: None,
             unique_id: COMPLEX_SELECTOR_UNIQUE_ID.fetch_add(1, AtomicOrdering::Relaxed),
         }
+    }
+
+    /// Returns this selector with `span` recorded as where it was written.
+    #[must_use]
+    pub fn with_span(mut self, span: Option<Span>) -> Self {
+        self.span = span;
+        self
+    }
+
+    /// Whether this selector starts with a combinator, as `> a` does.
+    pub fn has_leading_combinator(&self) -> bool {
+        self.components
+            .first()
+            .is_some_and(ComplexSelectorComponent::is_combinator)
     }
 
     pub fn max_specificity(&self) -> i32 {

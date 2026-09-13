@@ -99,6 +99,19 @@ impl Lexer {
         span
     }
 
+    /// The span of the characters at indices `start..end`.
+    ///
+    /// In a lexer over interpolated text, whose offsets do not map to the
+    /// source, this is the whole span the lexer covers, as every other span
+    /// such a lexer answers is.
+    pub fn span_between(&self, start: usize, end: usize) -> Span {
+        if end <= start {
+            return self.span_at_index(start).subspan(0, 0);
+        }
+
+        self.span_at_index(start).merge(self.span_at_index(end - 1))
+    }
+
     pub fn span_from(&self, start: usize) -> Span {
         let start = self.span_at_index(start);
         let end = self.prev_span();

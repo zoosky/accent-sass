@@ -248,7 +248,6 @@ fn cli() -> Command {
             Arg::new("VERBOSE")
                 .action(ArgAction::SetTrue)
                 .long("verbose")
-                .hide(true)
                 .help("Print all deprecation warnings even when they're repetitive.")
         )
         .arg(
@@ -307,6 +306,7 @@ fn main() -> ExitCode {
         .load_paths(&load_paths)
         .style(style)
         .quiet(matches.get_flag("QUIET"))
+        .verbose(matches.get_flag("VERBOSE"))
         .unicode_error_messages(!matches.get_flag("NO_UNICODE"))
         .allows_charset(!matches.get_flag("NO_CHARSET"));
 
