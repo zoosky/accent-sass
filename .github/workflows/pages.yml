@@ -20,6 +20,7 @@ on:
     paths:
       - 'crates/**'
       - 'docs/**'
+      - 'CHANGELOG.md'
       - 'Cargo.toml'
       - 'Cargo.lock'
       - '.github/workflows/pages.yml'
@@ -31,6 +32,7 @@ on:
     paths:
       - 'crates/**'
       - 'docs/**'
+      - 'CHANGELOG.md'
       - '.github/workflows/pages.yml'
       - '.github/scripts/demo-bundle.mjs'
 
@@ -147,12 +149,28 @@ jobs:
             --base-url https://zoosky.github.io/accent-sass \
             --clean
 
-      # The demo is copied in rather than placed in `media/`, which Accent
-      # would serve from `/media/demo`. It is also 2.8 MB of generated wasm and
-      # framework JSON that is deliberately not committed, so it is built above
-      # and staged here.
-      - name: 'Stage the demo inside the site'
+      # The demo page itself is rendered by the build above, from
+      # `content/demo/default.md` and the theme's `demo` template, so it carries
+      # the site's header and footer. What is copied here is what that page
+      # loads and Accent does not build: its scripts, its stylesheet, and the
+      # 2.8 MB of generated wasm and framework JSON in `vendor/`, which is
+      # deliberately not committed. Placing them in `media/` would move them to
+      # `/media/demo`, away from the page.
+      - name: 'Stage the demo assets beside the page'
         run: |
+          grep -q 'class="site-header"' docs/output/demo/index.html
+          grep -q 'id="source"' docs/output/demo/index.html
+          cp docs/demo/app.js docs/demo/worker.js docs/demo/styles.css docs/output/demo/
+          cp -R docs/demo/vendor docs/output/demo/vendor
+          test -f docs/output/demo/vendor/pkg/index_bg.wasm
+          test -f docs/output/demo/vendor/frameworks/manifest.json
+
+      # CHANGELOG.md is mounted as a page by `content.mounts` in config.yaml.
+      # A mount whose source moved would drop the page without failing the
+      # build, so check that it rendered and carries the file's content.
+      - name: 'Check the changelog page'
+        run: grep -q 'Keep a Changelog' docs/output/changelog/index.html
+|
           cp -R docs/demo docs/output/demo
           rm -f docs/output/demo/README.md
           test -f docs/output/demo/vendor/pkg/index_bg.wasm

@@ -451,7 +451,7 @@ reports two fewer, an offset that is stable across commits.
   parenthesis depth counter, which only covered the parentheses; it now carries
   dart-sass's `consumeNewlines` value at each call site, which closed 114
   sass-spec failures across 26 areas. See
-  [`specs/docs/features/10-indented-newlines.md`](specs/docs/features/10-indented-newlines.md)
+  [`specs/docs/features/10-indented-newlines.md`](https://github.com/zoosky/accent-sass/blob/master/specs/docs/features/10-indented-newlines.md)
 - `//` inside a plain CSS value is two slashes, not the start of a comment
   plain CSS forbids. `a {b: 1///bar}` in a `.css` file was rejected
 - whitespace may fall anywhere inside `@import ... supports(...)`, including a

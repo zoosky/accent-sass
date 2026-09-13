@@ -1,57 +1,57 @@
-/* The demo's own styling. Deliberately plain: the interesting stylesheets are
-   the ones compiled in the preview frame, and anything elaborate here would
-   compete with them. */
+/* The demo's own styling, loaded after the site theme's stylesheet.
 
-:root {
-  --bg: #fbfbfd;
-  --surface: #ffffff;
-  --border: #dcdce4;
-  --text: #1c1c22;
-  --muted: #61617a;
-  --accent: #4b3bd4;
-  --accent-soft: #ecebfb;
-  --warn: #8a5a00;
-  --warn-soft: #fdf3e0;
-  --error: #b3261e;
-  --error-soft: #fdecea;
-  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
-  --radius: 8px;
+   Every rule is scoped to the page's `.demo` wrapper, so nothing here reaches
+   the site's header, footer or search dialog. The colours are the theme's own
+   tokens, which is what makes the demo follow the header's theme toggle; the
+   few the theme has no token for -- a soft accent fill, warning and error --
+   are defined here for both palettes, in the same dark-first way the theme
+   defines its own. Deliberately plain otherwise: the interesting stylesheets
+   are the ones compiled in the preview frame. */
+
+.demo {
+  --demo-bg: var(--bg);
+  --demo-surface: var(--surface);
+  --demo-border: var(--border);
+  --demo-text: var(--text);
+  --demo-muted: var(--text-dim);
+  --demo-accent: var(--accent);
+  --demo-accent-ink: var(--accent-ink);
+  --demo-accent-soft: color-mix(in srgb, var(--accent) 14%, transparent);
+  --demo-warn: #e4b062;
+  --demo-warn-soft: #2b2415;
+  --demo-error: #ff8a80;
+  --demo-error-soft: #2e1a18;
+  --demo-radius: 8px;
+
+  font-size: 15px;
+  line-height: 1.55;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #16161c;
-    --surface: #1e1e26;
-    --border: #33333f;
-    --text: #ececf2;
-    --muted: #9a9ab0;
-    --accent: #a9a0ff;
-    --accent-soft: #26243a;
-    --warn: #e4b062;
-    --warn-soft: #2b2415;
-    --error: #ff8a80;
-    --error-soft: #2e1a18;
+/* The light palette, applied the two ways the theme applies its own: by the
+   operating system while the reader has not chosen, and by the toggle. */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) .demo {
+    --demo-warn: #8a5a00;
+    --demo-warn-soft: #fdf3e0;
+    --demo-error: #b3261e;
+    --demo-error-soft: #fdecea;
   }
 }
 
-* {
-  box-sizing: border-box;
+:root[data-theme="light"] .demo {
+  --demo-warn: #8a5a00;
+  --demo-warn-soft: #fdf3e0;
+  --demo-error: #b3261e;
+  --demo-error-soft: #fdecea;
 }
 
-body {
-  margin: 0;
-  background: var(--bg);
-  color: var(--text);
-  font: 15px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-}
-
-.wrap {
+.demo .wrap {
   max-width: 1280px;
   margin: 0 auto;
   padding: 0 20px;
 }
 
-.visually-hidden {
+.demo .visually-hidden {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -60,63 +60,57 @@ body {
   white-space: nowrap;
 }
 
-/* Header ------------------------------------------------------------------ */
+.demo code,
+.demo pre {
+  font-family: var(--mono);
+}
 
-.site-header {
-  border-bottom: 1px solid var(--border);
-  background: var(--surface);
+.demo code {
+  font-size: 0.92em;
+}
+
+/* Intro ------------------------------------------------------------------- */
+
+.demo-intro {
+  border-bottom: 1px solid var(--demo-border);
+  background: var(--demo-surface);
   padding: 32px 0 24px;
 }
 
-/* The way back to the documentation site this page is served inside. */
-.back {
-  margin: 0 0 14px;
-  font-size: 13px;
-}
-
-.back a {
-  color: var(--muted);
-  text-decoration: none;
-}
-
-.back a:hover {
-  color: var(--accent);
-  text-decoration: underline;
-}
-
-.site-header h1 {
+.demo-intro h1 {
   margin: 0 0 8px;
   font-size: 26px;
+  line-height: 1.25;
   letter-spacing: -0.02em;
 }
 
-.lede {
+.demo .lede {
   margin: 0;
   max-width: 68ch;
-  color: var(--muted);
+  color: var(--demo-muted);
 }
 
-.facts {
+.demo .facts {
   display: flex;
   flex-wrap: wrap;
   gap: 28px;
   margin: 20px 0 0;
 }
 
-.facts div {
+.demo .facts div {
   display: flex;
   flex-direction: column;
   gap: 2px;
 }
 
-.facts dt {
+.demo .facts dt {
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.07em;
-  color: var(--muted);
+  color: var(--demo-muted);
 }
 
-.facts dd {
+.demo .facts dd {
   margin: 0;
   font-family: var(--mono);
   font-size: 13px;
@@ -124,57 +118,57 @@ body {
 
 /* Presets ----------------------------------------------------------------- */
 
-.presets {
+.demo .presets {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
   margin: 24px 0 0;
 }
 
-.preset {
+.demo .preset {
   display: flex;
   flex-direction: column;
   gap: 2px;
   padding: 10px 16px;
   min-width: 150px;
   text-align: left;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
+  background: var(--demo-surface);
+  border: 1px solid var(--demo-border);
+  border-radius: var(--demo-radius);
   color: inherit;
   font: inherit;
   cursor: pointer;
 }
 
-.preset:hover {
-  border-color: var(--accent);
+.demo .preset:hover {
+  border-color: var(--demo-accent);
 }
 
-.preset[aria-current="true"] {
-  border-color: var(--accent);
-  background: var(--accent-soft);
+.demo .preset[aria-current="true"] {
+  border-color: var(--demo-accent);
+  background: var(--demo-accent-soft);
 }
 
-.preset-name {
+.demo .preset-name {
   font-weight: 600;
 }
 
-.preset-meta {
+.demo .preset-meta {
   font-size: 12px;
-  color: var(--muted);
+  color: var(--demo-muted);
   font-family: var(--mono);
 }
 
-.preset-note {
+.demo .preset-note {
   margin: 12px 0 0;
-  color: var(--muted);
+  color: var(--demo-muted);
   font-size: 13px;
   min-height: 1.2em;
 }
 
 /* Panes ------------------------------------------------------------------- */
 
-.panes {
+.demo .panes {
   display: grid;
   grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
   gap: 16px;
@@ -183,75 +177,75 @@ body {
 }
 
 @media (max-width: 940px) {
-  .panes {
+  .demo .panes {
     grid-template-columns: minmax(0, 1fr);
   }
 }
 
-.pane {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
+.demo .pane {
+  background: var(--demo-surface);
+  border: 1px solid var(--demo-border);
+  border-radius: var(--demo-radius);
   overflow: hidden;
   display: flex;
   flex-direction: column;
   min-width: 0;
 }
 
-.pane-head {
+.demo .pane-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
   flex-wrap: wrap;
   padding: 10px 14px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--demo-border);
 }
 
-.pane-head h2 {
+.demo .pane-head h2 {
   margin: 0;
   font-size: 13px;
   text-transform: uppercase;
   letter-spacing: 0.07em;
-  color: var(--muted);
+  color: var(--demo-muted);
 }
 
-.pane-actions {
+.demo .pane-actions {
   display: flex;
   align-items: center;
   gap: 12px;
 }
 
-.inline {
+.demo .inline {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   font-size: 13px;
-  color: var(--muted);
+  color: var(--demo-muted);
 }
 
-.button {
+.demo .button {
   padding: 6px 14px;
   border: 1px solid transparent;
   border-radius: 6px;
-  background: var(--accent);
-  color: #fff;
+  background: var(--demo-accent);
+  color: var(--demo-accent-ink);
   font: inherit;
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
 }
 
-.button:disabled {
+.demo .button:disabled {
   opacity: 0.55;
   cursor: default;
 }
 
-.link-button {
+.demo .link-button {
   background: none;
   border: 0;
   padding: 0;
-  color: var(--accent);
+  color: var(--demo-accent);
   font: inherit;
   font-size: 12px;
   cursor: pointer;
@@ -260,170 +254,170 @@ body {
 
 /* Theme controls ---------------------------------------------------------- */
 
-.controls {
+.demo .controls {
   padding: 12px 14px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--demo-border);
 }
 
-.controls-head {
+.demo .controls-head {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
   margin-bottom: 10px;
 }
 
-.controls-head h3 {
+.demo .controls-head h3 {
   margin: 0;
   font-size: 13px;
 }
 
-.control-grid {
+.demo .control-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: 10px 14px;
 }
 
-.control {
+.demo .control {
   display: flex;
   flex-direction: column;
   gap: 4px;
   min-width: 0;
 }
 
-.control label {
+.demo .control label {
   font-size: 11px;
   font-family: var(--mono);
-  color: var(--muted);
+  color: var(--demo-muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.control input,
-.control select {
+.demo .control input,
+.demo .control select {
   font: inherit;
   font-size: 13px;
   padding: 5px 6px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--demo-border);
   border-radius: 6px;
-  background: var(--bg);
-  color: var(--text);
+  background: var(--demo-bg);
+  color: var(--demo-text);
   min-width: 0;
 }
 
-.control input[type="color"] {
+.demo .control input[type="color"] {
   padding: 2px;
   height: 30px;
   cursor: pointer;
 }
 
-.controls-note {
+.demo .controls-note {
   margin: 10px 0 0;
   font-size: 12px;
-  color: var(--warn);
-  background: var(--warn-soft);
+  color: var(--demo-warn);
+  background: var(--demo-warn-soft);
   padding: 6px 8px;
   border-radius: 6px;
 }
 
 /* Source ------------------------------------------------------------------ */
 
-#source {
+.demo #source {
   flex: 1;
   width: 100%;
   min-height: 340px;
   padding: 14px;
   border: 0;
   resize: vertical;
-  background: var(--surface);
-  color: var(--text);
+  background: var(--demo-surface);
+  color: var(--demo-text);
   font-family: var(--mono);
   font-size: 13px;
   line-height: 1.6;
   tab-size: 2;
 }
 
-#source:focus {
-  outline: 2px solid var(--accent);
+.demo #source:focus {
+  outline: 2px solid var(--demo-accent);
   outline-offset: -2px;
 }
 
 /* Output ------------------------------------------------------------------ */
 
-.tabs {
+.demo .tabs {
   display: flex;
   gap: 2px;
 }
 
-.tab {
+.demo .tab {
   padding: 5px 10px;
   border: 1px solid transparent;
   border-radius: 6px;
   background: none;
-  color: var(--muted);
+  color: var(--demo-muted);
   font: inherit;
   font-size: 13px;
   cursor: pointer;
 }
 
-.tab:hover {
-  color: var(--text);
+.demo .tab:hover {
+  color: var(--demo-text);
 }
 
-.tab[aria-selected="true"] {
-  background: var(--accent-soft);
-  border-color: var(--border);
-  color: var(--text);
+.demo .tab[aria-selected="true"] {
+  background: var(--demo-accent-soft);
+  border-color: var(--demo-border);
+  color: var(--demo-text);
   font-weight: 600;
 }
 
-.badge {
+.demo .badge {
   display: inline-block;
   min-width: 18px;
   padding: 0 5px;
   border-radius: 9px;
-  background: var(--border);
-  color: var(--text);
+  background: var(--demo-border);
+  color: var(--demo-text);
   font-size: 11px;
   font-family: var(--mono);
   text-align: center;
 }
 
-.status {
+.demo .status {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
   flex-wrap: wrap;
   padding: 8px 14px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--demo-border);
   font-size: 12px;
-  color: var(--muted);
+  color: var(--demo-muted);
   font-family: var(--mono);
 }
 
-.status[data-state="working"] {
-  color: var(--accent);
+.demo .status[data-state="working"] {
+  color: var(--demo-accent);
 }
 
-.status[data-state="error"] {
-  color: var(--error);
-  background: var(--error-soft);
+.demo .status[data-state="error"] {
+  color: var(--demo-error);
+  background: var(--demo-error-soft);
 }
 
-.stats {
+.demo .stats {
   text-align: right;
 }
 
-.views {
+.demo .views {
   min-height: 420px;
 }
 
-.view {
+.demo .view {
   height: 100%;
 }
 
-#preview {
+.demo #preview {
   display: block;
   width: 100%;
   height: 560px;
@@ -431,17 +425,16 @@ body {
   background: #fff;
 }
 
-pre {
+.demo pre {
   margin: 0;
   padding: 14px;
   max-height: 560px;
   overflow: auto;
-  font-family: var(--mono);
   font-size: 12px;
   line-height: 1.5;
 }
 
-.log {
+.demo .log {
   max-height: 560px;
   overflow: auto;
   padding: 8px 14px;
@@ -449,93 +442,81 @@ pre {
   font-size: 12px;
 }
 
-.log-entry {
+.demo .log-entry {
   padding: 7px 0;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--demo-border);
   white-space: pre-wrap;
   word-break: break-word;
 }
 
-.log-entry:last-child {
+.demo .log-entry:last-child {
   border-bottom: 0;
 }
 
-.log-where {
-  color: var(--muted);
+.demo .log-where {
+  color: var(--demo-muted);
 }
 
-.log-empty {
+.demo .log-empty {
   padding: 14px 0;
-  color: var(--muted);
+  color: var(--demo-muted);
 }
 
-.error {
+.demo .error {
   padding: 12px 14px;
-  border-top: 1px solid var(--border);
-  background: var(--error-soft);
+  border-top: 1px solid var(--demo-border);
+  background: var(--demo-error-soft);
 }
 
-.error h3 {
+.demo .error h3 {
   margin: 0 0 6px;
   font-size: 13px;
-  color: var(--error);
+  color: var(--demo-error);
 }
 
-.error pre {
+.demo .error pre {
   padding: 0;
   max-height: 240px;
-  color: var(--text);
+  color: var(--demo-text);
 }
 
 /* Notes ------------------------------------------------------------------- */
 
-.notes {
-  margin: 0 0 48px;
+.demo .notes {
+  margin: 0 0 32px;
 }
 
-.notes h2 {
+.demo .notes h2 {
   font-size: 18px;
   margin: 0 0 14px;
 }
 
-.note-grid {
+.demo .note-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: 16px;
 }
 
-.note-grid article {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
+.demo .note-grid article {
+  background: var(--demo-surface);
+  border: 1px solid var(--demo-border);
+  border-radius: var(--demo-radius);
   padding: 14px 16px;
 }
 
-.note-grid h3 {
+.demo .note-grid h3 {
   margin: 0 0 6px;
   font-size: 14px;
 }
 
-.note-grid p {
+.demo .note-grid p {
   margin: 0;
-  color: var(--muted);
+  color: var(--demo-muted);
   font-size: 13px;
 }
 
-code {
-  font-family: var(--mono);
-  font-size: 0.92em;
-}
-
-/* Footer ------------------------------------------------------------------ */
-
-.site-footer {
-  border-top: 1px solid var(--border);
-  padding: 20px 0 40px;
-  color: var(--muted);
+.demo .demo-credits {
+  margin: 0 0 40px;
+  color: var(--demo-muted);
   font-size: 13px;
-}
-
-.site-footer a {
-  color: var(--accent);
 }

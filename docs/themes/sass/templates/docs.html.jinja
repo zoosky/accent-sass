@@ -63,6 +63,8 @@
     <p class="nav-title">Elsewhere</p>
     <ul>
       <li><a href="{{ url('/demo/') }}">Browser demo</a></li>
+      {% set changelog_url = url("/changelog") %}
+      <li><a href="{{ changelog_url }}" {% if page.url == changelog_url %}class="active" aria-current="page"{% endif %}>Changelog</a></li>
       <li><a href="https://docs.rs/accent-sass">Rust API (docs.rs)</a></li>
       <li><a href="https://sass-lang.com/documentation/">Sass language</a></li>
       <li><a href="https://github.com/zoosky/accent-sass">Source</a></li>
@@ -72,7 +74,10 @@
   <article class="docs-main">
     <header>
       <h1>{{ page.title }}</h1>
-      {% if page.lead %}<p class="lead">{{ page.lead }}</p>{% endif %}
+      {# A page with no frontmatter, such as the mounted CHANGELOG.md, gets its
+         first paragraph as its lead, which would print that paragraph twice.
+         A lead the body already carries is skipped. #}
+      {% if page.lead and page.lead not in page.content %}<p class="lead">{{ page.lead }}</p>{% endif %}
     </header>
 
     <div class="prose">

@@ -1,0 +1,194 @@
+{# The browser demo, inside the site's header and footer.
+
+   The page is `content/demo/default.md`, which names this template and carries
+   no body of its own. The interface is markup here rather than content because
+   `app.js` drives it by element id: every `id` below is that script's
+   contract, and renaming one breaks the page without an error.
+
+   What the page loads is not content and is not built by Accent: `app.js`,
+   `worker.js`, `styles.css` and the generated `vendor/` directory live in
+   `docs/demo/`, and the Pages workflow copies them beside this page after the
+   build. They are referenced with `url()`, so they take the site's path
+   prefix like every other internal link. #}
+{% extends "base.html.jinja" %}
+
+{% block head %}
+  {# Pin the base URL to this page's own directory.
+
+     `app.js` fetches `vendor/...` relative to the document, and hosts disagree
+     about whether a directory URL carries a trailing slash: `accent
+     serve-static` redirects /demo/ to /demo, other static hosts the other way.
+     Without a slash those fetches resolve against the parent directory and the
+     compiler never loads. Every link the shell writes is absolute, so the base
+     only changes what the demo's own relative requests resolve against. The
+     worker is unaffected either way: it resolves against its own URL. #}
+  <script>
+    (function () {
+      var path = location.pathname.replace(/index\.html$/, "");
+      if (path.charAt(path.length - 1) !== "/") path += "/";
+      var base = document.createElement("base");
+      base.href = path;
+      document.head.appendChild(base);
+    })();
+  </script>
+  <link rel="stylesheet" href="{{ url('/demo/styles.css') }}">
+{% endblock %}
+
+{% block body %}
+<div class="demo">
+  <section class="demo-intro">
+    <div class="wrap">
+      <h1>{{ page.title }}</h1>
+      <p class="lede">
+        A Sass compiler written in Rust, built to WebAssembly. Everything below
+        compiles in this tab: no server, no Node, no network after the page
+        loads. Change a theme value and a whole design system rebuilds.
+      </p>
+      <dl class="facts" id="facts">
+        <div><dt>Module</dt><dd id="fact-size">loading</dd></div>
+        <div><dt>Engine</dt><dd id="fact-version">accent-sass</dd></div>
+        <div><dt>Reference</dt><dd>dart-sass 1.104.1</dd></div>
+      </dl>
+    </div>
+  </section>
+
+  <div class="wrap">
+    <nav class="presets" aria-label="Example">
+      <button type="button" class="preset" data-preset="bulma">
+        <span class="preset-name">Bulma</span>
+        <span class="preset-meta" id="meta-bulma">1.0.4</span>
+      </button>
+      <button type="button" class="preset" data-preset="uswds">
+        <span class="preset-name">USWDS</span>
+        <span class="preset-meta" id="meta-uswds">3.13.0</span>
+      </button>
+      <button type="button" class="preset" data-preset="playground">
+        <span class="preset-name">Playground</span>
+        <span class="preset-meta">a single stylesheet</span>
+      </button>
+    </nav>
+
+    <p class="preset-note" id="preset-note"></p>
+
+    <div class="panes">
+      <section class="pane pane-input" aria-labelledby="input-heading">
+        <div class="pane-head">
+          <h2 id="input-heading">Source</h2>
+          <div class="pane-actions">
+            <label class="inline">
+              <input type="checkbox" id="auto" checked>
+              Recompile as I type
+            </label>
+            <button type="button" id="compile" class="button">Compile</button>
+          </div>
+        </div>
+
+        <div class="controls" id="controls" hidden>
+          <div class="controls-head">
+            <h3>Theme</h3>
+            <button type="button" id="reset" class="link-button">Reset</button>
+          </div>
+          <div class="control-grid" id="control-grid"></div>
+          <p class="controls-note" id="controls-note" hidden>
+            You edited the source by hand, so these controls no longer drive
+            it. Reset to use them again.
+          </p>
+        </div>
+
+        <label class="visually-hidden" for="source">Sass source</label>
+        <textarea id="source" spellcheck="false" autocomplete="off"
+                  autocapitalize="off" wrap="off"></textarea>
+      </section>
+
+      <section class="pane pane-output" aria-labelledby="output-heading">
+        <div class="pane-head">
+          <h2 id="output-heading">Result</h2>
+          <div class="tabs" role="tablist">
+            <button type="button" role="tab" class="tab" data-tab="preview">Preview</button>
+            <button type="button" role="tab" class="tab" data-tab="css">CSS</button>
+            <button type="button" role="tab" class="tab" data-tab="warnings">
+              Warnings <span class="badge" id="badge-warnings">0</span>
+            </button>
+            <button type="button" role="tab" class="tab" data-tab="files">
+              Files <span class="badge" id="badge-files">0</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="status" id="status" data-state="idle">
+          <span id="status-text">Loading the compiler…</span>
+          <span class="stats" id="stats"></span>
+        </div>
+
+        <div class="views">
+          <div class="view" data-view="preview">
+            <iframe id="preview" title="Rendered preview" sandbox="allow-same-origin"></iframe>
+          </div>
+          <div class="view" data-view="css" hidden>
+            <pre id="css-output"><code></code></pre>
+          </div>
+          <div class="view" data-view="warnings" hidden>
+            <div id="warnings-output" class="log"></div>
+          </div>
+          <div class="view" data-view="files" hidden>
+            <div id="files-output" class="log"></div>
+          </div>
+        </div>
+
+        <div class="error" id="error" hidden>
+          <h3 id="error-title">Compile error</h3>
+          <pre id="error-body"><code></code></pre>
+        </div>
+      </section>
+    </div>
+
+    <section class="notes">
+      <h2>What this is showing</h2>
+      <div class="note-grid">
+        <article>
+          <h3>A real design system, compiled here</h3>
+          <p>
+            USWDS is 605 stylesheets and about 800 KiB of Sass. The page holds
+            the whole tree in memory and resolves every <code>@use</code>
+            against it, because the compiler's filesystem is an interface the
+            caller supplies rather than <code>std::fs</code>.
+          </p>
+        </article>
+        <article>
+          <h3>Configuration, not overrides</h3>
+          <p>
+            The theme controls rewrite the <code>@use … with (…)</code> block
+            and recompile from source, so you get the stylesheet the framework
+            would have produced. This is not a layer of CSS pasted on top.
+          </p>
+        </article>
+        <article>
+          <h3>Reads have to be synchronous</h3>
+          <p>
+            The compiler asks for a file and gets bytes back, with nothing to
+            await. An import therefore cannot be fetched while compiling, so
+            the page loads each framework bundle up front. That constraint is
+            the reason the API takes a whole file map.
+          </p>
+        </article>
+        <article>
+          <h3>Fast enough to sit behind a slider</h3>
+          <p>
+            Bulma takes a second or two here and USWDS a handful, against
+            0.35 s and 1.5 s for the native binary on the same machine. The
+            compile is doing the full job each time, not a cached or partial
+            one, which is why the timing moves with the framework you pick.
+          </p>
+        </article>
+      </div>
+    </section>
+
+    <p class="demo-credits">
+      The preview frame loads USWDS fonts and icons from jsDelivr, because
+      those are the asset paths USWDS's own settings point at.
+    </p>
+  </div>
+</div>
+
+<script type="module" src="{{ url('/demo/app.js') }}"></script>
+{% endblock %}
