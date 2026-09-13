@@ -12,7 +12,9 @@ authors = [
     "Connor Skees <39542938+ConnorSkees@users.noreply.github.com>",
     "Zoo Sky <127824+zoosky@users.noreply.github.com>",
 ]
-include = ["src", "Cargo.toml", "README.md", "LICENSE"]
+# Anchored to the crate root, as in `crates/lib`: an unanchored pattern also
+# matches the same name in any subdirectory.
+include = ["/src", "/Cargo.toml", "/README.md", "/LICENSE"]
 rust-version = "1.96.1"
 
 [lib]

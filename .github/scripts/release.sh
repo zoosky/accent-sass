@@ -181,7 +181,25 @@ for entry in "${CRATES[@]}"; do
   files=$(echo "$listing" | grep -c .)
   echo "$listing" | grep -qx 'README.md' \
     || die "$pkg would publish without a README (check its readme field and include list)"
-  printf '  %-24s %3s files, README present\n' "$pkg" "$files"
+
+  # A file git ignores has no business in a published crate: it is local build
+  # output or a scratch file. `--allow-dirty` above hides it, so a dry run would
+  # pass and then ship it. The real publish refuses it instead, naming the files
+  # as "not yet committed", which is how `crates/lib/pkg/` from a default
+  # `wasm-pack build` stopped the 0.16.0 release. Cargo writes the first three
+  # names itself, and copies the workspace Cargo.lock in.
+  dir="${entry#*:}"
+  ignored=$(echo "$listing" \
+    | grep -vxE '\.cargo_vcs_info\.json|Cargo\.toml\.orig|Cargo\.lock' \
+    | while read -r file; do
+        git check-ignore -q "$dir/$file" && echo "    $dir/$file"
+      done)
+  [ -z "$ignored" ] || {
+    echo "$ignored" >&2
+    die "$pkg would publish files git ignores (anchor its include patterns, or remove them)"
+  }
+
+  printf '  %-24s %3s files, README present, nothing ignored\n' "$pkg" "$files"
 done
 
 # `--list` only reads a file list; it never builds the packaged crate. A real
