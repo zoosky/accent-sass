@@ -34,6 +34,7 @@ accent-sass [OPTIONS] [INPUT] [OUTPUT]
 | `--no-charset` | | Never emit `@charset` or a byte-order mark, even for non-ASCII output |
 | `--no-unicode` | | Restrict error messages to ASCII characters. Does not affect the CSS |
 | `-q`, `--quiet` | | Silence `@warn`, `@debug` and deprecation warnings |
+| `--verbose` | | Report every deprecation warning. Without it, the fifth of each kind is the last one printed, and a count of the rest follows the compile |
 | `-v`, `--version` | | Print the version |
 | `-h`, `--help` | | Print help |
 
@@ -81,7 +82,7 @@ dart-sass has no equivalent.
 A flag neither compiler has is rejected: `accent-sass --bogus style.scss` is
 `error: unexpected argument '--bogus' found`.
 
-**Thirteen of dart-sass's own flags are accepted and then ignored.** Six of
+**Twelve of dart-sass's own flags are accepted and then ignored.** Six of
 them say so, because each would change what the program does if it worked, and
 silence about that is a lie -- a `--watch` that compiles once and exits looks
 exactly like a watcher that missed every change:
@@ -96,10 +97,9 @@ The six are `--update`, `--watch`, `--poll`, `-i`/`--interactive`,
 `-q` covers what the *stylesheet* says, and these report that the command line
 asked for something it will not get.
 
-The other seven pass without a word, because each already describes what this
+The other six pass without a word, because each already describes what this
 binary does. It writes no source maps, so `--no-source-map` and
 `--source-map-urls` ask for the status quo; it never writes an error
-stylesheet, never colours its output, compiles one file per run, and has no
-deprecation warnings to repeat, which covers `--no-error-css`,
-`-c`/`--no-color`, `--no-stop-on-error` and `--verbose`. dart-sass ignores
-`--precision` too.
+stylesheet, never colours its output, and compiles one file per run, which
+covers `--no-error-css`, `-c`/`--no-color` and `--no-stop-on-error`.
+dart-sass ignores `--precision` too.

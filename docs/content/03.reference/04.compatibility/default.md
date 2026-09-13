@@ -7,11 +7,11 @@ menu:
   visible: true
   order: 4
 description: >-
-  How accent-sass compares to dart-sass 1.104.0: sass-spec results, the
+  How accent-sass compares to dart-sass 1.104.1: sass-spec results, the
   framework corpus, and the known divergences.
 ---
 
-dart-sass is the reference implementation, currently **1.104.0**. A deviation
+dart-sass is the reference implementation, currently **1.104.1**. A deviation
 from it is a bug rather than a dialect, with two declared exceptions: error
 message wording and error spans.
 
@@ -35,33 +35,27 @@ does not.
 Bootstrap 5.0.2 is compiled too, but advisory: it reports the delta rather than
 gating.
 
-### USWDS is byte-identical
+### Byte-identical output
 
-Strip the comments from both outputs and USWDS 3.13.0 is identical to
-dart-sass: **33,684 lines each, zero differences.** Every selector,
-declaration, at-rule and value matches.
-
-With comments, 144 of 33,684 lines differ, and all of them are 20
-documentation-comment blocks sitting in a different place. USWDS puts a doc
-comment at the top of each rule file above that file's own `@use` rules, and
-those files emit no other top-level CSS -- so the comment *is* the module's
-CSS, and where it lands is where the module's CSS lands. dart-sass places
-module CSS while combining modules at the end of compilation; this compiler
-emits it as each module executes. The two orders agree everywhere else.
+All four frameworks compile byte-identically to dart-sass 1.104.1, comments
+included. For USWDS 3.13.0 that is **32,781 lines each, zero differences.**
+Measured 2026-09-13 with `.github/scripts/frameworks.sh`.
 
 ## The spec suite
 
 The official `sass-spec` suite, run against the release build:
 
 ```
-14266 runs, 14085 passing, 173 failures, 8 todo, 0 ignored, 0 errors
+14266 runs, 14147 passing, 111 failures, 8 todo, 0 ignored, 0 errors
 ```
 
-Measured 2026-09-11 against sass-spec `b39c32768`, the first revision carrying
-dart-sass 1.104.0's expectations. The job is advisory in CI and publishes the
-tallies rather than gating.
+Measured on macOS 2026-09-13 against sass-spec `b39c32768`, with the flags CI
+uses: `--trim-errors --ignore-warning-diffs --ignore-error-diffs`. The Linux CI
+runner reports two fewer passing, 14,145, an offset that is stable across
+commits. The job is advisory in CI and publishes the tallies rather than
+gating.
 
-The 173 remaining failures are tracked one work item at a time in
+The 111 remaining failures are tracked one work item at a time in
 [`specs/docs/features/`](https://github.com/zoosky/accent-sass/tree/master/specs/docs/features),
 ranked by how many fixtures each would unlock.
 

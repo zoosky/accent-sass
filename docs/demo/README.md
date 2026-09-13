@@ -21,7 +21,7 @@ Everything in this directory is source except `vendor/`, which is ignored.
 
 | Path | Built by | Size |
 |---|---|---:|
-| `vendor/pkg/` | `wasm-pack` | 1.69 MB wasm, 0.60 MB gzipped |
+| `vendor/pkg/` | `wasm-pack` | 1.72 MB wasm, 0.62 MB gzipped |
 | `vendor/frameworks/*.json` | `.github/scripts/demo-bundle.mjs` | 1.16 MB of JSON |
 
 They are rebuilt on every deploy rather than committed. The module changes

@@ -45,6 +45,7 @@ error messages on, warnings on, and syntax inferred from the file name.
 | `allows_charset` | `bool` | `true` | Emit `@charset` or a byte-order mark when output is non-ASCII |
 | `unicode_error_messages` | `bool` | `true` | Use non-ASCII characters in error messages |
 | `quiet` | `bool` | `false` | Silence `@warn`, `@debug` and deprecations |
+| `verbose` | `bool` | `false` | Report every deprecation warning, rather than counting those after the fifth of each kind |
 
 ## Traits
 
@@ -97,11 +98,31 @@ and `a/b` report `true` from `is_dir`, which is what the resolver needs to find
 pub trait Logger: Debug {
     fn debug(&self, location: SpanLoc, message: &str);
     fn warn(&self, location: SpanLoc, message: &str);
+    fn deprecation(&self, warning: &DeprecationWarning) { /* calls warn */ }
+    fn repetitive_deprecations_omitted(&self, count: usize) { /* nothing */ }
 }
 ```
 
 `StdLogger` writes to standard error; `NullLogger` discards. `Options::quiet`
 stops events before they reach the logger at all.
+
+`deprecation` receives a warning about a deprecated feature the stylesheet
+uses. Its default hands the message and location to `warn`, so a logger
+written before deprecation warnings existed still sees them. A
+`DeprecationWarning` carries:
+
+| Method | Returns |
+|---|---|
+| `deprecation()` | The `Deprecation`, whose `id()` is the name dart-sass prints, such as `bogus-combinators` |
+| `message()` | The message alone, which can run over several lines |
+| `location()` | The `SpanLoc` the warning is about |
+| `formatted()` | The full text dart-sass prints: banner, message, source frame and location line |
+
+The same warning at the same place is reported once. After five of one
+deprecation the rest are counted instead, and
+`repetitive_deprecations_omitted` receives the count at the end of the compile;
+`Options::verbose` reports them all. `Deprecation` is `#[non_exhaustive]`, so
+match it with a wildcard arm.
 
 ## Errors
 

@@ -26,7 +26,7 @@ Start with [Install](/guide/install).
 
 ## What it is compatible with
 
-dart-sass is the reference implementation, currently **1.104.0**. A deviation
+dart-sass is the reference implementation, currently **1.104.1**. A deviation
 from it is treated as a bug, not as a dialect, with two exceptions that are
 written down: error message wording, and the spans errors point at.
 

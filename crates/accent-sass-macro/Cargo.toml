@@ -1,6 +1,6 @@
 [package]
 name = "accent-sass-macro"
-version = "0.15.0"
+version = "0.16.0"
 edition = "2024"
 description = "Internal implementation of the accent_sass::include! macro"
 readme = "README.md"
@@ -30,7 +30,7 @@ syn = { version = "3", default-features = false, features = [
     "printing",
     "proc-macro",
 ] }
-accent_sass_compiler = { path = "../compiler", version = "=0.15.0" }
+accent_sass_compiler = { path = "../compiler", version = "=0.16.0" }
 quote = { version = "1.0.23", default-features = false }
 
 [features]

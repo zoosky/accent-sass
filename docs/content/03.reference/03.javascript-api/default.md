@@ -109,7 +109,7 @@ rewrite rather than a binding change.
 
 | Build | wasm | gzipped |
 |---|---:|---:|
-| `--features wasm-exports,random` | 1.69 MB | 0.60 MB |
+| `--features wasm-exports,random` | 1.72 MB | 0.62 MB |
 | Without `wasm-exports` | 0.22 MB | — |
 
 The second row is a module with **no compiler in it**: without the feature,
