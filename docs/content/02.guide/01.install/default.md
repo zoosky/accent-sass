@@ -28,7 +28,7 @@ accent-sass input.scss output.css
 
 ```toml
 [dependencies]
-accent-sass = "0.15.0"
+accent-sass = "0.16.0"
 ```
 
 The `commandline` feature is on by default and pulls in `clap` to build the
@@ -36,7 +36,7 @@ binary. A library dependency does not need it:
 
 ```toml
 [dependencies]
-accent-sass = { version = "0.15.0", default-features = false, features = ["random"] }
+accent-sass = { version = "0.16.0", default-features = false, features = ["random"] }
 ```
 
 Keep `random` unless you know you do not want it: dropping it removes
@@ -69,7 +69,7 @@ wasm-pack build crates/lib --release --target web --out-name index -- \
 `wasm-exports` is not a default feature, and the build is quietly useless
 without it: wasm-bindgen exports nothing, every symbol is dead code, and you
 get a 0.2 MB module with no compiler in it. With the feature, the module is
-1.69 MB, or 0.60 MB gzipped.
+1.72 MB, or 0.62 MB gzipped.
 
 [In a browser](/guide/browser) covers using it.
 

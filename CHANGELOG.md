@@ -13,6 +13,26 @@ at `0.13.4` and below are upstream's and are kept for lineage.
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-09-13
+
+Sixty merged pull requests since `0.15.0`: a JavaScript API and a C ABI for the
+WebAssembly builds, `--check` on the command line, the move of the reference
+implementation to dart-sass 1.104.1, the first deprecation warning, and a run
+of fixes that bring `@extend`, builtin calls, selectors and error positions in
+line with dart-sass.
+
+The minor version rises because four changes are breaking while the major
+version is `0`: `@extend` across a media query is an error, builtin calls are
+checked against dart-sass's parameter lists, seven inputs dart-sass refuses are
+rejected, and a selector whose combinators cannot match is omitted.
+
+Against the pinned sass-spec revision (`b39c32768`) the suite stands at 14,147
+of 14,266 passing, measured on macOS 2026-09-13; the Linux CI runner reports
+two fewer, the same offset as before. This release moved the pin
+from `4a9eea66`, which added 48 runs, so the count is not directly comparable
+with `0.15.0`'s 13,926 of 14,218. Bulma, Pico, Foundation and USWDS compile
+byte-identically to dart-sass 1.104.1.
+
 ### Added
 
 - a C ABI for WebAssembly hosts, behind the `wasi-exports` feature.
@@ -77,8 +97,10 @@ at `0.13.4` and below are upstream's and are kept for lineage.
 
 ### Changed
 
-- the reference implementation is dart-sass 1.104.0, and both of its changes
-  are followed. Exact negative zero prints as `-0` rather than `0`, so it
+- the reference implementation moves from dart-sass 1.103.1 to 1.104.1, and
+  the changes of both releases are followed. A loud comment written above
+  `@use` or `@forward` is written once, where it stands. Exact negative zero
+  prints as `-0` rather than `0`, so it
   keeps its sign when used in a CSS calculation; `math.round`, `math.ceil`,
   `math.floor` and the calculation `round()` still return `0`, because
   dart-sass rounds to an integer. A colour channel that is `NaN` or negative
@@ -118,10 +140,6 @@ at `0.13.4` and below are upstream's and are kept for lineage.
   CSS rather than in the evaluator, so `selector.parse(":is(.a > + .b)")` still
   keeps its argument. `selector.replace()` raises dart-sass's "components may
   not be empty" where it used to panic
-- the reference implementation is dart-sass 1.104.1. A loud comment written
-  above `@use` or `@forward` is written once, where it stands; 1.104.0 repeated
-  it before every module that also loaded the same module, which this compiler
-  briefly copied and no longer does
 - **Breaking: two parse errors say what dart-sass 1.104.1 says.** Where a
   selector should start but nothing does, the error is `expected end of rule.`
   rather than `expected "}".`, and text that starts no rule, such as `! {}` or

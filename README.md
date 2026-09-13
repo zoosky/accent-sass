@@ -26,7 +26,7 @@ this compiler.
 ## Install
 
 ```toml
-accent-sass = "0.15.0"
+accent-sass = "0.16.0"
 ```
 
 To track work that has not been released yet, pin a git revision instead:
@@ -111,10 +111,12 @@ USWDS from source in the browser.
 
 ## Status
 
-14,085 of 14,266 sass-spec tests pass against the pinned spec revision
-`b39c32768`, leaving 173 failures (measured 2026-09-11). CI compiles Bulma,
+14,147 of 14,266 sass-spec tests pass against the pinned spec revision
+`b39c32768`, leaving 111 failures (measured on macOS 2026-09-13; CI's Linux
+runner reports two fewer passing). CI compiles Bulma,
 Pico, Foundation and USWDS with both engines on every commit and fails on any
-colour-value difference; that corpus currently shows none.
+colour-value difference; all four currently compile byte-identically to
+dart-sass.
 
 | Job | Gates? | What it checks |
 |---|---|---|

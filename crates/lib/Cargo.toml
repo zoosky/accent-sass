@@ -1,6 +1,6 @@
 [package]
 name = "accent-sass"
-version = "0.15.0"
+version = "0.16.0"
 description = "A Sass compiler written purely in Rust"
 readme = "README.md"
 license = "MIT"
@@ -43,8 +43,8 @@ rustdoc-args = ["--cfg", "doc_cfg"]
 
 [dependencies]
 wasm-bindgen = { version = "0.2", optional = true }
-accent_sass_compiler = { path = "../compiler", version = "=0.15.0", default-features = false }
-accent-sass-macro = { path = "../accent-sass-macro", version = "0.15.0", optional = true }
+accent_sass_compiler = { path = "../compiler", version = "=0.16.0", default-features = false }
+accent-sass-macro = { path = "../accent-sass-macro", version = "0.16.0", optional = true }
 clap = { version = "4.3.10", optional = true }
 
 # Entropy for `random()` and `unique-id()` in a browser build. `getrandom`

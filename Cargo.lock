@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "accent-sass"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "accent-sass-macro",
  "accent_sass_compiler",
@@ -17,7 +17,7 @@ dependencies = [
 
 [[package]]
 name = "accent-sass-macro"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "accent_sass_compiler",
  "quote",
@@ -26,7 +26,7 @@ dependencies = [
 
 [[package]]
 name = "accent_sass_compiler"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "codemap",
  "indexmap",

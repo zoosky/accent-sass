@@ -6,7 +6,7 @@ menu:
   order: 0
 description: >-
   accent-sass is a Sass compiler written in Rust, at parity with dart-sass
-  1.104.0. It compiles Bulma, Pico, Foundation and USWDS, runs as a library or
+  1.104.1. It compiles Bulma, Pico, Foundation and USWDS, runs as a library or
   a binary, and compiles to WebAssembly so the same engine runs in a browser.
 
 # `lead` above is one of Accent's own page fields, so home.html.jinja reads it
@@ -15,7 +15,7 @@ description: >-
 # data instead of as body prose -- which also means the wording can change
 # without touching a template.
 
-eyebrow: "v0.15.0 - MIT - dart-sass 1.104.0"
+eyebrow: "v0.16.0 - MIT - dart-sass 1.104.1"
 headline: "Sass,"
 headline_accent: "in Rust."
 lead: >-
@@ -50,21 +50,21 @@ stages:
 
 figures_title: The reference implementation is the test
 figures_lead: >-
-  dart-sass 1.104.0 is the reference, and a deviation from it is a bug rather
+  dart-sass 1.104.1 is the reference, and a deviation from it is a bug rather
   than a dialect. The numbers below come from the official spec suite and from
   the framework corpus CI compiles on every commit.
 
 figures:
-  - value: "14,085"
+  - value: "14,147"
     tone: green
     label: sass-spec tests passing of 14,266
   - value: "0"
     tone: cyan
-    label: colour values differing across four frameworks
-  - value: "33,684"
+    label: lines differing across four frameworks
+  - value: "32,781"
     tone: gold
     label: lines of USWDS CSS, identical to dart-sass
-  - value: "0.60"
+  - value: "0.62"
     tone: coral
     label: MB of WebAssembly, gzipped
 
@@ -76,15 +76,16 @@ features_lead: >-
 features:
   - title: Parity is the contract
     body: >-
-      dart-sass is the reference implementation, currently 1.104.0. Where
+      dart-sass is the reference implementation, currently 1.104.1. Where
       output deliberately differs, the reason is written next to the test. A
       re-baselined expectation that nobody checked against the reference is how
       wrong behaviour gets frozen, so it is not allowed.
   - title: Real frameworks, every commit
     body: >-
       Bulma, Pico, Foundation and USWDS compile with both engines in CI, and
-      any differing colour value fails the job. USWDS is byte-identical to
-      dart-sass once comments are stripped: 33,684 lines on both sides.
+      any differing colour value fails the job. All four compile
+      byte-identically to dart-sass; for USWDS that is 32,781 lines on both
+      sides, comments included.
   - title: The filesystem is a seam
     body: >-
       <code>Options::fs</code> takes any <code>Fs</code> implementation, so a
