@@ -59,8 +59,13 @@ implementation, and is what the browser build resolves imports through.
 As a binary, intended as a drop-in for the `sass` executable:
 
 ```bash
-accent-sass input.scss
+accent-sass input.scss                # compile to stdout
+accent-sass --check app.scss app.css  # verify app.css is up to date
 ```
+
+`--check` compiles and writes nothing, exiting `3` when the output file is
+stale or missing and `1` when the stylesheet does not compile, so a CI job can
+tell "your CSS is out of date" from "your Sass is broken".
 
 As a browser package, built with `wasm-pack`:
 
