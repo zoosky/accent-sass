@@ -13,6 +13,14 @@ at `0.13.4` and below are upstream's and are kept for lineage.
 
 ## [Unreleased]
 
+### Added
+
+- the browser package is published to npm as `@zoosky/accent-sass`, at the
+  same version as the crates, starting with `0.16.0`. `release.sh` builds it,
+  runs the WebAssembly smoke scripts against it and checks what it would ship
+  before anything is published, then publishes it after the crates;
+  `--npm-only` publishes it alone for a version whose crates are already out
+
 ## [0.16.0] - 2026-09-13
 
 Sixty merged pull requests since `0.15.0`: a JavaScript API and a C ABI for the

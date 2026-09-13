@@ -67,10 +67,15 @@ accent-sass --check app.scss app.css  # verify app.css is up to date
 stale or missing and `1` when the stylesheet does not compile, so a CI job can
 tell "your CSS is out of date" from "your Sass is broken".
 
-As a browser package, built with `wasm-pack`:
+As a browser package, published to npm as
+[`@zoosky/accent-sass`](https://www.npmjs.com/package/@zoosky/accent-sass):
+
+```bash
+npm install @zoosky/accent-sass
+```
 
 ```js
-import init, { compileString } from "accent-sass";
+import init, { compileString } from "@zoosky/accent-sass";
 
 await init();
 
@@ -97,7 +102,8 @@ plus `files`, `logger`, and `quiet` for the one knob dart-sass has no name for.
 A failed compile throws an `Error` carrying `message`, `formatted`, `file`,
 `line` and `column`.
 
-Build it with:
+The package is the `web` target: an ES module with an `init()` that fetches
+the `.wasm`, for a browser or a bundler. To build it yourself instead:
 
 ```bash
 wasm-pack build crates/lib --release --target web --out-name index -- \

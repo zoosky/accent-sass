@@ -34,6 +34,9 @@ Three crates share a version and are released together: `accent-sass`,
 `accent_sass_compiler` and `accent-sass-macro`. Depend on `accent-sass`; the
 other two are its internals and its proc macro.
 
+The browser package is published to npm as `@zoosky/accent-sass`, at the same
+version as the crates.
+
 ## Stability
 
 The Sass language behaviour is the contract, and it is defined by dart-sass.
