@@ -55,6 +55,21 @@ at `0.13.4` and below are upstream's and are kept for lineage.
   keeps "your CSS is out of date" and "your Sass is broken" apart in a log;
   `2` is still clap's usage error. Writing nothing is the point of the mode:
   it reports whether a build is current without being able to change the answer
+- deprecation warnings, starting with `bogus-combinators`. A style rule whose
+  selector has a leading, trailing or repeated combinator, and an `@extend`
+  inside one, now warn as dart-sass 1.104.1 does: the same message, and a
+  source frame that marks the selector and the declaration, comment or
+  at-rule that makes it a problem. `a > {b: c}` was silently dropped from the
+  output before, and now says why. After five warnings of one deprecation the
+  rest are counted, and the count is reported at the end
+- `Logger::deprecation` and `Logger::repetitive_deprecations_omitted`, with
+  the `Deprecation` and `DeprecationWarning` types they receive. Both methods
+  have defaults, so an existing logger keeps compiling: a deprecation reaches
+  it through `Logger::warn` with the message alone, and the count is dropped.
+  `DeprecationWarning::formatted` holds the full text `StdLogger` prints
+- `Options::verbose` and `--verbose`, which report every deprecation warning
+  instead of counting the ones after the fifth. `--verbose` was accepted and
+  hidden before, and did nothing
 - `--indented` works, and is no longer hidden. It reads the entry point as the
   indented syntax whatever the file is called. That matters most for `--stdin`,
   which is the one input route with no extension to infer a syntax from, and
@@ -117,6 +132,14 @@ at `0.13.4` and below are upstream's and are kept for lineage.
 
 ### Fixed
 
+- an error points where dart-sass points. Input that ends early was reported
+  one column short, on its last character rather than just past it, and an
+  input ending in a newline highlighted the newline across the line. A missing
+  expression highlighted everything back to the start of the expression, so
+  `a {b: 1 + ;}` underlined `1 + ` where dart-sass puts one caret at the `;`.
+  As in dart-sass, an "expected" error whose place is the start of a line now
+  points at the end of the line before it, and a missing expression directly
+  after `#{` highlights the `#{`. Only the caret moved; no message changed
 - ten command-line flags consumed the argument after them. `--indented`,
   `--update`, `--no-error-css`, `--no-source-map`, `--embed-sources`,
   `--embed-source-map`, `--watch`, `--poll`, `--no-stop-on-error` and

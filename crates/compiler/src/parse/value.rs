@@ -626,9 +626,12 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
                 kind: '\u{80}'..=std::char::MAX,
                 ..
             }) => self.parse_identifier_like(parser),
+            // An empty span where the expression should start, as dart-sass's
+            // `scanner.error` gives, rather than one reaching back over what
+            // came before it.
             Some(..) | None => Err((
                 "Expected expression.",
-                parser.toks_mut().span_from(self.start),
+                parser.toks().current_span().subspan(0, 0),
             )
                 .into()),
         }

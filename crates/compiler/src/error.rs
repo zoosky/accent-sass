@@ -49,6 +49,21 @@ impl SassError {
         }
     }
 
+    /// Replaces the span of a raw error, leaving any other error as it is.
+    ///
+    /// `adjust` receives the message and the current span. The parser uses
+    /// this to move an error span after the fact, as dart-sass does in
+    /// `Parser.wrapSpanFormatException`.
+    pub(crate) fn adjust_raw_span(
+        mut self: Box<Self>,
+        adjust: impl FnOnce(&str, Span) -> Span,
+    ) -> Box<Self> {
+        if let SassErrorKind::Raw(message, span) = &mut self.kind {
+            *span = adjust(message, *span);
+        }
+        self
+    }
+
     pub(crate) fn raw(self) -> (String, Span) {
         match self.kind {
             SassErrorKind::Raw(string, span) => (string, span),
@@ -157,9 +172,14 @@ impl Display for SassError {
             padding,
             third_bar,
             vec![' '; loc.begin.column].iter().collect::<String>(),
-            vec!['^'; loc.end.column.max(loc.begin.column) - loc.begin.column.min(loc.end.column)]
-                .iter()
-                .collect::<String>()
+            // An empty span, such as the end of the input, still gets a caret.
+            vec![
+                '^';
+                (loc.end.column.max(loc.begin.column) - loc.begin.column.min(loc.end.column))
+                    .max(1)
+            ]
+            .iter()
+            .collect::<String>()
         )?;
         writeln!(f, "{}{}", padding, fourth_bar)?;
 

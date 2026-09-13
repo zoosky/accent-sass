@@ -102,6 +102,7 @@ impl CssStmt {
                     params: at_rule.params.clone(),
                     body: Vec::new(),
                     has_body: at_rule.has_body,
+                    span: at_rule.span,
                 },
                 *is_group_end,
             ),

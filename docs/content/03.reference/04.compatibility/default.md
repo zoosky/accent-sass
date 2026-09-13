@@ -95,6 +95,24 @@ What surrounds a `@warn` message does not. This compiler writes
 `Warning: ...` above an `./file:line:column` location, where dart-sass writes
 `WARNING: ...` above an indented stack trace. Do not match on those two lines.
 
+### Deprecation warnings
+
+One deprecation is reported so far, `bogus-combinators`: a style rule whose
+selector has a leading, trailing or repeated combinator, and an `@extend`
+inside one. Its banner, message and source frame match dart-sass 1.104.1.
+
+The line below the frame does not always. dart-sass writes a stack trace;
+this compiler writes the file, line and column, followed by
+`root stylesheet` only when that is the whole trace: a warning from the entry
+stylesheet, outside any mixin or function. A warning from a module names the
+module by the path it was loaded from, where dart-sass prints it relative to
+the working directory.
+
+Not reported yet: the other deprecations dart-sass has, including `import`
+for `@import` and `global-builtin` for global functions, and the
+`bogus-combinators` warning the selector functions give, such as
+`$extender: > is not valid CSS.` from `selector.extend()`.
+
 ### Error messages and spans
 
 Wording may change between bugfix versions, and which characters an error

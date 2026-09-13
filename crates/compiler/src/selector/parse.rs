@@ -125,9 +125,14 @@ impl SelectorParser {
     /// before this selector.
     fn parse_complex_selector(&mut self, line_break: bool) -> SassResult<ComplexSelector> {
         let mut components = Vec::new();
+        // The token range the components cover, which leaves out whitespace
+        // on either side, as dart-sass's `span.trimRight()` does.
+        let mut start = None;
+        let mut end = 0;
 
         loop {
             self.whitespace(false)?;
+            let component_start = self.toks.cursor();
 
             // todo: can we do while let Some(..) = self.toks.peek() ?
             match self.toks.peek() {
@@ -176,6 +181,9 @@ impl SelectorParser {
                 }
                 None => break,
             }
+
+            start.get_or_insert(component_start);
+            end = self.toks.cursor();
         }
 
         if components.is_empty() {
@@ -193,7 +201,8 @@ impl SelectorParser {
             return Err(("expected selector.", self.span).into());
         }
 
-        Ok(ComplexSelector::new(components, line_break))
+        let span = start.map(|start| self.toks.span_between(start, end));
+        Ok(ComplexSelector::new(components, line_break).with_span(span))
     }
 
     fn parse_compound_selector(&mut self) -> SassResult<CompoundSelector> {

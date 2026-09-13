@@ -36,6 +36,14 @@ passing, and one higher for gap 2 -- 36 rather than 35 -- for the same reason.
 
 Gap 1, the deprecation warnings, is open.
 
+**Update, 2026-09-13:** the facility exists now, with one deprecation,
+`bogus-combinators` (see [item 15](15-bogus-combinators.md)). A deprecation
+is reported through `Logger::deprecation` as a `DeprecationWarning`, with
+dart-sass's banner, message, source frame and five-repetition limit. None of
+the calculation deprecations below is implemented yet; adding one is a new
+`Deprecation` variant and a call to `Visitor::emit_deprecation`. The "no
+deprecation warnings at all" description below is as measured before that.
+
 ## Gap 1: no deprecation warnings at all
 
 ### Current behavior

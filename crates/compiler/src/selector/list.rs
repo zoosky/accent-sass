@@ -241,10 +241,14 @@ impl SelectorList {
                                         components,
                                         complex.line_break || parent_complex.line_break,
                                     )
+                                    .with_span(complex.span)
                                 })
                                 .collect());
                         }
 
+                        // A resolved selector points where its nested part
+                        // was written, as it does in dart-sass.
+                        let span = complex.span;
                         let mut new_complexes: Vec<Vec<ComplexSelectorComponent>> =
                             vec![Vec::new()];
                         let mut line_breaks = vec![false];
@@ -290,6 +294,7 @@ impl SelectorList {
                             .map(|new_complex| {
                                 i += 1;
                                 ComplexSelector::new(new_complex, line_breaks[i - 1])
+                                    .with_span(span)
                             })
                             .collect())
                     })

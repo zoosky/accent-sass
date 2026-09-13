@@ -71,7 +71,7 @@ pub use crate::error::{
     PublicSassErrorKind as ErrorKind, SassError as Error, SassResult as Result,
 };
 pub use crate::fs::{Fs, NullFs, StdFs};
-pub use crate::logger::{Logger, NullLogger, StdLogger};
+pub use crate::logger::{Deprecation, DeprecationWarning, Logger, NullLogger, StdLogger};
 pub use crate::memory_fs::MemoryFs;
 pub use crate::options::{InputSyntax, Options, OutputStyle};
 pub use crate::{builtin::Builtin, evaluate::Visitor};
@@ -105,6 +105,7 @@ mod context_flags;
 mod error;
 mod evaluate;
 mod fs;
+mod highlight;
 mod interner;
 mod lexer;
 mod logger;
@@ -236,6 +237,7 @@ pub fn from_string_with_file_name<P: AsRef<Path>>(
         Ok(_) => {}
         Err(e) => return Err(raw_to_parse_error(&map, *e, options.unicode_error_messages)),
     }
+    visitor.summarize_deprecations();
     let stmts = match visitor.finish() {
         Ok(stmts) => stmts,
         Err(e) => return Err(raw_to_parse_error(&map, *e, options.unicode_error_messages)),
