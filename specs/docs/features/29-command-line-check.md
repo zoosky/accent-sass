@@ -13,6 +13,10 @@ This item adds `--check`, and repairs three defects found while measuring the
 existing command line. Two of the three are older than the check mode and
 would be worth fixing on their own.
 
+Two review rounds followed. [Decisions taken in
+review](#decisions-taken-in-review) records what they changed, and the one
+suggestion that was not taken.
+
 ## The constraint that shapes the design
 
 **The binary must stay a drop-in for `sass`.** Three things drive it by that
@@ -97,9 +101,15 @@ The second is the one a CI job wants: it answers "is the committed CSS current"
 without a build step, a temporary file or a `diff` invocation.
 
 On a mismatch it names the first differing line and prints both versions of
-it. It does not diff the whole file. The mode answers *is this current*, and
-one line is enough to separate a stale build from a wrong one; a full diff is
-what `diff` is for.
+it, quoted. It does not diff the whole file. The mode answers *is this
+current*, and one line is enough to separate a stale build from a wrong one;
+a full diff is what `diff` is for.
+
+The quotes carry weight. Trailing whitespace, a tab where spaces were, a stray
+byte-order mark: each prints as nothing, so without a visible boundary the two
+lines are the same picture and the one diagnostic this mode exists for tells
+the reader nothing. A difference that is only whitespace is named outright as
+well.
 
 ### Exit status
 
@@ -116,8 +126,16 @@ a check mode that collapses them makes the log lie about which happened. 2 is
 clap's, so 3 is the first free code.
 
 A missing output file is 3 rather than 1: under `--check` it means the build
-has not run, not that anything failed. A file that exists and cannot be read
-is 1, because that is a real I/O failure.
+has not run, not that anything failed. A missing *directory* above it is 3 for
+the same reason, but it does not get the same words. This binary writes a file
+without creating the directory above it, so the usual "run without `--check` to
+create it" would send the reader to a run that exits 1 with `No such file or
+directory`. It names the missing directory instead.
+
+A file that exists and cannot be read is 1, because that is a real I/O failure.
+A file that is not valid UTF-8 is 3 rather than 1: compiled CSS is always
+UTF-8, so such a file cannot be what this stylesheet produces, which makes it
+stale rather than unreadable.
 
 ## What the repair does, flag by flag
 
@@ -160,6 +178,44 @@ already getting is noise.
   succeeds, which is defect 3 closed, but a write that fails part way through
   still leaves a partial file. Writing to a temporary file and renaming would
   close that too; it is a different failure, far rarer, and out of scope here.
+
+## Decisions taken in review
+
+Two review rounds followed the first implementation. The first found four
+defects, fixed in #102 before it merged; the second found four more, fixed in
+#104. Two of the eight were judgment calls worth recording.
+
+**A missing parent directory stays 3, against the review's suggestion of 1.**
+The reviewer was right that the arm was wrong: it printed "Run without
+`--check` to create it", advice that cannot work, because the binary does not
+create the directory above the file it writes. But the exit code was not the
+error. A file that is not there means the build has not run, which is what 3
+says; 1 asserts the stylesheet is broken, and it compiles perfectly well.
+Collapsing those two is the confusion the separate codes exist to prevent, so
+the fix belonged in the message.
+
+**`--stdin <file>` overwrites that file, and is deliberately not guarded.**
+Under `--stdin` the lone positional is the destination, as in dart-sass. That
+is correct, and it is also destructive to anyone who relied on the earlier
+behaviour of reading the positional as the input: `cat x.scss | accent-sass
+--stdin style.scss` used to compile `style.scss`, and now truncates it.
+Verified -- a 38-byte stylesheet went to zero.
+
+Refusing to write over a `.scss` file would close that, and was rejected. This
+project treats a deviation from the reference implementation as a bug, and
+dart-sass writes there without complaint. The hazard is a migration one,
+specific to this fork's earlier defect rather than to the interface, so it
+belongs in the upgrade notes rather than in the code: the CHANGELOG records it
+as breaking.
+
+The other six were straightforward. `--stdin --check app.css` compiled
+`app.css` and compared nothing, exiting 0 -- a CI job written that way passed
+unconditionally, which is the failure the whole mode exists to prevent. A CRLF
+file was blamed on a trailing newline. A non-UTF-8 file exited 1 rather than 3.
+An invisible difference printed two identical-looking lines. And twice the
+guide's own CI example collapsed the exit codes it had just finished arguing
+for, first through `|| echo "stale"` and then by routing clap's 2 into the arm
+that blames the stylesheet.
 
 ## Acceptance criteria
 
