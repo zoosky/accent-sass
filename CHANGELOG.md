@@ -20,6 +20,9 @@ at `0.13.4` and below are upstream's and are kept for lineage.
   runs the WebAssembly smoke scripts against it and checks what it would ship
   before anything is published, then publishes it after the crates;
   `--npm-only` publishes it alone for a version whose crates are already out
+- the crates and the npm package name the documentation site,
+  <https://zoosky.github.io/accent-sass/>, as their homepage, so crates.io and
+  npm link to it. It takes effect with the next published version
 
 ## [0.16.0] - 2026-09-13
 

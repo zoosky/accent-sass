@@ -7,6 +7,7 @@ license = "MIT"
 categories = ["command-line-utilities", "web-programming"]
 keywords = ["scss", "sass", "css", "web"]
 repository = "https://github.com/zoosky/accent-sass"
+homepage = "https://zoosky.github.io/accent-sass/"
 authors = [
     "Connor Skees <39542938+ConnorSkees@users.noreply.github.com>",
     "Zoo Sky <127824+zoosky@users.noreply.github.com>",
