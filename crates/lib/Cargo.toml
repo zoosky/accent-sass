@@ -12,13 +12,16 @@ authors = [
     "Zoo Sky <127824+zoosky@users.noreply.github.com>",
 ]
 edition = "2024"
+# Patterns follow .gitignore rules, so an unanchored "README.md" also matches
+# a README.md in any subdirectory. The leading "/" keeps each one at the crate
+# root; without it `wasm-pack`'s default output in `pkg/` was packaged too.
 include = [
-    "src",
-    "Cargo.toml",
-    "README.md",
-    "CHANGELOG.md",
-    "Cargo.lock",
-    "LICENSE",
+    "/src",
+    "/Cargo.toml",
+    "/README.md",
+    "/CHANGELOG.md",
+    "/Cargo.lock",
+    "/LICENSE",
 ]
 default-run = "accent-sass"
 rust-version = "1.96.1"
