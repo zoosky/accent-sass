@@ -28,6 +28,15 @@ content:
   # to `/guide`.
   md_extension_redirects: false
 
+  # The root CHANGELOG.md, surfaced as the /changelog page without a copy: a
+  # single-file mount reads the file on every build, so the site cannot drift
+  # from it. Its `# Changelog` heading becomes the page title and is stripped
+  # from the body. The path is relative to this file.
+  mounts:
+    - source: ../CHANGELOG.md
+      mount: /changelog
+      default_template: docs
+
 theme:
   name: "sass"
   directory: "./themes"
@@ -105,7 +114,7 @@ llms:
   enabled: true
   description: |
     accent-sass is a Sass compiler written in Rust, at parity with dart-sass
-    1.104.0. It is a fork of connorskees/grass that carries the modern Dart
+    1.104.1. It is a fork of connorskees/grass that carries the modern Dart
     Sass features upstream has not released. It runs as a library, as a
     command-line binary, and in a browser through WebAssembly. These pages
     cover installation, the command line, the Rust API, the browser API, and

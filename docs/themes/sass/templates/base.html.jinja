@@ -1,9 +1,9 @@
 {# The shell every page shares.
 
    The navigation is written out rather than looped over `pages`, because part
-   of it leaves the site -- the demo is a static page the CMS does not own, and
-   docs.rs and GitHub are elsewhere entirely. Five links do not need a data
-   structure. #}
+   of it leaves the site -- docs.rs and GitHub are elsewhere entirely -- and the
+   demo and the changelog are deliberately kept out of the generated menu. Six
+   links do not need a data structure. #}
 <!DOCTYPE html>
 <html lang="{{ page.language or 'en' }}" dir="{{ page.direction or 'ltr' }}">
 
@@ -57,10 +57,8 @@
       <nav class="site-nav" aria-label="Main">
         <a href="{{ url('/guide') }}" {% if page.url and '/guide' in page.url %}class="active"{% endif %}>Guide</a>
         <a href="{{ url('/reference') }}" {% if page.url and '/reference' in page.url %}class="active"{% endif %}>Reference</a>
-        {# Not `url()`-wrapped by accident: the demo is a static directory the
-           workflow copies into the build output, so it is a real path on this
-           site and takes the same prefix every other internal link does. #}
         <a href="{{ url('/demo/') }}" {% if page.url and '/demo' in page.url %}class="active"{% endif %}>Demo</a>
+        <a class="hide-sm{% if page.url and '/changelog' in page.url %} active{% endif %}" href="{{ url('/changelog') }}">Changelog</a>
         <a class="ext hide-sm" href="https://docs.rs/accent-sass">API</a>
         <a class="ext" href="https://github.com/zoosky/accent-sass">GitHub</a>
 
@@ -149,7 +147,7 @@
             <li><a href="https://github.com/zoosky/accent-sass">Source</a></li>
             <li><a href="https://crates.io/crates/accent-sass">crates.io</a></li>
             <li><a href="https://docs.rs/accent-sass">docs.rs</a></li>
-            <li><a href="https://github.com/zoosky/accent-sass/blob/master/CHANGELOG.md">Changelog</a></li>
+            <li><a href="{{ url('/changelog') }}">Changelog</a></li>
             <li><a href="https://sass-lang.com/documentation/">Sass</a></li>
           </ul>
         </div>
