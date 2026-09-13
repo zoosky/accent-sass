@@ -11,8 +11,8 @@ description: >-
   CompileOptions, CompileResult and the error shape.
 ---
 
-Built with `wasm-pack` for the `web` target; see
-[Install](/guide/install#the-browser-package). The package ships an
+Published to npm as `@zoosky/accent-sass`, built with `wasm-pack` for the `web`
+target; see [Install](/guide/install#the-browser-package). The package ships an
 `index.d.ts` with real types.
 
 Option names follow dart-sass's JavaScript API wherever the two have a name for

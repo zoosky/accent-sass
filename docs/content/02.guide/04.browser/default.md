@@ -17,12 +17,15 @@ The compiler builds to `wasm32-unknown-unknown` and exposes a JavaScript API
 shaped after dart-sass's. The [demo](/demo/) compiles Bulma and USWDS from
 source in the page, with nothing sent anywhere.
 
-Build the package first -- see [Install](/guide/install#the-browser-package).
+Install the package with `npm install @zoosky/accent-sass`, or build it
+yourself -- see [Install](/guide/install#the-browser-package). The examples
+import it by name, which needs a bundler or an import map; with a local build
+and neither, import `./pkg/index.js` instead.
 
 ## Compile a single stylesheet
 
 ```js
-import init, { compileString } from "./pkg/index.js";
+import init, { compileString } from "@zoosky/accent-sass";
 
 await init();
 
@@ -87,7 +90,7 @@ are not blocked:
 
 ```js
 // worker.js
-import init, { compileString } from "./pkg/index.js";
+import init, { compileString } from "@zoosky/accent-sass";
 const ready = init();
 
 self.onmessage = async ({ data }) => {
