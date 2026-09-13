@@ -54,14 +54,21 @@
     <div class="container">
       <a class="wordmark" href="{{ url('/') }}">accent<span class="mark">-</span>sass</a>
 
+      {# The links and the two buttons are separate groups so a narrow screen
+         can lay them out differently: the buttons stay beside the wordmark,
+         and the links take a row of their own that scrolls sideways. Every
+         link stays reachable on a phone that way, where hiding some did not
+         make the rest fit. #}
       <nav class="site-nav" aria-label="Main">
         <a href="{{ url('/guide') }}" {% if page.url and '/guide' in page.url %}class="active"{% endif %}>Guide</a>
         <a href="{{ url('/reference') }}" {% if page.url and '/reference' in page.url %}class="active"{% endif %}>Reference</a>
         <a href="{{ url('/demo/') }}" {% if page.url and '/demo' in page.url %}class="active"{% endif %}>Demo</a>
-        <a class="hide-sm{% if page.url and '/changelog' in page.url %} active{% endif %}" href="{{ url('/changelog') }}">Changelog</a>
-        <a class="ext hide-sm" href="https://docs.rs/accent-sass">API</a>
+        <a href="{{ url('/changelog') }}" {% if page.url and '/changelog' in page.url %}class="active"{% endif %}>Changelog</a>
+        <a class="ext" href="https://docs.rs/accent-sass">API</a>
         <a class="ext" href="https://github.com/zoosky/accent-sass">GitHub</a>
+      </nav>
 
+      <div class="site-tools">
         <button type="button" class="icon-btn search-trigger" id="search-trigger"
                 aria-label="Search" aria-expanded="false" aria-controls="search-overlay">
           <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5 14 14"/></svg>
@@ -76,7 +83,7 @@
           <svg class="icon-sun" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="3.2"/><path d="M8 .8v1.8M8 13.4v1.8M15.2 8h-1.8M2.6 8H.8M13.09 2.91l-1.27 1.27M4.18 11.82l-1.27 1.27M13.09 13.09l-1.27-1.27M4.18 4.18 2.91 2.91"/></svg>
           <svg class="icon-moon" viewBox="0 0 16 16" aria-hidden="true"><path d="M13.5 9.6A5.8 5.8 0 0 1 6.4 2.5a5.8 5.8 0 1 0 7.1 7.1Z"/></svg>
         </button>
-      </nav>
+      </div>
     </div>
   </header>
 
@@ -158,6 +165,26 @@
         built with it -- including this stylesheet, which Accent compiled with
         accent-sass. The <a href="{{ url('/demo/') }}">demo</a> runs the same
         compiler in your browser.
+      </p>
+
+      {# Which build a reader is looking at. `accent.version_string` names the
+         Accent binary that rendered the page and its git hash, for example
+         `0.25.1 (abc1234)`. The date is when the site was built, which here is
+         when a change was last deployed: the Pages workflow rebuilds on every
+         change to the docs, the theme, the compiler or CHANGELOG.md. File
+         modification dates are not used, because a CI checkout gives every
+         file the time of the checkout.
+
+         `site.built_at` is an ISO 8601 timestamp such as `2026-09-13T16:00:14Z`.
+         The `date` filter passes it through unformatted, so the date is its
+         first ten characters, which reads the same under every Accent release.
+         v0.25.1, the release the workflow pins, renders `site.built_at` though
+         its documentation only lists it from v0.26; `site.last_modified` is the
+         fallback if a release ever omits it. #}
+      {% set updated = site.built_at or site.last_modified %}
+      <p class="build-info">
+        Built with Accent CMS {{ accent.version_string }}{% if updated %} · Last updated
+        <time datetime="{{ updated }}">{{ updated[:10] }}</time>{% endif %}
       </p>
     </div>
   </footer>
