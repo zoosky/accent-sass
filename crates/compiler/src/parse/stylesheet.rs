@@ -200,17 +200,32 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
         // Allow a byte-order mark at the beginning of the document.
         self.scan_char('\u{feff}');
 
-        style_sheet.body = self.parse_statements(|parser| {
-            if parser.next_matches("@charset") {
-                parser.expect_char('@')?;
-                parser.expect_identifier("charset", false)?;
-                parser.whitespace(false)?;
-                parser.parse_string()?;
-                return Ok(None);
-            }
+        style_sheet.body = self
+            .parse_statements(|parser| {
+                if parser.next_matches("@charset") {
+                    parser.expect_char('@')?;
+                    parser.expect_identifier("charset", false)?;
+                    parser.whitespace(false)?;
+                    parser.parse_string()?;
+                    return Ok(None);
+                }
 
-            Ok(Some(parser.parse_statement()?))
-        })?;
+                Ok(Some(parser.parse_statement()?))
+            })
+            // dart-sass's `wrapSpanFormatException` moves an empty span on an
+            // "expected" error back to the line that is missing something.
+            .map_err(|error| {
+                error.adjust_raw_span(|message, span| {
+                    if message
+                        .get(..8)
+                        .is_some_and(|start| start.eq_ignore_ascii_case("expected"))
+                    {
+                        self.toks().first_newline_before(span)
+                    } else {
+                        span
+                    }
+                })
+            })?;
 
         for (idx, child) in style_sheet.body.iter().enumerate() {
             match child {
@@ -2050,10 +2065,37 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
     }
 
     fn parse_single_interpolation(&mut self) -> SassResult<Interpolation> {
+        let start = self.toks().cursor();
         self.expect_char('#')?;
         self.expect_char('{')?;
+        let after_open = self.toks().cursor();
+        let open_span = self.toks_mut().span_from(start);
+        let after_open_span = self.toks().current_span();
         self.whitespace(true)?;
-        let contents = self.parse_expression(None, true, None, None)?;
+        let moved = self.toks().cursor() != after_open;
+
+        // dart-sass consumes `#{` with `scanner.expect`, and a `scanner.error`
+        // with no position of its own highlights the last match for as long as
+        // the scanner has not moved. So a missing expression right after `#{`
+        // highlights `#{`; after whitespace it points where the expression
+        // should start.
+        let contents = self
+            .parse_expression(None, true, None, None)
+            .map_err(|error| {
+                if moved {
+                    return error;
+                }
+                error.adjust_raw_span(|message, span| {
+                    if message == "Expected expression."
+                        && span.len() == 0
+                        && span.low() == after_open_span.low()
+                    {
+                        open_span
+                    } else {
+                        span
+                    }
+                })
+            })?;
         self.expect_char('}')?;
 
         if self.is_plain_css() {
@@ -2816,7 +2858,10 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
                 self.parse_interpolated_declaration_value(false, true, true, false, true, false)?;
 
             if unknown.contents.is_empty() {
-                return Err(("expected end of rule.", self.toks().current_span()).into());
+                // Empty, like dart-sass's `scanner.error`, so the span moves
+                // back to the end of the previous line when a newline precedes.
+                let span = self.toks().current_span().subspan(0, 0);
+                return Err(("expected end of rule.", span).into());
             }
 
             return Err((

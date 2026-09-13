@@ -117,6 +117,14 @@ at `0.13.4` and below are upstream's and are kept for lineage.
 
 ### Fixed
 
+- an error points where dart-sass points. Input that ends early was reported
+  one column short, on its last character rather than just past it, and an
+  input ending in a newline highlighted the newline across the line. A missing
+  expression highlighted everything back to the start of the expression, so
+  `a {b: 1 + ;}` underlined `1 + ` where dart-sass puts one caret at the `;`.
+  As in dart-sass, an "expected" error whose place is the start of a line now
+  points at the end of the line before it, and a missing expression directly
+  after `#{` highlights the `#{`. Only the caret moved; no message changed
 - ten command-line flags consumed the argument after them. `--indented`,
   `--update`, `--no-error-css`, `--no-source-map`, `--embed-sources`,
   `--embed-source-map`, `--watch`, `--poll`, `--no-stop-on-error` and

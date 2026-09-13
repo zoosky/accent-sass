@@ -41,24 +41,62 @@ impl Lexer {
         matches!(self.peek(), Some(Token { kind, .. }) if kind == c)
     }
 
-    /// Gets the span of the character at the given index. If the index is out of
-    /// bounds, it returns the span of the last character. If the input is empty,
-    /// it returns an empty span
+    /// Gets the span of the character at the given index.
+    ///
+    /// Past the last character it returns an empty span at the end of the
+    /// input, which is where dart-sass points an error about input that ended
+    /// too early. If the input is empty, that is an empty span at its start.
     fn span_at_index(&self, idx: usize) -> Span {
         if self.is_expanded {
             return self.entire_span;
         }
 
         let (start, len) = match self.buf.get(idx) {
-            Some(tok) => (tok.pos, tok.kind.len_utf8()),
+            Some(tok) => (tok.pos, tok.kind.len_utf8() as u32),
             None => match self.buf.last() {
-                Some(tok) => (tok.pos, tok.kind.len_utf8()),
+                Some(tok) => (tok.pos + tok.kind.len_utf8() as u32, 0),
                 None => (0, 0),
             },
         };
 
         self.entire_span
-            .subspan(start as u64, start as u64 + len as u64)
+            .subspan(u64::from(start), u64::from(start + len))
+    }
+
+    /// Moves an empty error span back to the line where the problem is.
+    ///
+    /// If only whitespace separates `span` from the previous non-whitespace
+    /// character, and that whitespace holds a newline, this returns an empty
+    /// span at the last such newline; otherwise it returns `span`. So a
+    /// missing token reported at the start of the next line, or at the end of
+    /// input after a trailing newline, points at the end of the line that
+    /// needed it. A port of dart-sass's `Parser._firstNewlineBefore`.
+    ///
+    /// A non-empty span, or one in a lexer over interpolated text whose
+    /// offsets do not map to the source, is returned unchanged.
+    pub fn first_newline_before(&self, span: Span) -> Span {
+        if self.is_expanded || span.len() != 0 || !self.entire_span.contains(span) {
+            return span;
+        }
+
+        let offset = (span.low() - self.entire_span.low()) as u32;
+        let mut last_newline = None;
+
+        for tok in self.buf.iter().rev().filter(|tok| tok.pos < offset) {
+            match tok.kind {
+                '\n' => last_newline = Some(tok.pos),
+                ' ' | '\t' => {}
+                _ => {
+                    return match last_newline {
+                        Some(pos) => self.entire_span.subspan(u64::from(pos), u64::from(pos)),
+                        None => span,
+                    };
+                }
+            }
+        }
+
+        // Nothing but whitespace precedes the span.
+        span
     }
 
     pub fn span_from(&self, start: usize) -> Span {
