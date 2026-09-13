@@ -144,5 +144,5 @@ test!(
 );
 error!(
     missing_closing_curly_brace,
-    "@while false {", "Error: expected \"}\"."
+    "@while false {", "Error: expected end of rule."
 );

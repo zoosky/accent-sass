@@ -124,7 +124,7 @@ error!(
 error!(no_condition, "@if{}", "Error: Expected expression.");
 error!(
     nothing_after_open_curly,
-    "@if foo {", "Error: expected \"}\"."
+    "@if foo {", "Error: expected end of rule."
 );
 error!(
     first_condition_error,

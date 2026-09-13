@@ -234,7 +234,7 @@ error!(
 );
 error!(
     body_missing_closing_curly_brace,
-    "@mixin foo() {", "Error: expected \"}\"."
+    "@mixin foo() {", "Error: expected end of rule."
 );
 test!(
     include_empty_args_no_semicolon,
