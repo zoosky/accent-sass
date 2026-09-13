@@ -132,7 +132,12 @@ at `0.13.4` and below are upstream's and are kept for lineage.
   input, so `accent-sass --stdin out.css` tried to compile `out.css` and failed
   with `No such file or directory` rather than writing the CSS it read from
   standard input, which is what dart-sass does. A second positional alongside
-  `--stdin` is refused now rather than silently ignored
+  `--stdin` is refused now rather than silently ignored. **This overwrites the
+  named file**, which is what dart-sass does and what the old behaviour did not:
+  `cat x.scss | accent-sass --stdin style.scss` used to compile `style.scss` and
+  ignore standard input, and now truncates it and writes the compiled CSS there.
+  Redirect to the destination instead if the positional was standing in for the
+  input
 - a failed compile truncated the output file. `accent-sass style.scss app.css`
   opened `app.css` with `truncate(true)` before running the compile, so a
   stylesheet that stopped compiling left an empty `app.css` behind. It

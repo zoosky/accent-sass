@@ -412,8 +412,22 @@ fn check(css: &str, output: Option<&str>) -> ExitCode {
         // Under `--check`, absent means the build has not run rather than that
         // anything failed. A file that exists and cannot be read is a real I/O
         // failure, and keeps the error code.
+        // Still stale rather than an error: a file that is not there means the
+        // build has not run, which is exactly what 3 says. Only the advice needs
+        // care. This binary writes a file but does not create the directory
+        // above it, so telling someone to drop `--check` when the parent is
+        // missing sends them to a run that fails with `No such file or
+        // directory`, and the advice would be provably false.
         Err(e) if e.kind() == ErrorKind::NotFound => {
-            eprintln!("{path} does not exist. Run without --check to create it.");
+            match Path::new(path).parent() {
+                Some(parent) if !parent.as_os_str().is_empty() && !parent.is_dir() => {
+                    eprintln!(
+                        "{path} does not exist, and neither does {}.",
+                        parent.display()
+                    );
+                }
+                _ => eprintln!("{path} does not exist. Run without --check to create it."),
+            }
             return ExitCode::from(EXIT_STALE);
         }
         Err(e) => {
@@ -440,8 +454,17 @@ fn report_difference(existing: &str, css: &str) {
     match first_difference(existing, css) {
         Some((number, on_disk, compiled)) => {
             eprintln!("  first difference on line {number}:");
-            eprintln!("    on disk:  {}", on_disk.unwrap_or("<end of file>"));
-            eprintln!("    compiled: {}", compiled.unwrap_or("<end of file>"));
+            eprintln!("    on disk:  {}", quoted(on_disk));
+            eprintln!("    compiled: {}", quoted(compiled));
+            // Trailing whitespace, a tab where spaces were, a stray byte-order
+            // mark: each prints as nothing, so without a word here the two lines
+            // above are the same picture and the one diagnostic this mode exists
+            // for tells the reader nothing.
+            if let (Some(on_disk), Some(compiled)) = (on_disk, compiled)
+                && on_disk.trim() == compiled.trim()
+            {
+                eprintln!("  they differ only in whitespace.");
+            }
         }
         // `str::lines` strips a carriage return along with the newline, so two
         // files differing only in their line endings have no differing line.
@@ -451,6 +474,17 @@ fn report_difference(existing: &str, css: &str) {
             eprintln!("  every line matches; the files differ in their line endings");
         }
         None => eprintln!("  every line matches; the files differ in a trailing newline"),
+    }
+}
+
+/// Quote a line so that trailing whitespace has a visible boundary.
+///
+/// The quotes are the point: `  color: red; ` and `  color: red;` are the same
+/// picture without them.
+fn quoted(line: Option<&str>) -> String {
+    match line {
+        Some(line) => format!("\"{line}\""),
+        None => "<end of file>".to_owned(),
     }
 }
 

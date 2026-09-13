@@ -55,13 +55,16 @@ accent-sass --check -I node_modules app.scss app.css
 case $? in
   0) ;;
   3) echo "app.css is stale; run the build" >&2; exit 1 ;;
+  2) echo "the accent-sass command line is wrong" >&2; exit 1 ;;
   *) echo "app.scss does not compile" >&2; exit 1 ;;
 esac
 ```
 
 Test for `3` rather than for any non-zero status. `|| echo "stale"` would
 report a stylesheet that does not compile as a stale file, which is the
-confusion the two codes exist to prevent.
+confusion the two codes exist to prevent. Give `2` an arm of its own for the
+same reason: without it a mistyped flag reports a stylesheet that is perfectly
+fine.
 
 On a mismatch it names the first differing line and prints both versions of it,
 then exits `3`. A stylesheet that does not compile exits `1` instead, so a log
@@ -71,9 +74,14 @@ tells you which of the two happened:
 $ accent-sass --check app.scss app.css
 app.css is out of date.
   first difference on line 2:
-    on disk:    color: blue;
-    compiled:   color: red;
+    on disk:  "  color: blue;"
+    compiled: "  color: red;"
 ```
+
+The lines are quoted so that a difference you cannot otherwise see has a
+visible boundary. When trailing whitespace is the only difference the two lines
+read identically without the quotes, so `--check` says
+`they differ only in whitespace` as well.
 
 ## Resolve imports from a load path
 

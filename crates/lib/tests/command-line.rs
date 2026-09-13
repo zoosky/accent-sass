@@ -258,8 +258,8 @@ fn check_rejects_a_stale_output_file() {
     let stderr = stderr(&output);
     assert!(stderr.contains("out.css is out of date."), "{stderr}");
     assert!(stderr.contains("first difference on line 2"), "{stderr}");
-    assert!(stderr.contains("on disk:    color: blue;"), "{stderr}");
-    assert!(stderr.contains("compiled:   color: red;"), "{stderr}");
+    assert!(stderr.contains("on disk:  \"  color: blue;\""), "{stderr}");
+    assert!(stderr.contains("compiled: \"  color: red;\""), "{stderr}");
 
     // Criterion 4: reporting the file as stale must not fix it.
     assert_eq!(
@@ -378,6 +378,61 @@ fn stdin_rejects_a_second_positional() {
     );
 
     assert_eq!(code(&output), 2);
+}
+
+/// A difference that prints as nothing must still be named: the whole value of
+/// the mode is this one diagnostic.
+#[test]
+fn check_names_a_whitespace_only_difference() {
+    let dir = fixture();
+    fs::write(dir.path().join("out.css"), "a {\n  color: red; \n}\n").unwrap();
+
+    let output = run(dir.path(), &["--check", "good.scss", "out.css"], None);
+    let stderr = stderr(&output);
+
+    assert_eq!(code(&output), 3);
+    assert!(
+        stderr.contains("they differ only in whitespace"),
+        "{stderr}"
+    );
+    // The quotes are what make the trailing space visible at all.
+    assert!(stderr.contains("on disk:  \"  color: red; \""), "{stderr}");
+}
+
+/// This binary writes a file but does not create the directory above it, so
+/// "run without --check" would send the reader to a run that fails.
+#[test]
+fn check_does_not_promise_a_run_that_would_fail() {
+    let dir = fixture();
+
+    let output = run(
+        dir.path(),
+        &["--check", "good.scss", "missing_dir/out.css"],
+        None,
+    );
+    let stderr = stderr(&output);
+
+    assert_eq!(code(&output), 3, "still stale: the build has not run");
+    assert!(stderr.contains("neither does missing_dir"), "{stderr}");
+    assert!(
+        !stderr.contains("Run without --check"),
+        "that advice is false when the parent directory is missing: {stderr}"
+    );
+}
+
+/// The advice is correct, and kept, when only the file itself is missing.
+#[test]
+fn check_still_advises_when_only_the_file_is_missing() {
+    let dir = fixture();
+
+    let output = run(dir.path(), &["--check", "good.scss", "out.css"], None);
+
+    assert_eq!(code(&output), 3);
+    assert!(
+        stderr(&output).contains("Run without --check to create it."),
+        "{}",
+        stderr(&output)
+    );
 }
 
 /// `str::lines` strips the carriage return along with the newline, so two files
