@@ -15,14 +15,22 @@ at `0.13.4` and below are upstream's and are kept for lineage.
 
 ### Added
 
-- the browser package is published to npm as `@zoosky/accent-sass`, at the
-  same version as the crates, starting with `0.16.0`. `release.sh` builds it,
-  runs the WebAssembly smoke scripts against it and checks what it would ship
-  before anything is published, then publishes it after the crates;
-  `--npm-only` publishes it alone for a version whose crates are already out
+- the browser package is published to npm as `accent-sass`, at the same
+  version as the crates. `release.sh` builds it, runs the WebAssembly smoke
+  scripts against it and checks what it would ship before anything is
+  published, then publishes it after the crates; `--npm-only` publishes it
+  alone for a version whose crates are already out. `0.16.0` went out as
+  `@zoosky/accent-sass`; later versions drop the scope, so the npm name
+  matches the crate and `accent-proust`
 - the crates and the npm package name the documentation site,
   <https://zoosky.github.io/accent-sass/>, as their homepage, so crates.io and
   npm link to it. It takes effect with the next published version
+
+### Changed
+
+- the npm package describes itself as Sass for the browser, compiled to
+  WebAssembly from Rust, rather than with the crate's "A Sass compiler written
+  purely in Rust", and its keywords add `wasm` and `webassembly`
 
 ## [0.16.0] - 2026-09-13
 

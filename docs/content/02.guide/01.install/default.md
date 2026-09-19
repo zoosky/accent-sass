@@ -58,12 +58,15 @@ accent-sass = { git = "https://github.com/zoosky/accent-sass.git", rev = "<commi
 ## The browser package
 
 The browser package is published to npm as
-[`@zoosky/accent-sass`](https://www.npmjs.com/package/@zoosky/accent-sass),
+[`accent-sass`](https://www.npmjs.com/package/accent-sass),
 at the same version as the crates:
 
 ```sh
-npm install @zoosky/accent-sass
+npm install accent-sass
 ```
+
+Version `0.16.0` is on npm under the scoped name `@zoosky/accent-sass`. Later
+versions use `accent-sass`.
 
 It is an ES module for the `web` target, with an `init()` that fetches the
 `.wasm`, so it runs in a browser or through a bundler, not from a plain Node

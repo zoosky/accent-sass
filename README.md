@@ -68,14 +68,14 @@ stale or missing and `1` when the stylesheet does not compile, so a CI job can
 tell "your CSS is out of date" from "your Sass is broken".
 
 As a browser package, published to npm as
-[`@zoosky/accent-sass`](https://www.npmjs.com/package/@zoosky/accent-sass):
+[`accent-sass`](https://www.npmjs.com/package/accent-sass):
 
 ```bash
-npm install @zoosky/accent-sass
+npm install accent-sass
 ```
 
 ```js
-import init, { compileString } from "@zoosky/accent-sass";
+import init, { compileString } from "accent-sass";
 
 await init();
 

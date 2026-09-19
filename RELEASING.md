@@ -2,8 +2,10 @@
 
 `accent-sass` publishes three crates to crates.io and one package to npm. The
 crates are version-locked with `=` pins, so they go out together, in dependency
-order. The npm package, `@zoosky/accent-sass`, is the WebAssembly build of the
-same version, and goes out after them.
+order. The npm package, `accent-sass`, is the WebAssembly build of the same
+version, and goes out after them. `0.16.0` went out under the scoped name
+`@zoosky/accent-sass`; later versions use the unscoped name, like
+`accent-proust`.
 
 `.github/scripts/release.sh` does all of it. Run it with `--dry-run` first; the
 rest of this document is what it checks and why.
@@ -14,7 +16,7 @@ rest of this document is what it checks and why.
 1. accent_sass_compiler   (no workspace dependencies)
 2. accent-sass-macro      (depends on accent_sass_compiler)
 3. accent-sass            (depends on both)
-4. @zoosky/accent-sass    (npm; built from accent-sass)
+4. accent-sass on npm     (built from the crate above)
 ```
 
 Cargo resolves a `path` + `version` dependency against the registry when
@@ -86,7 +88,9 @@ behind that the crates do not match.
    file git ignores.
 
 6. **npm.** You need `wasm-pack`, the `wasm32-unknown-unknown` target, and an
-   npm login that may publish under the `@zoosky` scope:
+   npm login that owns `accent-sass` on npm. Until a version is out under that
+   name, nobody owns it, and the first publish claims it for the account that
+   runs it:
 
    ```bash
    rustup target add wasm32-unknown-unknown
@@ -95,7 +99,7 @@ behind that the crates do not match.
 
    `release.sh` builds the package into `target/npm/pkg`, not wasm-pack's
    default `crates/lib/pkg`, and checks it before anything is published: the
-   manifest names `@zoosky/accent-sass` at the release version, the two smoke
+   manifest names `accent-sass` at the release version, the two smoke
    scripts CI runs against the Pages build pass, and `npm pack --dry-run` lists
    the README, the LICENSE, the JavaScript, the types and the module.
 
@@ -113,15 +117,13 @@ cargo publish -p accent_sass_compiler
 cargo publish -p accent-sass-macro
 cargo publish -p accent-sass
 
-wasm-pack build crates/lib --release --target web --scope zoosky --out-name index \
+wasm-pack build crates/lib --release --target web --out-name index \
   --out-dir ../../target/npm/pkg -- --no-default-features --features wasm-exports,random
-(cd target/npm/pkg && npm publish --access public)
+(cd target/npm/pkg && npm publish)
 
 git tag -a v0.16.0 -m "v0.16.0"
 git push origin v0.16.0
 ```
-
-A scoped package is private unless published with `--access public`.
 
 ### Publishing only the npm package
 

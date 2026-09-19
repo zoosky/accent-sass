@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # Publish accent-sass: the three crates to crates.io, in dependency order, and
-# the browser package to npm as @zoosky/accent-sass.
+# the browser package to npm as accent-sass.
 #
 # The crate order is not a preference. Cargo resolves a `path` + `version`
 # dependency against the registry when packaging, so a crate cannot be
@@ -49,12 +49,19 @@ CRATES=(
   "accent-sass:crates/lib"
 )
 
-# The npm package. `wasm-pack --scope` turns the crate name into the scoped
-# name. It is built under target/ rather than in wasm-pack's default
-# crates/lib/pkg, which is ignored, easy to leave stale, and inside a crate.
-NPM_SCOPE="zoosky"
-NPM_PACKAGE="@$NPM_SCOPE/accent-sass"
+# The npm package. wasm-pack names it after the crate, unscoped, to match the
+# crate and accent-proust; 0.16.0 went out as @zoosky/accent-sass. It is built
+# under target/ rather than in wasm-pack's default crates/lib/pkg, which is
+# ignored, easy to leave stale, and inside a crate.
+NPM_PACKAGE="accent-sass"
 NPM_DIR="target/npm/pkg"
+
+# What npm shows and searches. wasm-pack copies both from crates/lib/Cargo.toml,
+# which describes the Rust crate: npm then called the browser package "A Sass
+# compiler written purely in Rust", saying nothing of the browser or
+# WebAssembly. Written over the generated package.json after the build.
+NPM_DESCRIPTION="Sass for the browser: turns SCSS and indented Sass into CSS, resolving @use and @import from in-memory files. Compiled to WebAssembly from Rust."
+NPM_KEYWORDS="sass scss css compiler wasm webassembly"
 
 # The compiler sources an npm-only release must share with the tag, so the
 # package is the code the crates were published from. The README may differ:
@@ -297,7 +304,7 @@ rm -rf "$NPM_DIR"
 mkdir -p "$(dirname "$NPM_DIR")"
 build_log="$(dirname "$NPM_DIR")/build.log"
 # --out-dir is relative to the crate, crates/lib.
-wasm-pack build crates/lib --release --target web --scope "$NPM_SCOPE" --out-name index \
+wasm-pack build crates/lib --release --target web --out-name index \
   --out-dir "../../$NPM_DIR" -- --no-default-features --features wasm-exports,random \
   > "$build_log" 2>&1 || {
     tail -30 "$build_log" >&2
@@ -306,12 +313,18 @@ wasm-pack build crates/lib --release --target web --scope "$NPM_SCOPE" --out-nam
 echo "  build: wasm-pack, web target, into $NPM_DIR"
 
 manifest=$(node -e '
-  const p = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
+  const fs = require("fs");
+  const [file, description, keywords] = process.argv.slice(1);
+  const p = JSON.parse(fs.readFileSync(file, "utf8"));
+  p.description = description;
+  p.keywords = keywords.split(" ");
+  fs.writeFileSync(file, JSON.stringify(p, null, 2) + "\n");
   console.log(p.name + " " + p.version);
-' "$NPM_DIR/package.json") || die "could not read $NPM_DIR/package.json"
+' "$NPM_DIR/package.json" "$NPM_DESCRIPTION" "$NPM_KEYWORDS") \
+  || die "could not rewrite $NPM_DIR/package.json"
 [ "$manifest" = "$NPM_PACKAGE $version" ] \
   || die "package.json names '$manifest', expected '$NPM_PACKAGE $version'"
-echo "  package.json: $manifest"
+echo "  package.json: $manifest, with the npm description and keywords"
 
 # The two scripts CI runs against the Pages build: the module loads, and the
 # JavaScript API compiles, resolves imports, reports errors and logs.
@@ -382,9 +395,8 @@ if [ "$NPM_ONLY" -eq 0 ]; then
 fi
 
 step "Publishing $NPM_PACKAGE $version to npm"
-# A scoped package is private unless published with --access public, and a
-# first publish has nothing earlier to inherit that from.
-(cd "$NPM_DIR" && npm publish --access public) || {
+# An unscoped package is always public, so it needs no --access flag.
+(cd "$NPM_DIR" && npm publish) || {
   if [ "$NPM_ONLY" -eq 1 ]; then
     die "npm publish failed; fix the cause and re-run with --npm-only"
   else

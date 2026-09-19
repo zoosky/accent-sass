@@ -11,7 +11,7 @@ description: >-
   CompileOptions, CompileResult and the error shape.
 ---
 
-Published to npm as `@zoosky/accent-sass`, built with `wasm-pack` for the `web`
+Published to npm as `accent-sass`, built with `wasm-pack` for the `web`
 target; see [Install](/guide/install#the-browser-package). The package ships an
 `index.d.ts` with real types.
 
