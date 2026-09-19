@@ -121,8 +121,8 @@ wasm-pack build crates/lib --release --target web --out-name index \
   --out-dir ../../target/npm/pkg -- --no-default-features --features wasm-exports,random
 (cd target/npm/pkg && npm publish)
 
-git tag -a v0.16.0 -m "v0.16.0"
-git push origin v0.16.0
+git tag -a v0.16.1 -m "v0.16.1"
+git push origin v0.16.1
 ```
 
 ### Publishing only the npm package
