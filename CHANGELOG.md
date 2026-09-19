@@ -13,6 +13,14 @@ at `0.13.4` and below are upstream's and are kept for lineage.
 
 ## [Unreleased]
 
+## [0.16.1] - 2026-09-19
+
+A packaging release. The compiler is unchanged since `0.16.0`: the only change
+under `crates/` is the homepage field. What changes is how the packages
+present themselves. The browser package is on npm under the crate's own name,
+`accent-sass`, with a description of its own, and all four packages link to
+the documentation site.
+
 ### Added
 
 - the browser package is published to npm as `accent-sass`, at the same
@@ -24,7 +32,7 @@ at `0.13.4` and below are upstream's and are kept for lineage.
   matches the crate and `accent-proust`
 - the crates and the npm package name the documentation site,
   <https://zoosky.github.io/accent-sass/>, as their homepage, so crates.io and
-  npm link to it. It takes effect with the next published version
+  npm link to it
 
 ### Changed
 

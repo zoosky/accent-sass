@@ -26,7 +26,7 @@ this compiler.
 ## Install
 
 ```toml
-accent-sass = "0.16.0"
+accent-sass = "0.16.1"
 ```
 
 To track work that has not been released yet, pin a git revision instead:

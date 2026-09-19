@@ -28,7 +28,7 @@ accent-sass input.scss output.css
 
 ```toml
 [dependencies]
-accent-sass = "0.16.0"
+accent-sass = "0.16.1"
 ```
 
 The `commandline` feature is on by default and pulls in `clap` to build the
@@ -36,7 +36,7 @@ binary. A library dependency does not need it:
 
 ```toml
 [dependencies]
-accent-sass = { version = "0.16.0", default-features = false, features = ["random"] }
+accent-sass = { version = "0.16.1", default-features = false, features = ["random"] }
 ```
 
 Keep `random` unless you know you do not want it: dropping it removes
