@@ -1,8 +1,9 @@
 use crate::ast::SassMixin;
 use std::{
     cell::RefCell,
-    collections::{BTreeMap, HashSet},
+    collections::{BTreeMap, BTreeSet, HashSet},
     fmt,
+    path::{Path, PathBuf},
     sync::Arc,
 };
 
@@ -22,6 +23,9 @@ use crate::{
 };
 
 use super::builtin_imports::QuoteKind;
+use crate::utils::{is_name, is_name_start};
+
+pub(crate) use meta::optional_module_from_value;
 
 mod color;
 mod list;
@@ -286,50 +290,80 @@ pub(crate) enum Module {
         /// `@extend` rules declared.
         extension_store: ExtensionStore,
         env: Environment,
+        /// The URL the module was loaded from, as the module cache keys it.
+        /// `None` for the dummy module an `@import` builds, which has no file
+        /// of its own.
+        url: Option<PathBuf>,
     },
     Builtin {
         scope: ModuleScope,
+        /// The `sass:` URL, such as `sass:math`.
+        url: PathBuf,
     },
     Forwarded(ForwardedModule),
     Shadowed(ShadowedModule),
 }
 
+/// The modules a stylesheet loaded by namespace.
+///
+/// Member access through a namespace, `ns.$var`, goes by [`Identifier`], so
+/// `a_b.$x` and `a-b.$x` reach one module. A namespace given to a `meta`
+/// function as a string is looked up as written, the way dart-sass does: it
+/// is a value, not an identifier token, so `"a_b"` names a module only when
+/// the `@use` spelt it that way.
 #[derive(Debug, Clone)]
-pub(crate) struct Modules(pub BTreeMap<Identifier, Arc<RefCell<Module>>>);
+pub(crate) struct Modules {
+    by_name: BTreeMap<Identifier, Arc<RefCell<Module>>>,
+    /// The namespaces as the `@use` rules wrote them.
+    as_written: BTreeSet<String>,
+}
 
 impl Modules {
     pub fn new() -> Self {
-        Self(BTreeMap::new())
+        Self {
+            by_name: BTreeMap::new(),
+            as_written: BTreeSet::new(),
+        }
     }
 
+    /// Registers `module` under the namespace `name`, as the `@use` rule wrote
+    /// it. Errors when the namespace is taken.
     pub fn insert(
         &mut self,
-        name: Identifier,
+        name: &str,
         module: Arc<RefCell<Module>>,
         span: Span,
     ) -> SassResult<()> {
-        if self.0.contains_key(&name) {
+        let ident = Identifier::from(name);
+
+        if self.by_name.contains_key(&ident) {
             return Err((
-                format!("There's already a module with namespace \"{}\".", name),
+                format!("There's already a module with namespace \"{}\".", ident),
                 span,
             )
                 .into());
         }
 
-        self.0.insert(name, module);
+        self.by_name.insert(ident, module);
+        self.as_written.insert(name.to_owned());
 
         Ok(())
     }
 
     pub fn get(&self, name: Identifier, span: Span) -> SassResult<Arc<RefCell<Module>>> {
-        match self.0.get(&name) {
+        match self.by_name.get(&name) {
             Some(v) => Ok(Arc::clone(v)),
-            None => Err((
-                format!("There is no module with namespace \"{}\".", name.as_str()),
-                span,
-            )
-                .into()),
+            None => Err(Self::no_module(name.as_str(), span)),
         }
+    }
+
+    /// Looks a namespace up by the exact string a `meta` function received.
+    pub fn get_as_written(&self, name: &str, span: Span) -> SassResult<Arc<RefCell<Module>>> {
+        if !self.as_written.contains(name) {
+            return Err(Self::no_module(name, span));
+        }
+
+        self.get(Identifier::from(name), span)
     }
 
     pub fn get_mut(
@@ -337,14 +371,18 @@ impl Modules {
         name: Identifier,
         span: Span,
     ) -> SassResult<&mut Arc<RefCell<Module>>> {
-        match self.0.get_mut(&name) {
+        match self.by_name.get_mut(&name) {
             Some(v) => Ok(v),
-            None => Err((
-                format!("There is no module with namespace \"{}\".", name.as_str()),
-                span,
-            )
-                .into()),
+            None => Err(Self::no_module(name.as_str(), span)),
         }
+    }
+
+    fn no_module(name: &str, span: Span) -> Box<crate::error::SassError> {
+        (
+            format!("There is no module with namespace \"{}\".", name),
+            span,
+        )
+            .into()
     }
 }
 
@@ -403,6 +441,7 @@ impl Module {
         env: Environment,
         extension_store: ExtensionStore,
         upstream: Vec<Arc<RefCell<Module>>>,
+        url: Option<PathBuf>,
     ) -> Self {
         let variables = {
             let variables = (*env.forwarded_modules).borrow();
@@ -442,18 +481,42 @@ impl Module {
             upstream,
             extension_store,
             env,
+            url,
         }
     }
 
-    pub fn new_builtin() -> Self {
+    pub fn new_builtin(url: &str) -> Self {
         Module::Builtin {
             scope: ModuleScope::new(),
+            url: PathBuf::from(url),
         }
+    }
+
+    /// The URL this module was loaded from: the module cache's key for a
+    /// stylesheet, the `sass:` URL for a built-in module. A forwarded or
+    /// shadowed view answers for the module it wraps. `None` for the dummy
+    /// module an `@import` builds.
+    pub(crate) fn url(&self) -> Option<PathBuf> {
+        match self {
+            Self::Environment { url, .. } => url.clone(),
+            Self::Builtin { url, .. } => Some(url.clone()),
+            Self::Forwarded(ForwardedModule { inner, .. })
+            | Self::Shadowed(ShadowedModule { inner, .. }) => (**inner).borrow().url(),
+        }
+    }
+
+    /// The namespace a `@use` of this module's URL would get without an `as`
+    /// clause: the file's base name without a leading underscore or an
+    /// extension, provided that is a valid identifier. `meta.inspect` prints
+    /// it inside `get-module(...)`, and prints `get-module()` when there is
+    /// none.
+    pub(crate) fn default_namespace(&self) -> Option<String> {
+        default_namespace(&self.url()?)
     }
 
     pub(crate) fn scope(&self) -> ModuleScope {
         match self {
-            Self::Builtin { scope }
+            Self::Builtin { scope, .. }
             | Self::Environment { scope, .. }
             | Self::Forwarded(ForwardedModule { scope, .. })
             | Self::Shadowed(ShadowedModule { scope, .. }) => scope.clone(),
@@ -580,7 +643,7 @@ impl Module {
         let ident = name.into();
 
         let scope = match self {
-            Self::Builtin { scope } => scope,
+            Self::Builtin { scope, .. } => scope,
             _ => unreachable!(),
         };
 
@@ -644,43 +707,88 @@ fn with_signatures(module: Module, name: &str) -> Module {
 }
 
 pub(crate) fn declare_module_color() -> Module {
-    let mut module = Module::new_builtin();
+    let mut module = Module::new_builtin("sass:color");
     color::declare(&mut module);
     with_signatures(module, "color")
 }
 
 pub(crate) fn declare_module_list() -> Module {
-    let mut module = Module::new_builtin();
+    let mut module = Module::new_builtin("sass:list");
     list::declare(&mut module);
     with_signatures(module, "list")
 }
 
 pub(crate) fn declare_module_map() -> Module {
-    let mut module = Module::new_builtin();
+    let mut module = Module::new_builtin("sass:map");
     map::declare(&mut module);
     with_signatures(module, "map")
 }
 
 pub(crate) fn declare_module_math() -> Module {
-    let mut module = Module::new_builtin();
+    let mut module = Module::new_builtin("sass:math");
     math::declare(&mut module);
     with_signatures(module, "math")
 }
 
 pub(crate) fn declare_module_meta() -> Module {
-    let mut module = Module::new_builtin();
+    let mut module = Module::new_builtin("sass:meta");
     meta::declare(&mut module);
     with_signatures(module, "meta")
 }
 
 pub(crate) fn declare_module_selector() -> Module {
-    let mut module = Module::new_builtin();
+    let mut module = Module::new_builtin("sass:selector");
     selector::declare(&mut module);
     with_signatures(module, "selector")
 }
 
 pub(crate) fn declare_module_string() -> Module {
-    let mut module = Module::new_builtin();
+    let mut module = Module::new_builtin("sass:string");
     string::declare(&mut module);
     with_signatures(module, "string")
+}
+
+/// The namespace `@use url;` would give a module, or `None` when the URL's
+/// base name is not a valid identifier and the `@use` would need an `as`
+/// clause.
+///
+/// This is dart-sass's `defaultNamespace`: the last path segment, without a
+/// leading underscore and without anything from the first dot on. A `sass:`
+/// URL has a single segment, the module name.
+pub(crate) fn default_namespace(url: &Path) -> Option<String> {
+    let url = url.to_string_lossy();
+    let base_name = match url.strip_prefix("sass:") {
+        Some(name) => name,
+        None => Path::new(url.as_ref())
+            .file_name()
+            .map(|name| name.to_str().unwrap_or(""))
+            .unwrap_or(""),
+    };
+
+    let start = usize::from(base_name.starts_with('_'));
+    let end = base_name.find('.').unwrap_or(base_name.len());
+    let namespace = &base_name[start..end];
+
+    is_identifier(namespace).then(|| namespace.to_owned())
+}
+
+/// Whether `text` is one whole Sass identifier: an optional leading hyphen,
+/// then either a second hyphen or a name-start character, then name
+/// characters to the end. Escapes are not recognised; a file name containing
+/// a backslash gets no default namespace.
+fn is_identifier(text: &str) -> bool {
+    let mut chars = text.chars().peekable();
+
+    if chars.peek() == Some(&'-') {
+        chars.next();
+        if chars.peek() == Some(&'-') {
+            chars.next();
+            return chars.all(is_name);
+        }
+    }
+
+    match chars.next() {
+        Some(c) if is_name_start(c) => chars.all(is_name),
+        _ => false,
+    }
 }

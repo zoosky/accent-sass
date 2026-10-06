@@ -1,4 +1,4 @@
-use crate::builtin::builtin_imports::*;
+use crate::builtin::{builtin_imports::*, modules::optional_module_from_value};
 
 // todo: this should be a constant of some sort. we shouldn't be allocating this
 // every time
@@ -119,29 +119,15 @@ pub(crate) fn global_variable_exists(
             .0,
     );
 
-    let module = match args.default_arg(1, "module", Value::Null) {
-        Value::String(s, _) => Some(s),
-        Value::Null => None,
-        v => {
-            return Err((
-                format!(
-                    "$module: {} is neither a string nor a module reference.",
-                    v.inspect(args.span())?
-                ),
-                args.span(),
-            )
-                .into());
-        }
-    };
+    let module = optional_module_from_value(
+        args.default_arg(1, "module", Value::Null),
+        visitor,
+        args.span(),
+    )?;
 
-    Ok(Value::bool(if let Some(module_name) = module {
-        (*(*visitor.env.modules)
-            .borrow()
-            .get(module_name.into(), args.span())?)
-        .borrow()
-        .var_exists(name)
-    } else {
-        (*visitor.env.global_vars()).borrow().contains_key(&name)
+    Ok(Value::bool(match module {
+        Some(module) => (*module).borrow().var_exists(name),
+        None => (*visitor.env.global_vars()).borrow().contains_key(&name),
     }))
 }
 
@@ -153,29 +139,15 @@ pub(crate) fn mixin_exists(mut args: ArgumentResult, visitor: &mut Visitor) -> S
             .0,
     );
 
-    let module = match args.default_arg(1, "module", Value::Null) {
-        Value::String(s, _) => Some(s),
-        Value::Null => None,
-        v => {
-            return Err((
-                format!(
-                    "$module: {} is neither a string nor a module reference.",
-                    v.inspect(args.span())?
-                ),
-                args.span(),
-            )
-                .into());
-        }
-    };
+    let module = optional_module_from_value(
+        args.default_arg(1, "module", Value::Null),
+        visitor,
+        args.span(),
+    )?;
 
-    Ok(Value::bool(if let Some(module_name) = module {
-        (*(*visitor.env.modules)
-            .borrow()
-            .get(module_name.into(), args.span())?)
-        .borrow()
-        .mixin_exists(name)
-    } else {
-        visitor.env.mixin_exists(name)
+    Ok(Value::bool(match module {
+        Some(module) => (*module).borrow().mixin_exists(name),
+        None => visitor.env.mixin_exists(name),
     }))
 }
 
@@ -191,29 +163,15 @@ pub(crate) fn function_exists(
             .0,
     );
 
-    let module = match args.default_arg(1, "module", Value::Null) {
-        Value::String(s, _) => Some(s),
-        Value::Null => None,
-        v => {
-            return Err((
-                format!(
-                    "$module: {} is neither a string nor a module reference.",
-                    v.inspect(args.span())?
-                ),
-                args.span(),
-            )
-                .into());
-        }
-    };
+    let module = optional_module_from_value(
+        args.default_arg(1, "module", Value::Null),
+        visitor,
+        args.span(),
+    )?;
 
-    Ok(Value::bool(if let Some(module_name) = module {
-        (*(*visitor.env.modules)
-            .borrow()
-            .get(module_name.into(), args.span())?)
-        .borrow()
-        .fn_exists(name)
-    } else {
-        visitor.env.fn_exists(name)
+    Ok(Value::bool(match module {
+        Some(module) => (*module).borrow().fn_exists(name),
+        None => visitor.env.fn_exists(name),
     }))
 }
 
@@ -231,20 +189,11 @@ pub(crate) fn get_function(mut args: ArgumentResult, visitor: &mut Visitor) -> S
         }
     };
     let css = args.default_arg(1, "css", Value::False).is_truthy();
-    let module = match args.default_arg(2, "module", Value::Null) {
-        Value::String(s, ..) => Some(s),
-        Value::Null => None,
-        v => {
-            return Err((
-                format!(
-                    "$module: {} is neither a string nor a module reference.",
-                    v.inspect(args.span())?
-                ),
-                args.span(),
-            )
-                .into());
-        }
-    };
+    let module = optional_module_from_value(
+        args.default_arg(2, "module", Value::Null),
+        visitor,
+        args.span(),
+    )?;
 
     if css && module.is_some() {
         return Err((
@@ -258,15 +207,8 @@ pub(crate) fn get_function(mut args: ArgumentResult, visitor: &mut Visitor) -> S
 
     let func = if css {
         Some(SassFunction::Plain { name: text })
-    } else if let Some(module_name) = module {
-        visitor.env.get_fn(
-            name,
-            Some(Spanned {
-                node: module_name.into(),
-                span: args.span(),
-            }),
-            args.span(),
-        )?
+    } else if let Some(module) = module {
+        (*module).borrow().get_fn(name)
     } else {
         match visitor.env.get_fn(name, None, args.span())? {
             Some(f) => Some(f),

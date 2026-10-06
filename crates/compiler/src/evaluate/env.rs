@@ -12,6 +12,7 @@ use crate::{
 use std::{
     cell::RefCell,
     collections::{BTreeMap, HashSet},
+    path::PathBuf,
     sync::Arc,
 };
 
@@ -90,6 +91,7 @@ impl Environment {
             upstream: Vec::new(),
             extension_store: ExtensionStore::new(span),
             env: self.clone(),
+            url: None,
         }
     }
 
@@ -590,9 +592,11 @@ impl Environment {
         )
     }
 
+    /// Makes `module` available: under `namespace`, spelt as the `@use` rule
+    /// wrote it, or without one for `@use ... as *`.
     pub fn add_module(
         &mut self,
-        namespace: Option<Identifier>,
+        namespace: Option<&str>,
         module: Arc<RefCell<Module>>,
         span: Span,
     ) -> SassResult<()> {
@@ -622,6 +626,7 @@ impl Environment {
         self,
         extension_store: ExtensionStore,
         upstream: Vec<Arc<RefCell<Module>>>,
+        url: PathBuf,
     ) -> Arc<RefCell<Module>> {
         debug_assert!(self.at_root());
 
@@ -629,6 +634,7 @@ impl Environment {
             self,
             extension_store,
             upstream,
+            Some(url),
         )))
     }
 

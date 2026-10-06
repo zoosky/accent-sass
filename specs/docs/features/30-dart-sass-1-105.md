@@ -100,36 +100,96 @@ open:
 The move changes no tally: the wording is hidden by `--ignore-error-diffs`
 and the crash already counted as an error.
 
-## What is left: module values
+## Module values
 
-The 37 failures: `css/*` 7, `get_module/*` 12, `load/{live, with,
-shares_state, no_error/*, error/with/private/*}` 8, the
-`different_module/*/module_value` cases of the five `$module` functions 8,
-and `module_{functions,mixins,variables}/module_value` 3.
+The second pull request implements the feature. Measured the same way as the
+baseline, on macOS against the `chore/dart-sass-1.105.1` revision this branch
+started from:
 
-- `Value::ModuleRef` holding the `Arc<RefCell<Module>>` and its canonical
-  URL, which `inspect` needs for the namespace. `kind()` is `module`,
-  equality is `Arc::ptr_eq`, arithmetic and unary operators error, the
-  serializer prints `get-module("ns")` only when inspecting.
-- A built-in module cache on `Visitor`. `load_module` constructs a fresh
-  `declare_module_*()` on every `@use "sass:x"`, so two namespaces for one
-  built-in are two values today; dart-sass has one instance per URL.
-- One `get_module` helper -- a string looks the namespace up, a module value
-  is itself, anything else is the new error -- replacing `module_namespace`
-  and the four `match` blocks in `builtin/functions/meta.rs`.
-- `meta.load`: the hard part. This compiler emits CSS into one tree in load
-  order and `execute` records a module's statements for `replay_module_css`;
-  dart-sass keeps a stylesheet per module and composes at the end. `load`
-  must execute the module, keep its record and leave nothing in the tree,
-  and a later `@use` or `@forward` of a module first loaded this way must
-  emit the record at that point. `css` replays the record at the include in
-  import context, upstream included, which is what `load_css_module` does;
-  `load-css` becomes `css(load())`.
-- Risks: `load/no_error/serialize` expects a map in a declaration not to
-  error at `load`, so check whether a declaration is serialized as it is
-  emitted. The six pre-existing `load_css/extend/*` and `load_css/twice/*`
-  failures sit in the same replay path and may move with it.
-- Optional, no tally impact: the multi-span rendering of item 2.
+| Revision | Runs | Failures |
+|---|---|---|
+| before, `9bf29cbd` | 14,355 | 148 |
+| after | 14,355 | 100 |
 
-Verify every new expectation against `npx -y sass@1.105.1`; the subset
-`core_functions/meta directives/extend values/modules` runs in two seconds.
+48 fixtures pass that did not, and none fails that passed. The 37 listed
+above; the six `*/error/dash_sensitive` and `*/error/module/dash_sensitive`
+cases of `module-functions`, `module-mixins`, `module-variables`,
+`function-exists`, `global-variable-exists` and `mixin-exists`; four of the
+six `load_css` failures the plan flagged -- `extend/in_other/{before,
+after}`, `extend/shared_cssless_midstream` and
+`twice/load_css/different_extend` -- and `load_css/plain_css/
+through_other_mixin`. `twice/use/different_extend` stays open; the first
+deviation below is why. The 48 new tests in
+`crates/lib/tests/module-values.rs` were each checked against the 1.105.1
+release binary, and the one that asserts that deviation says so.
+
+What landed, against the plan:
+
+- `Value::ModuleRef(SassModule)`, an `Arc<RefCell<Module>>` compared by
+  pointer. `Module` carries its URL now -- the cache key for a stylesheet,
+  the `sass:` URL for a built-in -- and derives the namespace `inspect`
+  prints from it the way dart-sass's `defaultNamespace` does. The unary and
+  binary operators report `Undefined operation`, with the one exception
+  dart-sass has: `"string" + module` serializes the module and fails as `isn't
+  a valid CSS value`.
+- The built-in modules are cached on the `Visitor`, one instance per URL.
+- One `module_from_value` helper serves every `$module` parameter. A string
+  is looked up as the `@use` rule wrote it, which is what made the
+  `dash_sensitive` fixtures pass: `Modules` keeps the written namespaces
+  beside its `Identifier` map. `a_b.$x` still reaches `@use ... as a-b`,
+  because the parser hands the evaluator an `Identifier`; that half is a
+  parser change and stays open.
+- `meta.load` executes the module with the same `execute` as `@use`, in a
+  mode of its own. The module and whatever it loads share a fresh extension
+  store -- as an `@import` context does, so a module's `@extend` applies to
+  the modules it loaded at once -- and the module does not join the loader's
+  upstream, so its extensions reach nothing outside the load. When execution
+  ends, the top-level statements it emitted are taken out of the tree
+  (`CssTree::remove_subtree`); the record `execute` already keeps for
+  `@import` is what remains. The module goes on a pending list, and so does
+  every module first executed during the load.
+- `meta.css` replays the record at the include, as `@import` of a cached
+  module does. A copy of a module `meta.load` executed registers its
+  selectors afresh with the store in force at the include, so an `@extend`
+  there applies to the copy and the module's own `@extend` rules do not leak;
+  a copy of a module `@use` executed keeps sharing its selector handles, so
+  the extensions `apply_module_extensions` resolves at the end reach it. The
+  pending-list check for a missing `@extend` target runs when the CSS is
+  emitted, not when the module is loaded, which is what `load/no_error/extend`
+  and `load_css/error/extend` require between them.
+- A `@use` or `@forward` of a pending module emits its record at that point
+  and takes it off the list: the module's own statements and those of loaded
+  modules still pending, each once, which is why recorded statements now
+  carry the module that emitted them. Probed: `@use "mid"` (which loads
+  `other`) then `@use "other"` prints `mid`'s CSS, then `other`'s, then the
+  root's, as 1.105.1 does.
+- `meta.load-css` is `css(load())`. Its URL resolves against the file the
+  call is written in, which dart-sass passes as `baseUrl`; that is what
+  `through_other_mixin` tests.
+
+Deviations that remain, none of which a fixture counts:
+
+- A copy of a module that `@use` executed takes the extensions of the whole
+  module graph, since its selector handles are shared with the original.
+  dart-sass clones the module's own graph and applies that graph's
+  extensions to the clone, plus the include site's. The two agree unless a
+  module outside the copied module's graph extends into it, which is
+  `load_css/twice/use/different_extend`: the `@use` copy and the `load-css`
+  copy both print `b, a`. Registering the copy's selectors afresh instead
+  would pass that fixture and lose the module's own extensions, which
+  `apply_module_extensions` resolves only at the end; a faithful clone needs
+  that walk run over the copied module's graph alone, and is left open.
+  Registering afresh everywhere also broke
+  `directives/use/extend/scope/use_and_import_into_diamond_extend`, which
+  needs the `@import` copy to share.
+- A module `meta.load` executed and `@use`d later does not report a missing
+  `@extend` target in a module it loaded along the way, because the shared
+  store belongs to the outermost load. dart-sass reports it once the module
+  is in the root's graph.
+- `Module loop: this module is already being loaded.` does not name the file.
+  The `@use` message has the same gap.
+- `(a b) * 1` prints `Undefined operation "a b * 1"`; dart-sass
+  parenthesizes the list. This predates the module value and applies to any
+  operand.
+
+The multi-span rendering of item 2 above was not attempted.

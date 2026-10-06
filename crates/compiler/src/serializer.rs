@@ -17,7 +17,7 @@ use crate::{
     utils::hex_char_for,
     value::{
         ArgList, CalculationArg, CalculationName, Number, SassCalculation, SassFunction, SassMap,
-        SassNumber, Value, fuzzy_equals, fuzzy_greater_than_or_equals, fuzzy_less_than,
+        SassModule, SassNumber, Value, fuzzy_equals, fuzzy_greater_than_or_equals, fuzzy_less_than,
         fuzzy_less_than_or_equals,
     },
 };
@@ -151,6 +151,20 @@ pub(crate) fn inspect_mixin_ref(
     let mut serializer = Serializer::new(options, &code_map, true, span);
 
     serializer.visit_mixin_ref(mixin, span)?;
+
+    Ok(serializer.finish_for_expr())
+}
+
+/// The `inspect` form of a module reference, for error messages.
+pub(crate) fn inspect_module_ref(
+    module: &SassModule,
+    options: &Options,
+    span: Span,
+) -> SassResult<String> {
+    let code_map = CodeMap::new();
+    let mut serializer = Serializer::new(options, &code_map, true, span);
+
+    serializer.visit_module_ref(module, span)?;
 
     Ok(serializer.finish_for_expr())
 }
@@ -1589,6 +1603,31 @@ impl<'a> Serializer<'a> {
         Ok(())
     }
 
+    /// Writes a module reference as `get-module("namespace")`, with the
+    /// namespace a `@use` of the module's URL would get and empty parentheses
+    /// when that is not an identifier. A module has no CSS form, so outside
+    /// `inspect` this is an error.
+    fn visit_module_ref(&mut self, module: &SassModule, span: Span) -> SassResult<()> {
+        if !self.inspect {
+            return Err((
+                format!(
+                    "{} isn't a valid CSS value.",
+                    inspect_module_ref(module, self.options, span)?
+                ),
+                span,
+            )
+                .into());
+        }
+
+        self.buffer.extend_from_slice(b"get-module(");
+        if let Some(namespace) = module.default_namespace() {
+            self.visit_quoted_string(false, &namespace);
+        }
+        self.buffer.push(b')');
+
+        Ok(())
+    }
+
     fn visit_arglist(&mut self, arglist: &ArgList, span: Span) -> SassResult<()> {
         // An arglist carries the separator of the list splatted into it, or a
         // comma when nothing decided one, so it writes like the list it came
@@ -1612,6 +1651,7 @@ impl<'a> Serializer<'a> {
             Value::Map(map) => self.visit_map(map, span)?,
             Value::FunctionRef(func) => self.visit_function_ref(func, span)?,
             Value::MixinRef(mixin) => self.visit_mixin_ref(mixin.inner(), span)?,
+            Value::ModuleRef(module) => self.visit_module_ref(module, span)?,
             Value::String(s, QuoteKind::Quoted) => self.visit_quoted_string(false, s),
             Value::String(s, QuoteKind::None) => self.visit_unquoted_string(s),
             Value::ArgList(arglist) => self.visit_arglist(arglist, span)?,

@@ -145,6 +145,23 @@ enum MacroArg {
 struct RecordedCssStmt {
     stmt: CssStmt,
     children: Vec<RecordedCssStmt>,
+    /// The module whose execution emitted this statement, when that was a
+    /// module the recording module loaded rather than the recording module
+    /// itself. A `@use` of a module first loaded by `meta.load` emits a
+    /// module's own CSS once; this is how the replay tells whose it is.
+    owner: Option<PathBuf>,
+}
+
+/// What a replay of a module's recorded CSS is for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ReplayMode {
+    /// A copy of everything on record, upstream modules included: what
+    /// `@import`, `meta.css` and `meta.load-css` emit at their position.
+    Clone,
+    /// The emission a `@use` owes a module that `meta.load` executed first:
+    /// the module's own CSS, and that of the modules it loaded whose CSS is
+    /// still pending too, each once.
+    Pending,
 }
 
 /// Evaluation context of the current execution
@@ -213,13 +230,36 @@ pub struct Visitor<'a> {
     /// with hermetic selectors (resolved without any enclosing style rule),
     /// so an `@import` or `meta.load-css` of an already-loaded module can
     /// emit that CSS again, re-nested under whatever rule encloses the new
-    /// load site. `@use` never replays -- a used module's CSS appears once.
+    /// load site. `@use` replays only a module `meta.load` executed first,
+    /// so a used module's CSS appears once.
     module_css: BTreeMap<PathBuf, Vec<RecordedCssStmt>>,
+    /// The module that emitted each top-level statement, for the statements
+    /// a module execution recorded. Filled as executions finish, innermost
+    /// first, so a statement keeps the module that actually emitted it.
+    css_owner: BTreeMap<CssTreeIdx, PathBuf>,
+    /// Modules executed by `meta.load` whose CSS has not reached the tree:
+    /// `meta.load` leaves it on record only. A `@use` or `@forward` of such a
+    /// module emits the record at that point and takes the module off this
+    /// list; `meta.css` copies the record and leaves it on.
+    pending_module_css: BTreeSet<PathBuf>,
+    /// The extension store each `meta.load` executed its module in, by the
+    /// module's URL. Its mandatory extensions are checked when that CSS is
+    /// emitted, not when it is loaded.
+    detached_stores: BTreeMap<PathBuf, ExtensionStore>,
+    /// Whether the current execution was started by `meta.load`: the module
+    /// and whatever it loads run hermetically, share one extension store, and
+    /// leave their CSS on record rather than in the tree.
+    in_detached_load: bool,
+    /// The built-in modules, created on first `@use` and shared by every
+    /// namespace that loads one: `meta.get-module(math)` has to equal a
+    /// second alias of `sass:math`, as it does in dart-sass.
+    builtin_modules: BTreeMap<String, Arc<RefCell<Module>>>,
     /// True while evaluating a stylesheet loaded by `@import` that loads
-    /// modules, and while `meta.load-css` loads one. Modules executed in this
-    /// context keep the caller's CSS position, so their CSS lands where the
-    /// `@import` or `@include` is written, and a cache hit replays the
-    /// module's recorded CSS instead of emitting nothing.
+    /// modules. Modules executed in this context keep the caller's CSS
+    /// position, so their CSS lands where the `@import` is written, and a
+    /// cache hit replays the module's recorded CSS instead of emitting
+    /// nothing. `meta.load-css` used to set this too; it now goes through
+    /// `load_module_for_sass_script` and `emit_module_css`.
     in_import_context: bool,
     pub(crate) active_modules: BTreeSet<PathBuf>,
     css_tree: CssTree,
@@ -288,6 +328,11 @@ impl<'a> Visitor<'a> {
             module_configurations: BTreeMap::new(),
             current_upstream: Vec::new(),
             module_css: BTreeMap::new(),
+            css_owner: BTreeMap::new(),
+            pending_module_css: BTreeSet::new(),
+            detached_stores: BTreeMap::new(),
+            in_detached_load: false,
+            builtin_modules: BTreeMap::new(),
             in_import_context: false,
             active_modules: BTreeSet::new(),
             options,
@@ -915,9 +960,15 @@ impl<'a> Visitor<'a> {
 
             // A module keeps its state from the first load, but `@import`ing
             // it again is meant to emit its CSS again, so replay what it
-            // emitted the first time.
-            if self.in_import_context {
-                self.replay_module_css(&url)?;
+            // emitted the first time. A `meta.load` in progress wants the
+            // same copy, so that the module it is recording carries its
+            // upstream modules' CSS the way dart-sass composes it.
+            if self.in_import_context || self.in_detached_load {
+                self.replay_module_css(&url, ReplayMode::Clone)?;
+            } else if self.pending_module_css.contains(&url) {
+                // `meta.load` executed the module without emitting its CSS;
+                // this `@use` or `@forward` is where it comes out.
+                self.emit_pending_module_css(&url)?;
             }
 
             return Ok(already_loaded);
@@ -931,7 +982,7 @@ impl<'a> Visitor<'a> {
         // module loaded in an import context instead shares the enclosing
         // context's store -- `@import` means "as if written here", and Dart
         // Sass likewise re-registers the injected CSS in the importer.
-        let swapped_state = if self.in_import_context {
+        let swapped_state = if self.in_import_context || self.in_detached_load {
             None
         } else {
             let module_store = ExtensionStore::new(self.empty_span);
@@ -1029,7 +1080,7 @@ impl<'a> Visitor<'a> {
 
         execution?;
 
-        let module = env.to_module(module_store, module_upstream);
+        let module = env.to_module(module_store, module_upstream, url.clone());
 
         // Record what the module emitted -- including CSS from modules it
         // loaded in turn, matching how Dart Sass combines a module's CSS with
@@ -1042,13 +1093,27 @@ impl<'a> Visitor<'a> {
 
         let recorded = top_level
             .iter()
-            .filter_map(|&idx| self.record_css_subtree(idx))
+            .filter_map(|&idx| {
+                let mut recorded = self.record_css_subtree(idx)?;
+                // A statement a nested module execution has already claimed
+                // belongs to that module; the rest is this module's own.
+                recorded.owner = self.css_owner.get(&idx).cloned();
+                Some(recorded)
+            })
             .collect();
+
+        for &idx in &top_level {
+            self.css_owner.entry(idx).or_insert_with(|| url.clone());
+        }
 
         self.module_css.insert(url.clone(), recorded);
 
         if self.in_import_context {
             self.renest_module_css(&top_level)?;
+        }
+
+        if self.in_detached_load {
+            self.pending_module_css.insert(url.clone());
         }
 
         self.module_configurations.insert(
@@ -1076,7 +1141,11 @@ impl<'a> Visitor<'a> {
             .filter_map(|child| self.record_css_subtree(child))
             .collect();
 
-        Some(RecordedCssStmt { stmt, children })
+        Some(RecordedCssStmt {
+            stmt,
+            children,
+            owner: None,
+        })
     }
 
     /// Nests the module CSS that was just emitted under the rule enclosing
@@ -1153,40 +1222,74 @@ impl<'a> Visitor<'a> {
     /// Emits a copy of the CSS a cached module produced when it was first
     /// executed, at the current position in the tree.
     ///
-    /// At the root the copies share their selectors with the originals, so
-    /// an `@extend` -- whether it ran before or after the copy -- applies to
-    /// both: the shared extension store resolves selectors when the document
-    /// is serialized, not when statements are added. Under a style rule, each
-    /// top-level rule's hermetic selector is re-resolved against it, so a
-    /// second load of the same module nests correctly at its own site.
-    fn replay_module_css(&mut self, url: &Path) -> SassResult<()> {
+    /// Under a style rule, each top-level rule's hermetic selector is
+    /// re-resolved against it, so a second load of the same module nests
+    /// correctly at its own site.
+    ///
+    /// At the root, what the copy's selectors are depends on where the
+    /// originals live. A module `@use` registered its rules in its own store,
+    /// which `apply_module_extensions` extends at the end from the modules
+    /// downstream of it; the copy shares those selector handles, so it ends
+    /// up extended the same way. A module `meta.load` executed registered its
+    /// rules in a store nothing walks, and a copy emitted into a `meta.load`
+    /// in progress must be a copy, not the original. Those copies register
+    /// their selectors afresh with the store in force here, as a rule written
+    /// at this position would: an `@extend` in this context -- whether it ran
+    /// before or after the copy -- applies to the copy, and one in the
+    /// module's own context does not. Rules inside a copied `@media` register
+    /// under its queries, so extending across media queries stays an error.
+    ///
+    /// In [`ReplayMode::Pending`] the copy is the module's own CSS plus that
+    /// of loaded modules whose CSS is still pending, each of which this takes
+    /// off the pending list.
+    fn replay_module_css(&mut self, url: &Path, mode: ReplayMode) -> SassResult<()> {
         let recorded = match self.module_css.get(url) {
             Some(recorded) => recorded.clone(),
             None => return Ok(()),
         };
 
         let in_style_rule = self.style_rule_exists();
+        let register_afresh = mode == ReplayMode::Pending
+            || self.in_detached_load
+            || self.detached_stores.contains_key(url);
+
+        // The loaded modules whose statements this replay emits.
+        let mut emitted_owners: BTreeSet<PathBuf> = BTreeSet::new();
 
         for node in recorded {
+            if mode == ReplayMode::Pending
+                && let Some(owner) = &node.owner
+            {
+                if !self.pending_module_css.contains(owner) && !emitted_owners.contains(owner) {
+                    continue;
+                }
+
+                emitted_owners.insert(owner.clone());
+            }
+
+            let owner = node.owner.unwrap_or_else(|| url.to_path_buf());
             let mut stmt = node.stmt;
 
             // As in `renest_module_css`, a plain CSS rule that uses `&` stays
             // where the load site puts it, selector untouched.
             let mut nest_under_parent = false;
 
-            if in_style_rule
-                && let CssStmt::RuleSet {
-                    selector,
-                    from_plain_css,
-                    ..
-                } = &mut stmt
+            if let CssStmt::RuleSet {
+                selector,
+                from_plain_css,
+                ..
+            } = &mut stmt
             {
                 let selector_list = selector.as_selector_list().clone();
 
-                if *from_plain_css && selector_list.contains_parent_selector() {
+                if in_style_rule && *from_plain_css && selector_list.contains_parent_selector() {
                     nest_under_parent = true;
-                } else {
+                } else if in_style_rule {
                     *selector = self.nest_selector_under_current_rule(selector_list)?;
+                } else if register_afresh {
+                    *selector = self
+                        .extender
+                        .add_selector(selector_list, &self.media_queries)?;
                 }
             }
 
@@ -1195,18 +1298,231 @@ impl<'a> Visitor<'a> {
             } else {
                 self.add_child(stmt, Some(CssStmt::is_style_rule))
             };
-            self.replay_css_children(node.children, new_idx);
+            self.css_owner.entry(new_idx).or_insert(owner);
+            self.replay_css_children(node.children, new_idx, register_afresh)?;
+        }
+
+        if mode == ReplayMode::Pending {
+            self.pending_module_css.remove(url);
+            for owner in emitted_owners {
+                self.pending_module_css.remove(&owner);
+            }
         }
 
         Ok(())
     }
 
-    /// Adds copies of recorded children beneath `parent_idx`.
-    fn replay_css_children(&mut self, children: Vec<RecordedCssStmt>, parent_idx: CssTreeIdx) {
+    /// Adds copies of recorded children beneath `parent_idx`. With
+    /// `register_afresh`, each style rule's selector is registered with the
+    /// current extension store under the media queries of the copied
+    /// `@media` rules enclosing it; without it, the copies keep the
+    /// originals' selector handles.
+    fn replay_css_children(
+        &mut self,
+        children: Vec<RecordedCssStmt>,
+        parent_idx: CssTreeIdx,
+        register_afresh: bool,
+    ) -> SassResult<()> {
         for child in children {
-            let child_idx = self.css_tree.add_child(child.stmt, parent_idx);
-            self.replay_css_children(child.children, child_idx);
+            let mut stmt = child.stmt;
+
+            if register_afresh && let CssStmt::RuleSet { selector, .. } = &mut stmt {
+                let selector_list = selector.as_selector_list().clone();
+                *selector = self
+                    .extender
+                    .add_selector(selector_list, &self.media_queries)?;
+            }
+
+            let media_queries = match &stmt {
+                CssStmt::Media(media_rule, _) if register_afresh => Some(media_rule.query.clone()),
+                _ => None,
+            };
+
+            let child_idx = self.css_tree.add_child(stmt, parent_idx);
+
+            match media_queries {
+                Some(queries) => {
+                    let merged = self
+                        .media_queries
+                        .as_ref()
+                        .and_then(|outer| Self::merge_media_queries(outer, &queries))
+                        .filter(|merged| !merged.is_empty())
+                        .unwrap_or(queries);
+                    let old_media_queries = self.media_queries.replace(merged);
+                    let result = self.replay_css_children(child.children, child_idx, true);
+                    self.media_queries = old_media_queries;
+                    result?;
+                }
+                None => self.replay_css_children(child.children, child_idx, register_afresh)?,
+            }
         }
+
+        Ok(())
+    }
+
+    /// Emits the CSS a module `meta.load` executed, now that a `@use` or
+    /// `@forward` has reached it. The mandatory extensions of the load it
+    /// came from are checked first, as dart-sass checks them when the
+    /// module's CSS is composed.
+    fn emit_pending_module_css(&mut self, url: &Path) -> SassResult<()> {
+        if let Some(store) = self.detached_stores.get(url) {
+            Self::assert_extensions_satisfied(store)?;
+        }
+
+        self.replay_module_css(url, ReplayMode::Pending)
+    }
+
+    /// Emits a copy of `module`'s CSS, upstream modules included, where the
+    /// `meta.css` or `meta.load-css` including it is written.
+    ///
+    /// A built-in module has no CSS. When the module was executed by
+    /// `meta.load`, the extensions it declared are checked here rather than
+    /// at the load: dart-sass reports a missing `@extend` target when the
+    /// CSS is composed, which `meta.load` alone never does.
+    pub(crate) fn emit_module_css(&mut self, module: &Arc<RefCell<Module>>) -> SassResult<()> {
+        let Some(url) = (**module).borrow().url() else {
+            return Ok(());
+        };
+
+        if let Some(store) = self.detached_stores.get(&url) {
+            Self::assert_extensions_satisfied(store)?;
+        }
+
+        self.replay_module_css(&url, ReplayMode::Clone)
+    }
+
+    /// Errors on the first mandatory `@extend` in `store` whose target no
+    /// rule in `store` has, with the message `apply_module_extensions`
+    /// reports for the module graph.
+    fn assert_extensions_satisfied(store: &ExtensionStore) -> SassResult<()> {
+        let selectors = store.simple_selectors();
+
+        if let Some((target, extension)) = store
+            .extensions_where_target(|target| !selectors.contains(target))
+            .into_iter()
+            .next()
+        {
+            return Err((
+                format!(
+                    "The target selector was not found.\nUse \"@extend {} !optional\" to avoid this error.",
+                    target
+                ),
+                extension.span,
+            )
+                .into());
+        }
+
+        Ok(())
+    }
+
+    /// The built-in module `url` names, if there is one: created on the first
+    /// request and shared by every later one.
+    fn builtin_module(&mut self, url: &str) -> Option<Arc<RefCell<Module>>> {
+        if let Some(module) = self.builtin_modules.get(url) {
+            return Some(Arc::clone(module));
+        }
+
+        let module = match url {
+            "sass:color" => declare_module_color(),
+            "sass:list" => declare_module_list(),
+            "sass:map" => declare_module_map(),
+            "sass:math" => declare_module_math(),
+            "sass:meta" => declare_module_meta(),
+            "sass:selector" => declare_module_selector(),
+            "sass:string" => declare_module_string(),
+            _ => return None,
+        };
+
+        let module = Arc::new(RefCell::new(module));
+        self.builtin_modules
+            .insert(url.to_owned(), Arc::clone(&module));
+
+        Some(module)
+    }
+
+    /// Loads a module for `meta.load` and `meta.load-css`.
+    ///
+    /// The module executes as `@use` would -- its own environment and
+    /// position, `$with` configuring its `!default` variables, the module
+    /// cache making the file execute once -- with two differences. Nothing it
+    /// emits stays in the tree: its CSS, and that of the modules it loads
+    /// along the way, goes on record for `meta.css` and for a later `@use`.
+    /// And it does not join the loading module's upstream, so its `@extend`
+    /// rules reach nothing outside the load and are checked only when its
+    /// CSS is emitted.
+    ///
+    /// The module and everything it loads share one extension store for the
+    /// duration, the way an `@import` context does, so a module's `@extend`
+    /// applies to the modules it loaded at once.
+    pub(crate) fn load_module_for_sass_script(
+        &mut self,
+        url: &str,
+        configuration: Rc<RefCell<Configuration>>,
+        span: Span,
+    ) -> SassResult<Arc<RefCell<Module>>> {
+        if url.starts_with("sass:") {
+            if !(*configuration).borrow().is_empty() {
+                return Err((
+                    format!("Built-in module {} can't be configured.", url),
+                    span,
+                )
+                    .into());
+            }
+
+            return self
+                .builtin_module(url)
+                .ok_or_else(|| ("Can't find stylesheet to import.", span).into());
+        }
+
+        // The URL resolves against the file the call is written in, as
+        // dart-sass resolves it. That is not always the file being executed:
+        // a mixin from another file that wraps `meta.load-css` loads relative
+        // to its own file, not to the stylesheet including the mixin.
+        let call_site = PathBuf::from(self.map.look_up_span(span).file.name());
+        let old_import_path = mem::replace(&mut self.current_import_path, call_site);
+        let stylesheet = self.load_style_sheet(url, false, span);
+        self.current_import_path = old_import_path;
+        let stylesheet = stylesheet?;
+
+        let canonical_url = self
+            .options
+            .fs
+            .canonicalize(&stylesheet.url)
+            .unwrap_or_else(|_| stylesheet.url.clone());
+
+        if self.active_modules.contains(&canonical_url) {
+            return Err(("Module loop: this module is already being loaded.", span).into());
+        }
+
+        self.active_modules.insert(canonical_url.clone());
+
+        let module_url = stylesheet.url.clone();
+        let first_load = !self.modules.contains_key(&module_url);
+
+        let old_in_detached_load = mem::replace(&mut self.in_detached_load, true);
+        let old_extender = mem::replace(&mut self.extender, ExtensionStore::new(self.empty_span));
+        let old_upstream = mem::take(&mut self.current_upstream);
+        let css_start = self.css_tree.stmt_count();
+
+        let result = self.execute(stylesheet, Some(configuration), true);
+
+        let store = mem::replace(&mut self.extender, old_extender);
+        self.current_upstream = old_upstream;
+        self.in_detached_load = old_in_detached_load;
+        self.active_modules.remove(&canonical_url);
+
+        // The record has the CSS now; the tree keeps none of it.
+        for idx in self.css_tree.top_level_stmts_since(css_start) {
+            self.css_tree.remove_subtree(idx);
+        }
+
+        let module = result?;
+
+        if first_load {
+            self.detached_stores.insert(module_url, store);
+        }
+
+        Ok(module)
     }
 
     pub(crate) fn load_module(
@@ -1217,16 +1533,7 @@ impl<'a> Visitor<'a> {
         span: Span,
         callback: impl Fn(&mut Self, Arc<RefCell<Module>>, StyleSheet) -> SassResult<()>,
     ) -> SassResult<()> {
-        let builtin = match url.to_string_lossy().as_ref() {
-            "sass:color" => Some(declare_module_color()),
-            "sass:list" => Some(declare_module_list()),
-            "sass:map" => Some(declare_module_map()),
-            "sass:math" => Some(declare_module_math()),
-            "sass:meta" => Some(declare_module_meta()),
-            "sass:selector" => Some(declare_module_selector()),
-            "sass:string" => Some(declare_module_string()),
-            _ => None,
-        };
+        let builtin = self.builtin_module(url.to_string_lossy().as_ref());
 
         if let Some(builtin) = builtin {
             // A guarded match rather than `is_some()` plus `unwrap()`. A
@@ -1248,11 +1555,7 @@ impl<'a> Visitor<'a> {
                 _ => {}
             }
 
-            callback(
-                self,
-                Arc::new(RefCell::new(builtin)),
-                StyleSheet::new(false, url.to_path_buf()),
-            )?;
+            callback(self, builtin, StyleSheet::new(false, url.to_path_buf()))?;
             return Ok(());
         }
 
@@ -1290,47 +1593,6 @@ impl<'a> Visitor<'a> {
         Ok(())
     }
 
-    /// Loads a stylesheet for `meta.load-css`.
-    ///
-    /// This is [`Visitor::load_module`] in the keep-position mode `@import`
-    /// uses: the loaded file gets its own environment and its `!default`
-    /// variables are configured from `$with`, but its CSS lands where the
-    /// `@include` was written rather than at the root, so
-    /// `a {@include meta.load-css("other")}` emits `a b`. The module cache
-    /// takes part the way it does everywhere else -- the file executes once
-    /// and shares its state with `@use` of the same file, loading it again
-    /// replays the CSS it emitted the first time, and configuring an
-    /// already-loaded file is an error.
-    pub(crate) fn load_css_module(
-        &mut self,
-        url: &str,
-        configuration: Rc<RefCell<Configuration>>,
-        span: Span,
-    ) -> SassResult<()> {
-        if url.starts_with("sass:") {
-            if !(*configuration).borrow().is_empty() {
-                return Err((
-                    format!("Built-in module {} can't be configured.", url),
-                    span,
-                )
-                    .into());
-            }
-
-            // A built-in module has no CSS of its own to emit.
-            return Ok(());
-        }
-
-        let old_in_import_context = mem::replace(&mut self.in_import_context, true);
-
-        let result = self.load_module(url.as_ref(), Some(configuration), true, span, |_, _, _| {
-            Ok(())
-        });
-
-        self.in_import_context = old_in_import_context;
-
-        result
-    }
-
     fn visit_use_rule(&mut self, use_rule: AstUseRule) -> SassResult<()> {
         let configuration = if use_rule.configuration.is_empty() {
             Rc::new(RefCell::new(Configuration::empty()))
@@ -1353,8 +1615,8 @@ impl<'a> Visitor<'a> {
 
         let namespace = use_rule
             .namespace
-            .as_ref()
-            .map(|s| Identifier::from(s.trim_start_matches("sass:")));
+            .as_deref()
+            .map(|s| s.trim_start_matches("sass:"));
 
         self.load_module(
             &use_rule.url,
