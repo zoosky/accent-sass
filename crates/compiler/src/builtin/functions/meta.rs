@@ -124,7 +124,10 @@ pub(crate) fn global_variable_exists(
         Value::Null => None,
         v => {
             return Err((
-                format!("$module: {} is not a string.", v.inspect(args.span())?),
+                format!(
+                    "$module: {} is neither a string nor a module reference.",
+                    v.inspect(args.span())?
+                ),
                 args.span(),
             )
                 .into());
@@ -155,7 +158,10 @@ pub(crate) fn mixin_exists(mut args: ArgumentResult, visitor: &mut Visitor) -> S
         Value::Null => None,
         v => {
             return Err((
-                format!("$module: {} is not a string.", v.inspect(args.span())?),
+                format!(
+                    "$module: {} is neither a string nor a module reference.",
+                    v.inspect(args.span())?
+                ),
                 args.span(),
             )
                 .into());
@@ -190,7 +196,10 @@ pub(crate) fn function_exists(
         Value::Null => None,
         v => {
             return Err((
-                format!("$module: {} is not a string.", v.inspect(args.span())?),
+                format!(
+                    "$module: {} is neither a string nor a module reference.",
+                    v.inspect(args.span())?
+                ),
                 args.span(),
             )
                 .into());
@@ -227,7 +236,10 @@ pub(crate) fn get_function(mut args: ArgumentResult, visitor: &mut Visitor) -> S
         Value::Null => None,
         v => {
             return Err((
-                format!("$module: {} is not a string.", v.inspect(args.span())?),
+                format!(
+                    "$module: {} is neither a string nor a module reference.",
+                    v.inspect(args.span())?
+                ),
                 args.span(),
             )
                 .into());

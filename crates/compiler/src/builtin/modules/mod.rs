@@ -325,10 +325,7 @@ impl Modules {
         match self.0.get(&name) {
             Some(v) => Ok(Arc::clone(v)),
             None => Err((
-                format!(
-                    "There is no module with the namespace \"{}\".",
-                    name.as_str()
-                ),
+                format!("There is no module with namespace \"{}\".", name.as_str()),
                 span,
             )
                 .into()),
@@ -343,10 +340,7 @@ impl Modules {
         match self.0.get_mut(&name) {
             Some(v) => Ok(v),
             None => Err((
-                format!(
-                    "There is no module with the namespace \"{}\".",
-                    name.as_str()
-                ),
+                format!("There is no module with namespace \"{}\".", name.as_str()),
                 span,
             )
                 .into()),

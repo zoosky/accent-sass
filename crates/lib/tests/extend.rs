@@ -2150,3 +2150,13 @@ test!(
     ".a {\n  x: y;\n}\n.c {\n  @extend .a;\n}\n.a {\n  .b {\n    .d {\n      q: r;\n    }\n  }\n}\n",
     ".a, .c {\n  x: y;\n}\n\n.a .b .d, .c .b .d {\n  q: r;\n}\n"
 );
+// Two `@extend`s of the same selector from different media queries merge
+// into one extension, and the merge refuses them. The refusal used to be
+// unwrapped on the way out of `add_extension`, so this input crashed the
+// compiler instead of reporting the error dart-sass 1.105.1 reports. The
+// fixture is `directives/extend/error/cross_media/merged`.
+error!(
+    extending_the_same_selector_from_two_media_queries_is_an_error_not_a_crash,
+    "@media screen {\n  a {@extend b !optional}\n}\n\n@media print {\n  a {@extend b !optional}\n}\n",
+    "Error: You may not @extend the same selector from within different media queries."
+);
