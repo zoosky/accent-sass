@@ -13,6 +13,15 @@ at `0.13.4` and below are upstream's and are kept for lineage.
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-10-06
+
+First-class modules, the feature of dart-sass 1.105.0, and the move of the
+reference to 1.105.1. A minor rather than a patch because `meta.load-css`
+changes what it emits for an `@extend` inside the file it loads, and while
+the major version is `0` a breaking change bumps the minor. The sass-spec
+tally at the new pin is 14,355 runs and 100 failures; it was 148 before the
+module values and 111 at the old pin.
+
 ### Added
 
 - first-class modules, the feature of dart-sass 1.105.0. `meta.get-module($module)`
