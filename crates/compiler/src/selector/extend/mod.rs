@@ -1260,7 +1260,7 @@ impl ExtensionStore {
                 // If there's already an extend from `extender` to `target`, we don't need
                 // to re-run the extension. We may need to mark the extension as
                 // mandatory, though.
-                let new_val = MergedExtension::merge(existing_state.clone(), state).unwrap();
+                let new_val = MergedExtension::merge(existing_state.clone(), state)?;
                 sources.insert(complex.clone(), new_val);
                 continue;
             }

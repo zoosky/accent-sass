@@ -2,7 +2,8 @@
 
 This directory holds one implementation document per work item that closes
 the gap between this project and dart-sass, ranked by the number of
-sass-spec tests each item unlocks. The reference is 1.104.1 since 2026-09-13,
+sass-spec tests each item unlocks. The reference is 1.105.1 since 2026-10-06
+([item 30](30-dart-sass-1-105.md)), 1.104.1 since 2026-09-13,
 and 1.104.0 since [item 25](25-baseline-before-dart-sass-1-104.md); the
 ranking below was drawn up against 1.103.1.
 
@@ -274,6 +275,7 @@ closing a gap the ranking counts, so these are kept out of it as well.
 |---|---|---|
 | [25-baseline-before-dart-sass-1-104.md](25-baseline-before-dart-sass-1-104.md) | 1.103.1 to 1.104.0: negative zero prints as `-0`, and degenerate colour channels become `0`. Also records the baseline measured before the move | landed |
 | [26-pre-module-comment-repeats.md](26-pre-module-comment-repeats.md) | A loud comment above `@use` or `@forward` is written again before every module that loads the registered one, which is what Bulma's five differing lines were. Matched 1.104.0 and cost two fixtures that expect the 1.104.1 fix | landed 2026-09-12; reverted 2026-09-13 with the move to 1.104.1 |
+| [30-dart-sass-1-105.md](30-dart-sass-1-105.md) | 1.104.1 to 1.105.1: first-class modules (`meta.load`, `meta.get-module`, `meta.css`), 37 new failures recorded against the new pin, two messages reworded, and a crash on merged cross-media extensions fixed on the way | moved 2026-10-06; module values open |
 
 ### Landed -- residue only
 
@@ -345,7 +347,7 @@ fails now.
 
 ## Ground rules for every item
 
-- dart-sass 1.104.1 is the reference (1.104.0 from item 25, 1.103.1 before). Verify
+- dart-sass 1.105.1 is the reference (1.104.1 from 2026-09-13, 1.104.0 from item 25, 1.103.1 before). Verify
   every new or changed expectation against the real binary before
   committing it; never re-baseline a test to whatever the new code prints.
 - Add regression tests to `crates/lib/tests/` using the `test!` and

@@ -114,7 +114,7 @@ llms:
   enabled: true
   description: |
     accent-sass is a Sass compiler written in Rust, at parity with dart-sass
-    1.104.1. It is a fork of connorskees/grass that carries the modern Dart
+    1.105.1. It is a fork of connorskees/grass that carries the modern Dart
     Sass features upstream has not released. It runs as a library, as a
     command-line binary, and in a browser through WebAssembly. These pages
     cover installation, the command line, the Rust API, the browser API, and

@@ -26,11 +26,11 @@ error!(
 );
 error!(
     unknown_module_get_variable,
-    "a { color: foo.$bar; }", "Error: There is no module with the namespace \"foo\"."
+    "a { color: foo.$bar; }", "Error: There is no module with namespace \"foo\"."
 );
 error!(
     unknown_module_get_function,
-    "a { color: foo.bar(); }", "Error: There is no module with the namespace \"foo\"."
+    "a { color: foo.bar(); }", "Error: There is no module with namespace \"foo\"."
 );
 error!(
     unknown_function,
@@ -456,7 +456,7 @@ fn use_cannot_see_modules_imported_by_other_modules() {
         "a { color: a.$a; }"
     );
 
-    assert_err!("Error: There is no module with the namespace \"a\".", input);
+    assert_err!("Error: There is no module with namespace \"a\".", input);
 }
 #[test]
 fn use_can_see_modules_imported_by_other_modules_when_aliased_as_star() {
@@ -470,10 +470,7 @@ fn use_can_see_modules_imported_by_other_modules_when_aliased_as_star() {
         "@use \"sass:math\";"
     );
 
-    assert_err!(
-        r#"Error: There is no module with the namespace "math"."#,
-        input
-    );
+    assert_err!(r#"Error: There is no module with namespace "math"."#, input);
 }
 
 #[test]

@@ -470,27 +470,27 @@ test!(
 error!(
     inspect_lab,
     "@use \"sass:color\";\na {\n  color: meta.inspect(lab(50% 10 20));\n}\n",
-    "Error: There is no module with the namespace \"meta\"."
+    "Error: There is no module with namespace \"meta\"."
 );
 error!(
     inspect_oklch_alpha,
     "@use \"sass:color\";\na {\n  color: meta.inspect(oklch(50% 0.1 20 / 0.5));\n}\n",
-    "Error: There is no module with the namespace \"meta\"."
+    "Error: There is no module with namespace \"meta\"."
 );
 error!(
     inspect_color_function,
     "@use \"sass:color\";\na {\n  color: meta.inspect(color(srgb 0.1 0.2 0.3 / 0.5));\n}\n",
-    "Error: There is no module with the namespace \"meta\"."
+    "Error: There is no module with namespace \"meta\"."
 );
 error!(
     inspect_missing_hue,
     "@use \"sass:color\";\na {\n  color: meta.inspect(hsl(120 none 50%));\n}\n",
-    "Error: There is no module with the namespace \"meta\"."
+    "Error: There is no module with namespace \"meta\"."
 );
 error!(
     inspect_out_of_range_lab,
     "@use \"sass:color\";\na {\n  color: meta.inspect(lab(150% 10 20));\n}\n",
-    "Error: There is no module with the namespace \"meta\"."
+    "Error: There is no module with namespace \"meta\"."
 );
 test!(
     compressed_lab,

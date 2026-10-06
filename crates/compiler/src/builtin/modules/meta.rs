@@ -73,14 +73,31 @@ fn load_css(mut args: ArgumentResult, visitor: &mut Visitor) -> SassResult<()> {
     Ok(())
 }
 
+/// The namespace a `$module` argument names.
+///
+/// dart-sass 1.105.0 also accepts a first-class module value here, and its
+/// error names both forms. This compiler has no module value yet, so only the
+/// string form is accepted, with the error dart-sass prints.
+fn module_namespace(args: &mut ArgumentResult) -> SassResult<Identifier> {
+    let span = args.span();
+
+    match args.get_err(0, "module")? {
+        Value::String(s, ..) => Ok(Identifier::from(s)),
+        v => Err((
+            format!(
+                "$module: {} is neither a string nor a module reference.",
+                v.inspect(span)?
+            ),
+            span,
+        )
+            .into()),
+    }
+}
+
 fn module_functions(mut args: ArgumentResult, visitor: &mut Visitor) -> SassResult<Value> {
     args.max_args(1)?;
 
-    let module = Identifier::from(
-        args.get_err(0, "module")?
-            .assert_string_with_name("module", args.span())?
-            .0,
-    );
+    let module = module_namespace(&mut args)?;
 
     Ok(Value::Map(
         (*(*visitor.env.modules).borrow().get(module, args.span())?)
@@ -92,11 +109,7 @@ fn module_functions(mut args: ArgumentResult, visitor: &mut Visitor) -> SassResu
 fn module_variables(mut args: ArgumentResult, visitor: &mut Visitor) -> SassResult<Value> {
     args.max_args(1)?;
 
-    let module = Identifier::from(
-        args.get_err(0, "module")?
-            .assert_string_with_name("module", args.span())?
-            .0,
-    );
+    let module = module_namespace(&mut args)?;
 
     Ok(Value::Map(
         (*(*visitor.env.modules).borrow().get(module, args.span())?)
@@ -161,7 +174,10 @@ fn get_mixin(mut args: ArgumentResult, visitor: &mut Visitor) -> SassResult<Valu
         Value::Null => None,
         v => {
             return Err((
-                format!("$module: {} is not a string.", v.inspect(span)?),
+                format!(
+                    "$module: {} is neither a string nor a module reference.",
+                    v.inspect(span)?
+                ),
                 span,
             )
                 .into());
@@ -179,11 +195,7 @@ fn get_mixin(mut args: ArgumentResult, visitor: &mut Visitor) -> SassResult<Valu
 fn module_mixins(mut args: ArgumentResult, visitor: &mut Visitor) -> SassResult<Value> {
     args.max_args(1)?;
 
-    let module = Identifier::from(
-        args.get_err(0, "module")?
-            .assert_string_with_name("module", args.span())?
-            .0,
-    );
+    let module = module_namespace(&mut args)?;
 
     Ok(Value::Map(
         (*(*visitor.env.modules).borrow().get(module, args.span())?)

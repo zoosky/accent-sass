@@ -6,7 +6,7 @@ menu:
   order: 0
 description: >-
   accent-sass is a Sass compiler written in Rust, at parity with dart-sass
-  1.104.1. It compiles Bulma, Pico, Foundation and USWDS, runs as a library or
+  1.105.1. It compiles Bulma, Pico, Foundation and USWDS, runs as a library or
   a binary, and compiles to WebAssembly so the same engine runs in a browser.
 
 # `lead` above is one of Accent's own page fields, so home.html.jinja reads it
@@ -15,7 +15,7 @@ description: >-
 # data instead of as body prose -- which also means the wording can change
 # without touching a template.
 
-eyebrow: "v0.16.1 - MIT - dart-sass 1.104.1"
+eyebrow: "v0.16.1 - MIT - dart-sass 1.105.1"
 headline: "Sass,"
 headline_accent: "in Rust."
 lead: >-
@@ -50,7 +50,7 @@ stages:
 
 figures_title: The reference implementation is the test
 figures_lead: >-
-  dart-sass 1.104.1 is the reference, and a deviation from it is a bug rather
+  dart-sass 1.105.1 is the reference, and a deviation from it is a bug rather
   than a dialect. The numbers below come from the official spec suite and from
   the framework corpus CI compiles on every commit.
 
@@ -76,7 +76,7 @@ features_lead: >-
 features:
   - title: Parity is the contract
     body: >-
-      dart-sass is the reference implementation, currently 1.104.1. Where
+      dart-sass is the reference implementation, currently 1.105.1. Where
       output deliberately differs, the reason is written next to the test. A
       re-baselined expectation that nobody checked against the reference is how
       wrong behaviour gets frozen, so it is not allowed.

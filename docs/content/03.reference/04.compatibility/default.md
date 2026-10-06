@@ -7,11 +7,11 @@ menu:
   visible: true
   order: 4
 description: >-
-  How accent-sass compares to dart-sass 1.104.1: sass-spec results, the
+  How accent-sass compares to dart-sass 1.105.1: sass-spec results, the
   framework corpus, and the known divergences.
 ---
 
-dart-sass is the reference implementation, currently **1.104.1**. A deviation
+dart-sass is the reference implementation, currently **1.105.1**. A deviation
 from it is a bug rather than a dialect, with two declared exceptions: error
 message wording and error spans.
 
@@ -37,7 +37,7 @@ gating.
 
 ### Byte-identical output
 
-All four frameworks compile byte-identically to dart-sass 1.104.1, comments
+All four frameworks compile byte-identically to dart-sass 1.105.1, comments
 included. For USWDS 3.13.0 that is **32,781 lines each, zero differences.**
 Measured 2026-09-13 with `.github/scripts/frameworks.sh`.
 
@@ -93,7 +93,7 @@ What surrounds a `@warn` message does not. This compiler writes
 
 One deprecation is reported so far, `bogus-combinators`: a style rule whose
 selector has a leading, trailing or repeated combinator, and an `@extend`
-inside one. Its banner, message and source frame match dart-sass 1.104.1.
+inside one. Its banner, message and source frame match dart-sass 1.105.1.
 
 The line below the frame does not always. dart-sass writes a stack trace;
 this compiler writes the file, line and column, followed by

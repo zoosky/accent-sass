@@ -97,7 +97,7 @@ pub use accent_sass_compiler::{
 #[cfg_attr(doc_cfg, doc(cfg(feature = "macro")))]
 macro_rules! include {
     ($path:literal) => {
-        $crate::__internal::accent_sass_macro::include_sass!($path);
+        $crate::__internal::accent_sass_macro::include_sass!($path)
     };
 }
 

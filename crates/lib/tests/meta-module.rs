@@ -26,8 +26,7 @@ test!(
 );
 error!(
     fn_exists_module_dne,
-    "a {\n  color: function-exists(c, d);\n}\n",
-    "Error: There is no module with the namespace \"d\"."
+    "a {\n  color: function-exists(c, d);\n}\n", "Error: There is no module with namespace \"d\"."
 );
 
 #[test]

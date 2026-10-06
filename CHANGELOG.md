@@ -13,6 +13,24 @@ at `0.13.4` and below are upstream's and are kept for lineage.
 
 ## [Unreleased]
 
+### Changed
+
+- the reference implementation moves from dart-sass 1.104.1 to 1.105.1, and
+  the sass-spec pin from `b39c32768` to `85d5d7125`. 1.105.0 adds first-class
+  modules (`meta.load`, `meta.get-module`, `meta.css`, and a module value every
+  `$module` parameter accepts), which this release does not implement yet:
+  the 37 fixtures that exercise them fail at the new pin, and
+  [item 30](specs/docs/features/30-dart-sass-1-105.md) records the baseline
+  and the plan. Two messages say what 1.105.1 says: `There is no module with
+  namespace "x".` and `$module: 1 is neither a string nor a module reference.`
+
+### Fixed
+
+- `@extend` of the same selector from two different media queries crashed the
+  compiler with a panic instead of reporting `You may not @extend the same
+  selector from within different media queries.` The fixture is
+  `directives/extend/error/cross_media/merged`, new in this sass-spec pin
+
 ## [0.16.1] - 2026-09-19
 
 A packaging release. The compiler is unchanged since `0.16.0`: the only change
