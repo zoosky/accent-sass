@@ -14,11 +14,12 @@ and are deliberately kept out of the ranking, which counts failures and would
 read them as worthless.
 
 **The ranking below was rebuilt on 2026-09-10, by cause rather than by
-area, and re-measured on 2026-09-11.** The original one was drawn up against
-1,718 failures, when six large items accounted for most of them. Those six
-have landed, and so have items 09, 10, 11, 16, 17, 20, 21 and 23, and now 07
-and 24; the suite is at 173, which changed the shape of the problem rather
-than just its size.
+area, and re-measured on 2026-09-11 and again on 2026-10-06.** The original
+one was drawn up against 1,718 failures, when six large items accounted for
+most of them. Those six have landed, and so have items 09, 10, 11, 16, 17,
+20, 21 and 23, then 07 and 24, and now 15 and 30; the suite is at 100 at the
+1.105.1 pin, which changed the shape of the problem rather than just its
+size.
 
 The 2026-09-05 rebuild reported 134 failures in areas no document covered and
 ranked them by *area*, which said where the failures were and nothing about
@@ -28,8 +29,8 @@ five areas, the nine deepest cover 89 of the 128, and the rest is a tail of 12
 that item 24 records one by one. Items 15 to 24 are that reading. Several of
 those items hold more than one defect -- item 17 is five -- so 21 is the count
 of things worth queueing, not of lines to change. Items 16, 17, 20, 21, 23 and
-24 have since landed, and 40 of the unclaimed failures are left: 39 in items
-15, 18, 19 and 22, and item 23's residue, `css/font-face/bubble/empty`.
+24 have since landed, then 15, and 21 of the unclaimed failures are left: 20
+in items 18, 19 and 22, and item 23's residue, `css/font-face/bubble/empty`.
 
 Counting by cause reorders the work. `spec/core_functions/math` looked like the
 deepest unclaimed area at 12 failures; it is five unrelated defects, four of
@@ -39,15 +40,29 @@ that shows up in five different areas and in no single area looks big.
 ## Measurement
 
 The ranking comes from a full run of the pinned sass-spec revision against
-the release build. Measured 2026-09-11 on master (`f55ace41`), against
-sass-spec `b39c32768`:
+the release build. Measured 2026-10-06 on master (`04378ea0`), against
+sass-spec `85d5d7125` and dart-sass 1.105.1:
+
+```
+14355 runs, 14247 passing, 100 failures, 8 todo, 0 ignored, 0 errors
+```
+
+The 100 splits 79 in the areas items 01 to 11 claim and 21 in the areas
+items 15 to 24 were drawn from.
+
+Three steps lie between this run and the previous one, 173 on `f55ace41`
+at the `b39c32768` pin, each measured in its item rather than inferred: item
+15 took the suite to 111 (#87); item 30 moved the pin to `85d5d7125`, which
+added 89 runs and 37 failures, all of them the first-class module fixtures,
+for 148 (#116); and item 30's second pull request closed 48, the 37 and
+eleven older ones, for 100 (#117). Nothing that passed on `f55ace41` fails
+now.
+
+The previous measurement, kept for the record:
 
 ```
 14266 runs, 14085 passing, 173 failures, 8 todo, 0 ignored, 0 errors
 ```
-
-The 173 splits 133 in the areas items 01 to 11 claim and 40 in the areas
-items 15 to 24 were drawn from.
 
 Item 25 moved the pin from `4a9eea66` to `b39c32768`, the first revision
 with dart-sass 1.104.0's expectations, which added 48 runs. The step is
@@ -67,8 +82,8 @@ paragraph read "the suite is at 277" on a master that measured 243. Rebuild
 the page in one deliberate pass after a batch lands, against a fresh run
 rather than by arithmetic, which is what this revision does.
 
-The 2026-09-10 revisions were that pass, at 243 and then 234. This revision
-is the next, at 173.
+The 2026-09-10 revisions were that pass, at 243 and then 234; the 2026-09-11
+revision was the next, at 173. This revision is the next, at 100.
 
 Marking the table below has the same hazard in a milder form. A row and the
 row under it are one hunk to a three-way merge, so two items landing on
@@ -81,7 +96,7 @@ read fixture by fixture; the causes in items 15 to 24 come from that reading,
 and each was checked against dart-sass 1.103.1 before being written down. The
 per-item "Failures" column below is what each item was worth against that run
 -- the size of the job, not a live count -- and the areas table further down
-is re-measured at 173. The 284 split 156 claimed against 128 unclaimed; the
+is re-measured at 100. The 284 split 156 claimed against 128 unclaimed; the
 earlier figure of 134 was taken at 294 and is not directly comparable, #43 and
 #52 having closed fixtures in unclaimed areas without belonging to any item.
 
@@ -107,7 +122,8 @@ platform, so the ranking is unaffected, but the two tests behind it are
 unidentified -- the job keeps only the last 40 lines of its output, which is
 not enough to name them. Expect CI to read two higher than this page. The
 offset still held on 2026-09-11: 177 against 175 on `e8868a5e`, and 175
-against 173 on `f55ace41`.
+against 173 on `f55ace41`. On 2026-10-06 it was 102 against 100 on the
+module-values branch head.
 
 To reproduce:
 
@@ -132,22 +148,21 @@ missing deprecation warning or on the wording of an error counts as passing. In
 on this page is *with* the flags, so each is a floor rather than the whole
 gap. Drop the flags when an item's acceptance criteria say so.
 
-## Where the remaining 173 are
+## Where the remaining 100 are
 
 Ranked by the failures each item unlocks, deepest first. Items 15 to 24 were
 written on 2026-09-10 and between them accounted for all 128 failures that no
-document covered. Items 16, 17, 20, 21, 23 and 24 have since landed and have
-moved to the table at the end of this page, and so has item 07. The
+document covered. Items 15, 16, 17, 20, 21, 23 and 24 have since landed and
+have moved to the table at the end of this page, and so has item 07. The
 "Failures" column is what each item was worth against the 284 run: the size
-of the job, not a live count. The "Left" column is measured on `f55ace41`.
+of the job, not a live count. The "Left" column is measured on `04378ea0`.
 
 ### Open items
 
 | Doc | Cause | Failures | Left | Main spec directories |
 |---|---|---|---|---|
-| [15-bogus-combinators.md](15-bogus-combinators.md) | A selector whose combinators cannot match is printed rather than dropped, and may act as an extender | 18 | 18 | `non_conformant/extend-tests`, `directives/extend`, `non_conformant/{scss,sass}` |
 | [18-loud-comment-fidelity.md](18-loud-comment-fidelity.md) | A comment loses the line it was written on, and a continuation line loses the output indentation | 9, plus 1 of item 05's residue | 9, plus the 1 | `libsass-closed-issues`, `non_conformant`, `css/keyframes` |
-| [19-indented-syntax-gaps.md](19-indented-syntax-gaps.md) | `.sass` parse gaps left after item 10: comments spanning lines, `@import` lists, a bare `@at-root`. Section 2, brackets spanning lines, was closed by #68 | 9, plus 1 of item 05's residue | 6, plus the 1 | `expressions/comments`, `non_conformant/sass`, `directives/at_root` |
+| [19-indented-syntax-gaps.md](19-indented-syntax-gaps.md) | `.sass` parse gaps left after item 10: comments spanning lines, `@import` lists, a bare `@at-root`. Section 2, brackets spanning lines, was closed by #68 | 9, plus 1 of item 05's residue | 5, plus the 1 | `expressions/comments`, `non_conformant/sass`, `directives/at_root` |
 | [22-custom-property-raw-text.md](22-custom-property-raw-text.md) | A custom property's value is folded onto one line instead of being reindented | 6 | 6 | `css/custom_properties` |
 | [08-calculation-warnings-and-error-wording.md](08-calculation-warnings-and-error-wording.md) | Deprecation warnings (none exist); the error wording is done | 22, invisible under the standard flags | 22, all missing warnings | `spec/values/calculation` |
 | [28-warn-banner-and-repeats.md](28-warn-banner-and-repeats.md) | A repeated `@warn` is swallowed, and the banner reads `Warning:` where dart-sass writes `WARNING:` | 18, invisible under the standard flags | 18 | `directives/warn`, `libsass-closed-issues`, `libsass` |
@@ -174,36 +189,39 @@ All ten are counted as residue below.
 
 ### What the areas look like now
 
-The 173 by area, for anyone who wants to scope a run, measured on
-`f55ace41`. Areas a document already claims are marked. Since the 234 run,
-`css/selector` fell from 32 to 25 and `core_functions/selector` from 34 to 25
-while item 24 landed, `core_functions/color` lost its one failure that was not
-a rounding difference to item 25, and "everything else" fell from 55 to 18.
-No area grew.
+The 100 by area, for anyone who wants to scope a run, measured on
+`04378ea0`. Areas a document already claims are marked. Since the 173 run,
+item 15 cleared `non_conformant/extend-tests` and `directives/extend` and
+reached far past its own count: `css/selector` fell from 25 to 1 and
+`core_functions/selector` from 25 to 5, which answers the question the
+previous revision left open about whether its fix would reach them. Item 30
+took `core_functions/meta` from 37 at the new pin back to 26, every one of
+them older than the pin. "Everything else" fell from 18 to 14. No area grew.
 
 | Area | Failures | Claimed by |
 |---|---:|---|
-| `spec/core_functions/meta` | 37 | 03 |
-| `spec/core_functions/selector` | 25 | 04 |
-| `spec/css/selector` | 25 | 04 |
+| `spec/core_functions/meta` | 26 | 03 |
 | `spec/core_functions/color` | 21 | 01 |
 | `spec/css/comment` | 10 | 05, 18, 19 |
-| `spec/non_conformant/extend-tests` | 9 | 15 |
 | `spec/directives/use` | 8 | 06 |
 | `spec/css/custom_properties` | 6 | 22 |
 | `spec/directives/forward` | 5 | 06 |
-| `spec/directives/extend` | 5 | 15 |
+| `spec/core_functions/selector` | 5 | 04 |
 | `spec/expressions/comments` | 4 | 19 |
-| everything else | 18 | 15, 18 and 19, plus one failure each of the residue of 02, 06 and 23 |
+| `spec/css/selector` | 1 | 04 |
+| everything else | 14 | 18 and 19, plus one failure each of the residue of 02, 06 and 23 |
 
-By kind, the 173 are 143 "Expected did not match output", 14 "Test case
-should succeed but it did not" and 16 "Expected test to fail but it did not";
+By kind, the 100 are 77 "Expected did not match output", 13 "Test case
+should succeed but it did not" and 10 "Expected test to fail but it did not";
 [Failure kinds](#failure-kinds) has the history.
 
-Two residue areas point at an open item. 24 of `css/selector`'s 25 failures
-are under `css/selector/combinator/`, and 20 of `core_functions/selector`'s 25
-have `combinator` in their path. That is item 15's subject, but item 15 names
-none of them, and nobody has checked whether its fix reaches them.
+Two residue areas carry one cause each and no document. The 26 under
+`core_functions/meta` are 23 fixtures of the four `*-exists` functions
+looking through `@forward` and `@use ... as *` (`different_module/
+through_forward/*`, `through_use` and `error/conflict`), two `content-exists`
+error cases, and `load_css/twice/use/different_extend`, which item 30 records
+as a deliberate deviation. The 13 under `directives/use` and `forward` are
+item 06's residue and have not been read for a cause since #34.
 
 Item 07 has landed in full and moved to the table below: #83, item 25, closed
 its section 1, the last, and `spec/values/calculation` is clear under the
@@ -279,12 +297,12 @@ closing a gap the ranking counts, so these are kept out of it as well.
 
 ### Landed -- residue only
 
-The residues here sum to 134, re-measured on `f55ace41`: the 133 left in the
-areas items 01 to 11 claim, plus the 1 that items 16, 17, 20, 21, 23 and 24
-left behind in areas drawn from the 284 run's unclaimed 128. The 39 still open
-there belong to items 15, 18, 19 and 22.
+The residues here sum to 80, re-measured on `04378ea0`: the 79 left in the
+areas items 01 to 11 claim, plus the 1 that items 15, 16, 17, 20, 21, 23 and
+24 left behind in areas drawn from the 284 run's unclaimed 128. The 20 still
+open there belong to items 18, 19 and 22.
 
-These sixteen are done. The counts are what remains in the areas they
+These seventeen are done. The counts are what remains in the areas they
 touched, not open work, and they are listed so nobody mistakes a residue for
 a priority.
 
@@ -292,10 +310,10 @@ a priority.
 |---|---|---|---|
 | [01-calculation-functions.md](01-calculation-functions.md) | #12 | 21 | `core_functions/color` 21, all double-precision differences; `values/calculation` is clear. Item 11 took the 35 `attr()` fixtures |
 | [02-css-if-function.md](02-css-if-function.md) | #13 | 1 | `spec/expressions/if` |
-| [03-meta-module.md](03-meta-module.md) | #14 | 37 | `spec/core_functions/meta` |
-| [04-selector-unification.md](04-selector-unification.md) | #15 | 50 | `core_functions/selector` 25, `css/selector` 25 -- item 16 took three, and 16 more went while item 24 landed |
+| [03-meta-module.md](03-meta-module.md) | #14 | 26 | `spec/core_functions/meta`: 23 are `*-exists` through `@forward` and `@use ... as *`, two are `content-exists` errors, one is item 30's recorded deviation |
+| [04-selector-unification.md](04-selector-unification.md) | #15 | 6 | `core_functions/selector` 5, `css/selector` 1 -- item 16 took three, 16 more went while item 24 landed, and item 15 took 44 |
 | [05-comments-and-arguments.md](05-comments-and-arguments.md) | #16 | 10 | `spec/css/comment`; `spec/callable` is clear. Items 18 and 19 name causes for 2 of the 10 |
-| [06-module-system.md](06-module-system.md) | #17, #18 | 14 | `directives/use` 8, `forward` 5, `import` 1 -- item 16 took one |
+| [06-module-system.md](06-module-system.md) | #17, #18 | 14 | `directives/use` 8, `forward` 5, `import` 1 -- item 16 took one; unchanged since |
 | [07-calculation-long-tail.md](07-calculation-long-tail.md) | #83 for section 1; sections 2 and 3 by other work | 0 | `spec/values/calculation` is clear |
 | [09-plain-css.md](09-plain-css.md) | #27, #29, #30 | 0 | `spec/css/plain` is clear; `directives/import` has 1 left, counted under 06 |
 | [10-indented-newlines.md](10-indented-newlines.md) | #32 | 0 | cut across 26 areas; `directives/for`, `directives/function`, `values/lists`, `css/media` and `css/style_rule` are clear |
@@ -304,6 +322,7 @@ a priority.
 | [17-math-module.md](17-math-module.md) | #55 | 0 | `core_functions/math` is clear |
 | [20-string-split.md](20-string-split.md) | #57 | 0 | `core_functions/string` is clear; #64 closed `split/private_use_character` with item 24's escaping fix |
 | [23-font-face-bubbling.md](23-font-face-bubbling.md) | #56 | 1 | `css/font-face`: `bubble/empty`, which also needs item 18's section 1 |
+| [15-bogus-combinators.md](15-bogus-combinators.md) | #87 | 0 | `non_conformant/extend-tests` and `directives/extend` are clear. Worth 62 rather than the 18 counted for it: it also took `css/selector` from 25 to 1 and `core_functions/selector` from 25 to 5, both of which item 04 claims |
 | [21-empty-map-as-list.md](21-empty-map-as-list.md) | #58 | 0 | `core_functions/list` is clear; #72 closed `join/error/named` under item 24. Worth 9 rather than the 8 counted for it: an arglist is a list too, which also closed one of item 24's four arglist fixtures |
 | [24-unclaimed-tail.md](24-unclaimed-tail.md) | #61 to #68, #70 to #79 | 0 | All 39 fixtures pass, and so does the calc fixture it kept outside them. Its own document still lists eight causes as open; all eight are closed |
 
@@ -317,13 +336,13 @@ residue is a rounding question, not a colour-API one.
 
 ## Failure kinds
 
-Across the whole suite the 173 failures split into (2026-09-11, `f55ace41`):
+Across the whole suite the 100 failures split into (2026-10-06, `04378ea0`):
 
-- 143 "Expected did not match output" — accent-sass produces different CSS.
-- 14 "Test case should succeed but it did not" — accent-sass rejects valid input.
-- 16 "Expected test to fail but it did not" — accent-sass accepts invalid input.
+- 77 "Expected did not match output" — accent-sass produces different CSS.
+- 13 "Test case should succeed but it did not" — accent-sass rejects valid input.
+- 10 "Expected test to fail but it did not" — accent-sass accepts invalid input.
 
-At 234 the split was 179, 28 and 27.
+At 173 the split was 143, 14 and 16; at 234 it was 179, 28 and 27.
 
 The order flipped on 2026-09-05. On 2026-09-04 *rejects valid input* stood at
 304 and dominated; items 09 and 10 were both drawn from it, and it is now 14.
