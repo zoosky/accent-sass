@@ -146,6 +146,34 @@ impl CssTree {
         self.link_child_to_parent(child_idx, parent_idx);
     }
 
+    /// Drops the statement at `child_idx` and everything beneath it, and
+    /// takes it out of its parent's children.
+    ///
+    /// This is how `meta.load` leaves nothing of a module's CSS in the tree
+    /// once the module's record has been taken: the record is a copy, so the
+    /// originals can go. Descendants are tombstoned too, since `finish`
+    /// would otherwise lift them to the top level when their parent is gone.
+    pub fn remove_subtree(&mut self, child_idx: CssTreeIdx) {
+        if let Some(parent) = self.child_to_parent.remove(&child_idx)
+            && let Some(siblings) = self.parent_to_child.get_mut(&parent)
+        {
+            siblings.retain(|&sibling| sibling != child_idx);
+        }
+
+        self.tombstone(child_idx);
+    }
+
+    fn tombstone(&mut self, idx: CssTreeIdx) {
+        self.stmts[idx.0].borrow_mut().take();
+
+        if let Some(children) = self.parent_to_child.remove(&idx) {
+            for child in children {
+                self.child_to_parent.remove(&child);
+                self.tombstone(child);
+            }
+        }
+    }
+
     pub fn link_child_to_parent(&mut self, child_idx: CssTreeIdx, parent_idx: CssTreeIdx) {
         self.parent_to_child
             .entry(parent_idx)

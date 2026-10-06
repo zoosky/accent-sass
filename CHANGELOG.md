@@ -13,16 +13,38 @@ at `0.13.4` and below are upstream's and are kept for lineage.
 
 ## [Unreleased]
 
+### Added
+
+- first-class modules, the feature of dart-sass 1.105.0. `meta.get-module($module)`
+  returns the module behind a namespace as a value, `meta.load($url, $with: null)`
+  loads a module as `@use` would and returns it without emitting its CSS, and
+  the mixin `meta.css($module)` emits a module's CSS where it is included.
+  Every `$module` parameter -- `function-exists`, `mixin-exists`,
+  `global-variable-exists`, `get-function`, `get-mixin`, `module-functions`,
+  `module-mixins`, `module-variables` -- accepts the value as well as a
+  namespace string. `type-of` reports `module`, `==` compares identity,
+  `inspect` prints `get-module("ns")`, and every operator other than `not`
+  and `==` is an undefined operation. The built-in modules are one instance
+  each, so `meta.get-module(math)` equals a second alias of `sass:math`
+
 ### Changed
 
 - the reference implementation moves from dart-sass 1.104.1 to 1.105.1, and
-  the sass-spec pin from `b39c32768` to `85d5d7125`. 1.105.0 adds first-class
-  modules (`meta.load`, `meta.get-module`, `meta.css`, and a module value every
-  `$module` parameter accepts), which this release does not implement yet:
-  the 37 fixtures that exercise them fail at the new pin, and
-  [item 30](specs/docs/features/30-dart-sass-1-105.md) records the baseline
-  and the plan. Two messages say what 1.105.1 says: `There is no module with
+  the sass-spec pin from `b39c32768` to `85d5d7125`.
+  [Item 30](specs/docs/features/30-dart-sass-1-105.md) records the baseline
+  and the move. Two messages say what 1.105.1 says: `There is no module with
   namespace "x".` and `$module: 1 is neither a string nor a module reference.`
+- `meta.load-css` is `meta.css(meta.load($url, $with))`, as dart-sass defines
+  it. The loaded file no longer shares the including context's extension
+  store: an `@extend` inside it reaches nothing outside it, an `@extend` at
+  the include site reaches the copy, and two files that `load-css` one module
+  and extend into it each get their own copy. A `meta.load-css` written in a
+  mixin from another file resolves its URL against that file, as dart-sass
+  does
+- a namespace passed to a `meta` function as a string is looked up as the
+  `@use` rule wrote it: `meta.get-module("a_b")` finds `@use ... as a_b` and
+  not `@use ... as a-b`. Member access through a namespace, `a_b.$x`, is
+  still dash-insensitive
 
 ### Fixed
 

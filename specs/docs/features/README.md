@@ -275,7 +275,7 @@ closing a gap the ranking counts, so these are kept out of it as well.
 |---|---|---|
 | [25-baseline-before-dart-sass-1-104.md](25-baseline-before-dart-sass-1-104.md) | 1.103.1 to 1.104.0: negative zero prints as `-0`, and degenerate colour channels become `0`. Also records the baseline measured before the move | landed |
 | [26-pre-module-comment-repeats.md](26-pre-module-comment-repeats.md) | A loud comment above `@use` or `@forward` is written again before every module that loads the registered one, which is what Bulma's five differing lines were. Matched 1.104.0 and cost two fixtures that expect the 1.104.1 fix | landed 2026-09-12; reverted 2026-09-13 with the move to 1.104.1 |
-| [30-dart-sass-1-105.md](30-dart-sass-1-105.md) | 1.104.1 to 1.105.1: first-class modules (`meta.load`, `meta.get-module`, `meta.css`), 37 new failures recorded against the new pin, two messages reworded, and a crash on merged cross-media extensions fixed on the way | moved 2026-10-06; module values open |
+| [30-dart-sass-1-105.md](30-dart-sass-1-105.md) | 1.104.1 to 1.105.1: first-class modules (`meta.load`, `meta.get-module`, `meta.css`) implemented, `load-css` redefined as `css(load())`, string namespaces looked up as written, two messages reworded, and a crash on merged cross-media extensions fixed on the way | moved by #116 on 2026-10-06; module values landed by #117 |
 
 ### Landed -- residue only
 

@@ -21,6 +21,7 @@ pub use calculation::*;
 pub use map::SassMap;
 pub use number::*;
 pub use sass_function::{SassFunction, UserDefinedFunction};
+pub use sass_module::SassModule;
 pub use sass_number::SassNumber;
 
 mod arglist;
@@ -28,6 +29,7 @@ mod calculation;
 mod map;
 mod number;
 mod sass_function;
+mod sass_module;
 mod sass_number;
 
 #[derive(Debug, Clone)]
@@ -45,6 +47,8 @@ pub enum Value {
     FunctionRef(Box<SassFunction>),
     /// A first-class mixin, from `meta.get-mixin` or `meta.module-mixins`
     MixinRef(SassMixin),
+    /// A first-class module, from `meta.get-module` or `meta.load`
+    ModuleRef(SassModule),
     Calculation(SassCalculation),
 }
 
@@ -101,6 +105,13 @@ impl PartialEq for Value {
             Value::FunctionRef(fn1) => {
                 if let Value::FunctionRef(fn2) = other {
                     fn1 == fn2
+                } else {
+                    false
+                }
+            }
+            Value::ModuleRef(module1) => {
+                if let Value::ModuleRef(module2) = other {
+                    module1 == module2
                 } else {
                     false
                 }
@@ -311,6 +322,7 @@ impl Value {
             Value::List(..) => "list",
             Value::FunctionRef(..) => "function",
             Value::MixinRef(..) => "mixin",
+            Value::ModuleRef(..) => "module",
             Value::ArgList(..) => "arglist",
             Value::True | Value::False => "bool",
             Value::Null => "null",
@@ -591,7 +603,7 @@ impl Value {
     pub fn unary_plus(self, visitor: &mut Visitor, span: Span) -> SassResult<Self> {
         Ok(match self {
             Self::Dimension(SassNumber { .. }) => self,
-            Self::Calculation(..) => {
+            Self::Calculation(..) | Self::ModuleRef(..) => {
                 return Err((
                     format!("Undefined operation \"+{}\".", self.inspect(span)?),
                     span,
@@ -617,6 +629,14 @@ impl Value {
                 )
                     .into());
             }
+            // dart-sass parenthesizes the module here and nowhere else.
+            Self::ModuleRef(..) => {
+                return Err((
+                    format!("Undefined operation \"-({})\".", self.inspect(span)?),
+                    span,
+                )
+                    .into());
+            }
             Self::Dimension(SassNumber {
                 num,
                 unit,
@@ -637,6 +657,14 @@ impl Value {
     }
 
     pub fn unary_div(self, visitor: &mut Visitor, span: Span) -> SassResult<Self> {
+        if let Self::ModuleRef(..) = self {
+            return Err((
+                format!("Undefined operation \"/{}\".", self.inspect(span)?),
+                span,
+            )
+                .into());
+        }
+
         Ok(Self::String(
             format!(
                 "/{}",

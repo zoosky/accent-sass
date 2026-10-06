@@ -1,4 +1,5 @@
 use crate::ast::SassMixin;
+use crate::value::SassModule;
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::rc::Rc;
@@ -15,23 +16,12 @@ use crate::builtin::{
 };
 use crate::serializer::serialize_calculation_arg;
 
-/// `meta.load-css($url, $with: null)`: loads a stylesheet for its CSS alone.
-///
-/// The loaded file gets its own environment, so nothing it defines is visible
-/// to the caller; only its CSS is, and it appears where the `@include` was
-/// written. `$with` configures the file's `!default` variables and is validated
-/// the same way `@use ... with` validates its own.
-fn load_css(mut args: ArgumentResult, visitor: &mut Visitor) -> SassResult<()> {
-    args.max_args(2)?;
-
-    let span = args.span();
-
-    let url = args
-        .get_err(0, "url")?
-        .assert_string_with_name("url", span)?
-        .0;
-
-    let with = match args.default_arg(1, "with", Value::Null) {
+/// The configuration a `$with` argument describes: every key names a
+/// `!default` variable of the file being loaded. `null` means none, and a
+/// value that is not a map is an error. Shared by `meta.load` and
+/// `meta.load-css`, which validate the result the way `@use ... with` does.
+fn configuration_from_with(with: Value, span: Span) -> SassResult<Rc<RefCell<Configuration>>> {
+    let with = match with {
         Value::Map(map) => Some(map),
         Value::List(v, ..) if v.is_empty() => Some(SassMap::new()),
         Value::ArgList(v) if v.is_empty() => Some(SassMap::new()),
@@ -62,27 +52,95 @@ fn load_css(mut args: ArgumentResult, visitor: &mut Visitor) -> SassResult<()> {
         }
     };
 
-    let configuration = Rc::new(RefCell::new(configuration));
+    Ok(Rc::new(RefCell::new(configuration)))
+}
 
-    visitor.load_css_module(url.as_ref(), Rc::clone(&configuration), span)?;
+/// Loads the module `$url` names, configured by `$with`, for `meta.load` and
+/// `meta.load-css`. The two take the same arguments and differ only in what
+/// they do with the module.
+fn load_module_arg(
+    args: &mut ArgumentResult,
+    visitor: &mut Visitor,
+) -> SassResult<Arc<RefCell<Module>>> {
+    args.max_args(2)?;
+
+    let span = args.span();
+
+    let url = args
+        .get_err(0, "url")?
+        .assert_string_with_name("url", span)?
+        .0;
+
+    let configuration = configuration_from_with(args.default_arg(1, "with", Value::Null), span)?;
+
+    let module = visitor.load_module_for_sass_script(&url, Rc::clone(&configuration), span)?;
 
     // Anything left over names a variable the loaded file does not declare with
     // `!default`, which is a mistake worth reporting rather than ignoring.
     Visitor::assert_configuration_is_empty(&configuration, true)?;
 
-    Ok(())
+    Ok(module)
 }
 
-/// The namespace a `$module` argument names.
+/// `meta.load($url, $with: null)`: loads a module as `@use` would and returns
+/// it as a value, without emitting its CSS.
 ///
-/// dart-sass 1.105.0 also accepts a first-class module value here, and its
-/// error names both forms. This compiler has no module value yet, so only the
-/// string form is accepted, with the error dart-sass prints.
-fn module_namespace(args: &mut ArgumentResult) -> SassResult<Identifier> {
-    let span = args.span();
+/// The file executes once, shares its state with any `@use` of it, and keeps
+/// the CSS it emitted on record: `meta.css` emits a copy where it is included,
+/// and a later `@use` of the module emits it there. Extension and
+/// serialization errors in that CSS wait until it is emitted.
+fn load(mut args: ArgumentResult, visitor: &mut Visitor) -> SassResult<Value> {
+    let module = load_module_arg(&mut args, visitor)?;
 
-    match args.get_err(0, "module")? {
-        Value::String(s, ..) => Ok(Identifier::from(s)),
+    Ok(Value::ModuleRef(SassModule::new(module)))
+}
+
+/// `meta.load-css($url, $with: null)`: loads a stylesheet for its CSS alone.
+///
+/// Defined as `meta.css(meta.load($url, $with))`, which is how dart-sass
+/// defines it: the loaded file gets its own environment, so nothing it defines
+/// is visible to the caller; only its CSS is, and it appears where the
+/// `@include` was written.
+fn load_css(mut args: ArgumentResult, visitor: &mut Visitor) -> SassResult<()> {
+    let module = load_module_arg(&mut args, visitor)?;
+
+    visitor.emit_module_css(&module)
+}
+
+/// `meta.css($module)`: emits a copy of the module's CSS, upstream modules
+/// included, where the mixin is included.
+fn css(mut args: ArgumentResult, visitor: &mut Visitor) -> SassResult<()> {
+    args.max_args(1)?;
+
+    let span = args.span();
+    let module = module_from_value(args.get_err(0, "module")?, visitor, span)?;
+
+    visitor.emit_module_css(&module)
+}
+
+/// `meta.get-module($module)`: the module behind a namespace, as a value.
+fn get_module(mut args: ArgumentResult, visitor: &mut Visitor) -> SassResult<Value> {
+    args.max_args(1)?;
+
+    let span = args.span();
+    let module = module_from_value(args.get_err(0, "module")?, visitor, span)?;
+
+    Ok(Value::ModuleRef(SassModule::new(module)))
+}
+
+/// The module a `$module` argument names.
+///
+/// Since dart-sass 1.105.0 this is either a namespace string, looked up as
+/// written, or a module reference, which stands for itself. Anything else is
+/// the error dart-sass prints.
+pub(crate) fn module_from_value(
+    value: Value,
+    visitor: &Visitor,
+    span: Span,
+) -> SassResult<Arc<RefCell<Module>>> {
+    match value {
+        Value::String(name, ..) => (*visitor.env.modules).borrow().get_as_written(&name, span),
+        Value::ModuleRef(module) => Ok(Arc::clone(module.inner())),
         v => Err((
             format!(
                 "$module: {} is neither a string nor a module reference.",
@@ -94,28 +152,37 @@ fn module_namespace(args: &mut ArgumentResult) -> SassResult<Identifier> {
     }
 }
 
+/// [`module_from_value`] for a `$module: null` parameter, where `null` means
+/// the caller's own scope.
+pub(crate) fn optional_module_from_value(
+    value: Value,
+    visitor: &Visitor,
+    span: Span,
+) -> SassResult<Option<Arc<RefCell<Module>>>> {
+    match value {
+        Value::Null => Ok(None),
+        v => module_from_value(v, visitor, span).map(Some),
+    }
+}
+
 fn module_functions(mut args: ArgumentResult, visitor: &mut Visitor) -> SassResult<Value> {
     args.max_args(1)?;
 
-    let module = module_namespace(&mut args)?;
+    let span = args.span();
+    let module = module_from_value(args.get_err(0, "module")?, visitor, span)?;
+    let functions = (*module).borrow().functions(span);
 
-    Ok(Value::Map(
-        (*(*visitor.env.modules).borrow().get(module, args.span())?)
-            .borrow()
-            .functions(args.span()),
-    ))
+    Ok(Value::Map(functions))
 }
 
 fn module_variables(mut args: ArgumentResult, visitor: &mut Visitor) -> SassResult<Value> {
     args.max_args(1)?;
 
-    let module = module_namespace(&mut args)?;
+    let span = args.span();
+    let module = module_from_value(args.get_err(0, "module")?, visitor, span)?;
+    let variables = (*module).borrow().variables(span);
 
-    Ok(Value::Map(
-        (*(*visitor.env.modules).borrow().get(module, args.span())?)
-            .borrow()
-            .variables(args.span()),
-    ))
+    Ok(Value::Map(variables))
 }
 
 fn calc_args(mut args: ArgumentResult, visitor: &mut Visitor) -> SassResult<Value> {
@@ -166,27 +233,13 @@ fn get_mixin(mut args: ArgumentResult, visitor: &mut Visitor) -> SassResult<Valu
             .0,
     );
 
-    let module = match args.default_arg(1, "module", Value::Null) {
-        Value::String(s, ..) => Some(Spanned {
-            node: Identifier::from(s),
-            span,
-        }),
-        Value::Null => None,
-        v => {
-            return Err((
-                format!(
-                    "$module: {} is neither a string nor a module reference.",
-                    v.inspect(span)?
-                ),
-                span,
-            )
-                .into());
-        }
-    };
+    let module =
+        optional_module_from_value(args.default_arg(1, "module", Value::Null), visitor, span)?;
 
-    let mixin = visitor
-        .env
-        .get_mixin(Spanned { node: name, span }, module)?;
+    let mixin = match module {
+        Some(module) => (*module).borrow().get_mixin(Spanned { node: name, span })?,
+        None => visitor.env.get_mixin(Spanned { node: name, span }, None)?,
+    };
 
     Ok(Value::MixinRef(SassMixin::new(mixin)))
 }
@@ -195,13 +248,11 @@ fn get_mixin(mut args: ArgumentResult, visitor: &mut Visitor) -> SassResult<Valu
 fn module_mixins(mut args: ArgumentResult, visitor: &mut Visitor) -> SassResult<Value> {
     args.max_args(1)?;
 
-    let module = module_namespace(&mut args)?;
+    let span = args.span();
+    let module = module_from_value(args.get_err(0, "module")?, visitor, span)?;
+    let mixins = (*module).borrow().mixins(span);
 
-    Ok(Value::Map(
-        (*(*visitor.env.modules).borrow().get(module, args.span())?)
-            .borrow()
-            .mixins(args.span()),
-    ))
+    Ok(Value::Map(mixins))
 }
 
 /// `meta.accepts-content($mixin)`: whether the mixin takes a `@content` block.
@@ -269,7 +320,10 @@ pub(crate) fn declare(f: &mut Module) {
     f.insert_builtin("call", call);
     f.insert_builtin("calc-args", calc_args);
     f.insert_builtin("calc-name", calc_name);
+    f.insert_builtin("get-module", get_module);
+    f.insert_builtin("load", load);
 
+    f.insert_builtin_mixin("css", css, false);
     f.insert_builtin_mixin("load-css", load_css, false);
     f.insert_builtin_mixin("apply", apply, true);
 }

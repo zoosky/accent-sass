@@ -10,8 +10,32 @@ use crate::{
     value::{SassNumber, Value},
 };
 
+/// The error every arithmetic operator reports when a module reference is an
+/// operand. A module has no arithmetic, and dart-sass reports the operator
+/// rather than the module's missing CSS form -- except for `"string" + module`,
+/// where the string's own `+` serializes the right operand first.
+fn undefined_operation(left: &Value, op: &str, right: &Value, span: Span) -> SassResult<Value> {
+    Err((
+        format!(
+            "Undefined operation \"{} {} {}\".",
+            left.inspect(span)?,
+            op,
+            right.inspect(span)?
+        ),
+        span,
+    )
+        .into())
+}
+
 pub(crate) fn add(left: Value, right: Value, options: &Options, span: Span) -> SassResult<Value> {
+    if matches!(left, Value::ModuleRef(..))
+        || (matches!(right, Value::ModuleRef(..)) && !matches!(left, Value::String(..)))
+    {
+        return undefined_operation(&left, "+", &right, span);
+    }
+
     Ok(match left {
+        Value::ModuleRef(..) => return undefined_operation(&left, "+", &right, span),
         Value::Calculation(..) => match right {
             Value::String(s, quotes) => Value::String(
                 format!(
@@ -130,7 +154,7 @@ pub(crate) fn add(left: Value, right: Value, options: &Options, span: Span) -> S
                 )
                     .into());
             }
-            Value::Color(..) | Value::Calculation(..) => {
+            Value::Color(..) | Value::Calculation(..) | Value::ModuleRef(..) => {
                 return Err((
                     format!(
                         "Undefined operation \"{}{} + {}\".",
@@ -194,6 +218,10 @@ pub(crate) fn add(left: Value, right: Value, options: &Options, span: Span) -> S
 }
 
 pub(crate) fn sub(left: Value, right: Value, options: &Options, span: Span) -> SassResult<Value> {
+    if matches!(left, Value::ModuleRef(..)) || matches!(right, Value::ModuleRef(..)) {
+        return undefined_operation(&left, "-", &right, span);
+    }
+
     Ok(match left {
         Value::Calculation(..) => {
             return Err((
@@ -271,7 +299,7 @@ pub(crate) fn sub(left: Value, right: Value, options: &Options, span: Span) -> S
                 )
                     .into());
             }
-            Value::Color(..) | Value::Calculation(..) => {
+            Value::Color(..) | Value::Calculation(..) | Value::ModuleRef(..) => {
                 return Err((
                     format!(
                         "Undefined operation \"{}{} - {}\".",
@@ -454,6 +482,10 @@ pub(crate) fn single_eq(
 }
 
 pub(crate) fn div(left: Value, right: Value, options: &Options, span: Span) -> SassResult<Value> {
+    if matches!(left, Value::ModuleRef(..)) || matches!(right, Value::ModuleRef(..)) {
+        return undefined_operation(&left, "/", &right, span);
+    }
+
     Ok(match (left, right) {
         (Value::Dimension(num1), Value::Dimension(num2)) => {
             if num2.unit == Unit::None {
