@@ -25,7 +25,7 @@ The Rust API is also published on
 
 | | |
 |---|---|
-| Crate version | 0.16.1 |
+| Crate version | 0.17.0 |
 | Reference implementation | dart-sass 1.105.1 |
 | Minimum supported Rust | 1.96.1 |
 | Licence | MIT |
