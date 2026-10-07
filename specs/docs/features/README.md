@@ -255,7 +255,7 @@ WebAssembly story finds it recorded rather than folklore.
 | Doc | What it is | State |
 |---|---|---|
 | [29-command-line-check.md](29-command-line-check.md) | `--check`, which compiles and writes nothing, plus the ten flags that consumed the file name after them | landed by #102, with review fixes in #104 |
-| [12-wasm-browser-package.md](12-wasm-browser-package.md) | `wasm32-unknown-unknown` for npm: options, a JS-supplied filesystem, structured errors, size | open |
+| [12-wasm-browser-package.md](12-wasm-browser-package.md) | `wasm32-unknown-unknown` for npm: options, a JS-supplied filesystem, structured errors, size | closed: gaps 1 to 3 by #90, on npm as `accent-sass` since 0.16.1; gap 4 measured 2026-10-07 and settled on the shipped profile, since every size lever costs compile time |
 | [13-wasm-wasi.md](13-wasm-wasi.md) | `wasm32-wasip1`, and a CI job that runs the artifact rather than only building it | closed: gaps 1 and 2 by #49, gap 3 by #50, gap 4 by #51 |
 | [14-wasm-component-model.md](14-wasm-component-model.md) | `wasm32-wasip2` and a WIT interface for Accent's plugin runtime | recorded, not queued -- build it only when one of its triggers fires |
 

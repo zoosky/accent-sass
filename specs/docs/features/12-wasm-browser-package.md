@@ -8,7 +8,16 @@ compiles Sass where there is no filesystem and no process.
 conformance work, and it is ranked by who wants the artifact rather than by
 failure count. Nothing here changes what the compiler accepts or prints.
 
-## Status: gaps 1, 2 and 3 are closed
+## Status: closed
+
+Gaps 1, 2 and 3 landed in #90 and shipped: the package is on npm as
+`accent-sass` since 0.16.1 (#110, #114), with the [browser
+guide](../../../docs/content/02.guide/04.browser/default.md), the
+[JavaScript API reference](../../../docs/content/03.reference/03.javascript-api/default.md)
+and the demo. Gap 4, size, was measured on 2026-10-07 and settled without a
+change: every size lever buys its bytes with compile time, and the shipped
+profile is the right point for a compiler that runs while someone edits.
+[Section 4](#4-size) has the table.
 
 Measured 2026-09-12 on `feature/wasm-browser-api`, aarch64 macOS, wasm-pack
 0.13.1, node 24.
@@ -38,7 +47,7 @@ What it costs to resolve imports is 24 KB of module. Two checks gate it:
 `.github/scripts/demo-check.mjs` compiles Bulma and USWDS through the built
 package.
 
-Gap 4, size, is untouched.
+Gap 4, size, is measured in section 4.
 
 ### What it made possible
 
@@ -178,17 +187,47 @@ on it as well so nothing regresses for callers printing it whole.
 
 ## 4. Size
 
-1.53 MB is servable and larger than it needs to be. In rough order of value
-per unit of effort, and each to be measured rather than assumed:
+Settled 2026-10-07, on master `04378ea0`, aarch64 macOS, rustc stable,
+wasm-pack 0.13.1, wasm-bindgen 0.2.128, binaryen 132, node 24.9. Each
+variant is the same source built with a different profile, run through
+`wasm-bindgen` and, where marked, `wasm-opt`, then timed with
+`.github/scripts/demo-check.mjs` compiling the demo's Bulma 1.0.4 and USWDS
+3.13.0 bundles. Times are the median-looking of two or three runs; they vary
+by a few percent.
 
-- A release profile for the wasm build with `opt-level = "z"` and
-  `lto = "fat"`. The workspace profile is shared with native builds, where
-  `opt-level = "z"` would cost compile speed, so add a separate profile rather
-  than changing the shared one.
-- `panic = "abort"`. Check first that no test depends on catching a panic.
-- `wasm-opt -Oz`, which wasm-pack runs as `-O` by default.
-- Serve compressed. The module is 0.61 MB gzipped before `wasm-opt`; brotli
-  was not measured because the tool was not available on the machine.
+| Build | Module | Gzipped | Bulma | USWDS |
+|---|---:|---:|---:|---:|
+| shipped: `opt-level = 3`, `wasm-opt -O` | 1.73 MB | 637 KB | 0.52 s | 2.41 s |
+| `opt-level = "s"` | 1.52 MB | 500 KB | 0.67 s | 3.40 s |
+| `opt-level = "s"`, `wasm-opt -O` | 1.41 MB | 531 KB | 0.65 s | 3.35 s |
+| `opt-level = "z"` (the `small` profile) | 1.28 MB | 418 KB | 0.83 s | 4.70 s |
+| `opt-level = "z"`, `wasm-opt -O` | 1.19 MB | 451 KB | 0.79 s | 4.58 s |
+| `opt-level = "z"`, `wasm-opt -Oz` | 1.17 MB | 452 KB | 0.76 s | 4.26 s |
+
+What the table says:
+
+- The `small` profile the WASI artifact uses takes a third off the download,
+  637 KB to 418 KB gzipped, and makes USWDS take 1.9 times as long. `s` sits
+  in between on both axes. The levers trade bytes for time at a steady rate;
+  there is no free point.
+- `wasm-opt` shrinks the raw module and *grows* the gzipped one for the
+  size-optimised builds, and `-Oz` is no better than `-O` after gzip. The item's
+  guess that `-Oz` was the cheap lever was wrong, and so was the guess about
+  `panic = "abort"`: the shared release profile already has it, with `lto`
+  and `codegen-units = 1`, so the only lever left was `opt-level`.
+- binaryen 132 refuses the module without `--enable-bulk-memory` and the other
+  features rustc emits for this target; wasm-pack passes them, a bare
+  `wasm-opt` call does not.
+
+The shipped profile stays. The download is paid once per version and
+cached; the compile time is paid on every keystroke in an editor and on every
+demo run, and the demo already takes 6.6 seconds for USWDS in a browser. If a
+host ever wants the smaller module, the mechanism needs no new tooling:
+`CARGO_PROFILE_RELEASE_OPT_LEVEL=z` on the `wasm-pack build` line in
+`release.sh` and `pages.yml` produces the 1.28 MB module (measured), and
+`[package.metadata.wasm-pack.profile.release] wasm-opt = false` keeps
+`wasm-pack` from growing it again. Brotli was not measured; the tool was not
+on the machine.
 
 ## Testing
 
