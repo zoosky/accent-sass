@@ -117,8 +117,8 @@ USWDS from source in the browser.
 
 ## Status
 
-14,147 of 14,266 sass-spec tests pass against the pinned spec revision
-`b39c32768`, leaving 111 failures (measured on macOS 2026-09-13; CI's Linux
+14,247 of 14,355 sass-spec tests pass against the pinned spec revision
+`530e761ec`, leaving 100 failures (measured on macOS 2026-10-20; CI's Linux
 runner reports two fewer passing). CI compiles Bulma,
 Pico, Foundation and USWDS with both engines on every commit and fails on any
 colour-value difference; all four currently compile byte-identically to
@@ -181,4 +181,4 @@ The crates are on the Rust 2024 edition. The minimum supported Rust version is
 `1.96.1`, normalised across the Accent crates; CI gates on it. Raising the MSRV
 is a minor version bump.
 
-`accent-sass` targets `dart-sass` version `1.105.1`.
+`accent-sass` targets `dart-sass` version `1.105.2`.

@@ -13,6 +13,17 @@ at `0.13.4` and below are upstream's and are kept for lineage.
 
 ## [Unreleased]
 
+### Changed
+
+- the reference implementation moves from dart-sass 1.105.1 to 1.105.2, and
+  the sass-spec pin from `85d5d7125` to `530e761ec`. 1.105.2 changes only the
+  Node.js embedded host, which this project does not have, so the compiler
+  needs no change: Bulma, Pico, Foundation and USWDS still compile
+  byte-identically, and the sass-spec tally stays at 14,355 runs and 100
+  failures.
+  [Item 30](https://github.com/zoosky/accent-sass/blob/master/specs/docs/features/30-dart-sass-1-105.md)
+  records the move and why the pin stops short of sass-spec main
+
 ## [0.17.0] - 2026-10-06
 
 First-class modules, the feature of dart-sass 1.105.0, and the move of the
@@ -40,9 +51,10 @@ module values and 111 at the old pin.
 
 - the reference implementation moves from dart-sass 1.104.1 to 1.105.1, and
   the sass-spec pin from `b39c32768` to `85d5d7125`.
-  [Item 30](specs/docs/features/30-dart-sass-1-105.md) records the baseline
-  and the move. Two messages say what 1.105.1 says: `There is no module with
-  namespace "x".` and `$module: 1 is neither a string nor a module reference.`
+  [Item 30](https://github.com/zoosky/accent-sass/blob/master/specs/docs/features/30-dart-sass-1-105.md)
+  records the baseline and the move. Two messages say what 1.105.1 says:
+  `There is no module with namespace "x".` and `$module: 1 is neither a
+  string nor a module reference.`
 - `meta.load-css` is `meta.css(meta.load($url, $with))`, as dart-sass defines
   it. The loaded file no longer shares the including context's extension
   store: an `@extend` inside it reaches nothing outside it, an `@extend` at
