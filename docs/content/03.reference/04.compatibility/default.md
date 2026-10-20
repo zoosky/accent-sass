@@ -7,11 +7,11 @@ menu:
   visible: true
   order: 4
 description: >-
-  How accent-sass compares to dart-sass 1.105.1: sass-spec results, the
+  How accent-sass compares to dart-sass 1.105.2: sass-spec results, the
   framework corpus, and the known divergences.
 ---
 
-dart-sass is the reference implementation, currently **1.105.1**. A deviation
+dart-sass is the reference implementation, currently **1.105.2**. A deviation
 from it is a bug rather than a dialect, with two declared exceptions: error
 message wording and error spans.
 
@@ -37,25 +37,25 @@ gating.
 
 ### Byte-identical output
 
-All four frameworks compile byte-identically to dart-sass 1.105.1, comments
+All four frameworks compile byte-identically to dart-sass 1.105.2, comments
 included. For USWDS 3.13.0 that is **32,781 lines each, zero differences.**
-Measured 2026-09-13 with `.github/scripts/frameworks.sh`.
+Measured 2026-10-20 with `.github/scripts/frameworks.sh`.
 
 ## The spec suite
 
 The official `sass-spec` suite, run against the release build:
 
 ```
-14266 runs, 14147 passing, 111 failures, 8 todo, 0 ignored, 0 errors
+14355 runs, 14247 passing, 100 failures, 8 todo, 0 ignored, 0 errors
 ```
 
-Measured on macOS 2026-09-13 against sass-spec `b39c32768`, with the flags CI
+Measured on macOS 2026-10-20 against sass-spec `530e761ec`, with the flags CI
 uses: `--trim-errors --ignore-warning-diffs --ignore-error-diffs`. The Linux CI
-runner reports two fewer passing, 14,145, an offset that is stable across
+runner reports two fewer passing, 14,245, an offset that is stable across
 commits. The job is advisory in CI and publishes the tallies rather than
 gating.
 
-The 111 remaining failures are tracked one work item at a time in
+The 100 remaining failures are tracked one work item at a time in
 [`specs/docs/features/`](https://github.com/zoosky/accent-sass/tree/master/specs/docs/features),
 ranked by how many fixtures each would unlock.
 
@@ -93,7 +93,7 @@ What surrounds a `@warn` message does not. This compiler writes
 
 One deprecation is reported so far, `bogus-combinators`: a style rule whose
 selector has a leading, trailing or repeated combinator, and an `@extend`
-inside one. Its banner, message and source frame match dart-sass 1.105.1.
+inside one. Its banner, message and source frame match dart-sass 1.105.2.
 
 The line below the frame does not always. dart-sass writes a stack trace;
 this compiler writes the file, line and column, followed by

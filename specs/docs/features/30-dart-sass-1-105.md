@@ -1,4 +1,4 @@
-# Moving the reference to dart-sass 1.105.1
+# Moving the reference to dart-sass 1.105
 
 This item moves the reference implementation from dart-sass 1.104.1 to
 1.105.1 and the sass-spec pin from `b39c32768` to `85d5d7125`. Like
@@ -7,6 +7,9 @@ This item moves the reference implementation from dart-sass 1.104.1 to
 before the release is followed: 1.105.0's feature is a new value type, and
 this document records the baseline, what the move changed, and the plan for
 the rest.
+
+The reference has since moved on to 1.105.2, a release that changes no Sass
+behaviour; the last section records that move.
 
 ## Baseline before the move
 
@@ -193,3 +196,51 @@ Deviations that remain, none of which a fixture counts:
   operand.
 
 The multi-span rendering of item 2 above was not attempted.
+
+## The move to 1.105.2
+
+dart-sass 1.105.2 was released on 2026-10-16. On 2026-10-20 the reference
+moved to it and the sass-spec pin moved from `85d5d7125` to `530e761ec`.
+
+**The release changes no Sass behaviour.** Four commits lie between the tags
+(`gh api repos/sass/dart-sass/compare/1.105.1...1.105.2`), and none touches
+`lib/`. Three change dart-sass's own CI. The fourth bumps versions and adds
+the only changelog entry, under "Node.js Embedded Host": "Fix a deadlock when
+the async compiler fails to start" (sass/embedded-host-node#449).
+This project has no embedded host; its npm package is a WebAssembly binding.
+
+Measured on macOS against the 1.105.2 release binary rather than inferred
+from the diff:
+
+- `.github/scripts/frameworks.sh`: Bulma, Pico, Foundation and USWDS compile
+  byte-identically (`cmp`), and so do the 106 Foundation function results.
+  USWDS is 32,781 lines.
+- 1.105.1 and 1.105.2 compile all four frameworks to the same bytes.
+- Both `bogus-combinators` warnings, the style rule and the `@extend`, print
+  the same stderr as 1.105.2.
+
+**The pin is `530e761ec`, not sass-spec main.** `530e761ec` is the last
+sass-spec commit before the release. It differs from `85d5d7125` only in the
+runner's npm dependencies and its own CI, and changes no fixture. The next
+commit, `58295762b` (sass/sass-spec#2182), changes 29 fixture files to follow
+dart-sass `91fd60be1`, "Only normalize escapes at the expression level"
+(sass/dart-sass#2880). That change landed on dart-sass main the same day,
+after 1.105.2, and is in no release yet. Pinning past it would grade this
+compiler against behaviour 1.105.2 does not have, so it belongs to the next
+reference move.
+
+| sass-spec revision | Runs | Failures |
+|---|---|---|
+| `85d5d7125`, the old pin | 14,355 | 100 |
+| `530e761ec`, the new pin | 14,355 | 100 |
+
+The two runs fail the same 100 fixtures. 239 HRX files in a fresh checkout of
+either revision show as modified in `git status`: they are committed with
+CRLF line endings, which sass-spec's `.gitattributes` forbids. Their bytes
+match the committed blobs, so the runner reads them unchanged.
+
+The move changed no code and no test expectation. The `bootstrap` and
+`frameworks` jobs install 1.105.2, and `README.md`, `CLAUDE.md`, the
+documentation site and this directory's README name it. The sass-spec figures
+on the site and in `README.md`, which still quoted 111 failures at
+`b39c32768`, now quote the run above.
