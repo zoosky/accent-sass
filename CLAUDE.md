@@ -150,6 +150,57 @@ code prints turns a regression into a passing test; that is how wrong
 behaviour gets frozen into the suite. Where output deliberately differs from
 dart-sass, say so in a comment next to the test with the reason.
 
+## Moving the reference to a new dart-sass release
+
+1. **Read what the release changes.** Compare the tags with
+   `gh api repos/sass/dart-sass/compare/<old>...<new>` and read the commits
+   that touch `lib/`, not only the changelog. A release can leave the
+   language alone: 1.105.2 fixed only the Node.js embedded host, which this
+   project does not have.
+2. **Pin sass-spec to its last commit before the release, not to its main.**
+   sass-spec lands fixtures together with the dart-sass change they test,
+   often before a release ships that change. A day after 1.105.2,
+   `58295762b` changed 29 fixture files for an escape change no release
+   carried yet. Pinning past it grades the compiler against behaviour the
+   reference does not have.
+3. **Measure at both pins.** Run the suite at the old pin and the new one,
+   and diff the `Failure:` lines of the two runs, not only the tallies. CI's
+   Linux runner reports two fewer passing fixtures than macOS.
+
+   ```bash
+   git submodule update --init sass-spec
+   cargo build --release
+   cd sass-spec && npm install --no-audit --no-fund
+   npm run sass-spec -- --impl=dart-sass --command '../target/release/accent-sass' \
+     --trim-errors --ignore-warning-diffs --ignore-error-diffs
+   ```
+
+   Then run `.github/scripts/frameworks.sh` with `SASS` set to the new
+   release binary.
+4. **Update every place that names the current reference.**
+   `git grep -n <old version> -- ':!sass-spec'` finds them: the `bootstrap`
+   and `frameworks` jobs, `README.md`, this file, the site under `docs/`, and
+   `specs/docs/features/README.md`. Leave the mentions that record what was
+   checked against an older release: released changelog sections, item
+   documents and test comments.
+5. **Record the move** in an item under `specs/docs/features/` and in the
+   changelog's `[Unreleased]` section.
+
+A fresh checkout of the `sass-spec` submodule shows about 239 HRX files as
+modified. They are committed with CRLF line endings, which its
+`.gitattributes` forbids. Their bytes match the committed blobs, so the
+runner reads them unchanged; ignore them.
+
+## Documentation
+
+- The site mounts `CHANGELOG.md` at `/changelog`, so a relative link in it
+  resolves against that path and breaks. Link to repository files with
+  absolute `https://github.com/zoosky/accent-sass/blob/master/...` URLs.
+- The sass-spec tally and the framework measurement are quoted in
+  `README.md`, `docs/content/default.md` and
+  `docs/content/03.reference/04.compatibility/default.md`. Update all three
+  when you re-measure.
+
 ## Fork operating rules
 
 This repository began as a fork of `connorskees/grass`, whose last release
@@ -174,6 +225,13 @@ cheap.
 - **Preserve history on any merge you do make.** Use merge commits rather
   than squash or rebase when merging a long-lived branch, so the parentage
   stays readable.
-- Accent tracks this project in `specs/epics/e043-accent-sass-fork.md`. Bump
-  Accent's pin after merging a pull request here, once the `frameworks` job
-  is green on the revision being pinned.
+- **Accent pins a release, not master's head.** The pin names the commit a
+  release tag names, so the pin and the published version are the same code;
+  every pin since `v0.15.0` has been a tag. Bump it after a release that
+  changes what Accent builds, once every CI job, `frameworks` included, is
+  green on the tagged commit itself and not merely on the pull request head.
+  A merge that changes nothing under `crates/` waits for the next release,
+  and so does a release that changes no compiler code: `v0.16.1`, a packaging
+  release, was never pinned. Accent records each bump in the comment above
+  `accent-sass` in its `Cargo.toml`. `specs/epics/e043-accent-sass-fork.md`,
+  closed on 2026-09-05, holds the history before that.
