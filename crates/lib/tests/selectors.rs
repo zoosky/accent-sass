@@ -130,7 +130,7 @@ test!(
 test!(
     selector_attribute_unquoted_escape,
     "[attr=v\\al] {\n  color: red;\n}\n",
-    "[attr=v\\a l] {\n  color: red;\n}\n"
+    "[attr=\"v\\al\"] {\n  color: red;\n}\n"
 );
 test!(
     selector_attribute_quoted_escape,
@@ -832,7 +832,7 @@ test!(
 test!(
     attribute_value_escape_ends_before_non_hex_char,
     "[a=\"a\\\\66\"] {\n  color: &;\n}\n",
-    "[a=a\\66] {\n  color: [a=a\\66];\n}\n"
+    "[a=\"a\\\\66\"] {\n  color: [a=\"a\\\\66\"];\n}\n"
 );
 test!(
     attribute_value_contains_escaped_slash_in_quotes,
@@ -925,14 +925,16 @@ test!(
     }"#,
     "abcde \\a  abcde \\a  {\n  color: red;\n}\n"
 );
-error!(
+// Since dart-sass 1.106.0 an escape beyond U+10FFFF is U+FFFD rather than an
+// error: `\111111` is U+FFFD, and the seventh `1` follows it.
+test!(
     interpolated_parent_selector_as_child_to_selector_with_escape_and_invalid_escape_and_length_greater_than_child,
     r#"abcde \a {
         #{&} \1111111 {
             color: red;
         }
     }"#,
-    "Error: Invalid Unicode code point."
+    "@charset \"UTF-8\";\nabcde \\a  abcde \\a  \u{FFFD}1 {\n  color: red;\n}\n"
 );
 test!(
     interpolated_parent_selector_as_child_to_selector_with_attribute_selector_and_length_greater_than_child,

@@ -1,11 +1,16 @@
 use std::{
+    borrow::Cow,
     fmt::{self, Write},
     hash::{Hash, Hasher},
 };
 
 use codemap::Span;
 
-use crate::{common::unvendor, error::SassResult};
+use crate::{
+    common::unvendor,
+    error::SassResult,
+    utils::{css_identifier_or_text, to_css_identifier},
+};
 
 use super::{
     Attribute, ComplexSelector, ComplexSelectorComponent, CompoundSelector, Namespace,
@@ -75,9 +80,9 @@ pub(crate) enum SimpleSelector {
 impl fmt::Display for SimpleSelector {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Id(name) => write!(f, "#{}", name),
-            Self::Class(name) => write!(f, ".{}", name),
-            Self::Placeholder(name) => write!(f, "%{}", name),
+            Self::Id(name) => write!(f, "#{}", css_identifier_or_text(name)),
+            Self::Class(name) => write!(f, ".{}", css_identifier_or_text(name)),
+            Self::Placeholder(name) => write!(f, "%{}", css_identifier_or_text(name)),
             Self::Universal(namespace) => write!(f, "{}*", namespace),
             Self::Pseudo(pseudo) => write!(f, "{}", pseudo),
             Self::Type(name) => write!(f, "{}", name),
@@ -88,7 +93,9 @@ impl fmt::Display for SimpleSelector {
             Self::Parent(suffix) => {
                 f.write_char('&')?;
                 match suffix {
-                    Some(suffix) => f.write_str(suffix),
+                    Some(suffix) => f.write_str(
+                        &to_css_identifier(suffix, true).unwrap_or(Cow::Borrowed(suffix)),
+                    ),
                     None => Ok(()),
                 }
             }
@@ -596,7 +603,7 @@ impl fmt::Display for Pseudo {
             f.write_char(':')?;
         }
 
-        f.write_str(&self.name)?;
+        f.write_str(&css_identifier_or_text(&self.name))?;
 
         if self.argument.is_none() && self.selector.is_none() {
             return Ok(());

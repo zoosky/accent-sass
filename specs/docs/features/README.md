@@ -2,9 +2,10 @@
 
 This directory holds one implementation document per work item that closes
 the gap between this project and dart-sass, ranked by the number of
-sass-spec tests each item unlocks. The reference is 1.105.2 since 2026-10-20
-and 1.105.1 since 2026-10-06 (both [item 30](30-dart-sass-1-105.md)), 1.104.1
-since 2026-09-13,
+sass-spec tests each item unlocks. The reference is 1.107.0 since 2026-10-30
+([item 31](31-dart-sass-1-107.md)), 1.105.2 since 2026-10-20 and 1.105.1
+since 2026-10-06 (both [item 30](30-dart-sass-1-105.md)), 1.104.1 since
+2026-09-13,
 and 1.104.0 since [item 25](25-baseline-before-dart-sass-1-104.md); the
 ranking below was drawn up against 1.103.1.
 
@@ -18,9 +19,9 @@ read them as worthless.
 area, and re-measured on 2026-09-11 and again on 2026-10-06.** The original
 one was drawn up against 1,718 failures, when six large items accounted for
 most of them. Those six have landed, and so have items 09, 10, 11, 16, 17,
-20, 21 and 23, then 07 and 24, and now 15 and 30; the suite is at 100 at the
-1.105.1 pin, which changed the shape of the problem rather than just its
-size.
+20, 21 and 23, then 07 and 24, and now 15 and 30. The suite was at 100 at
+the 1.105.1 pin, which changed the shape of the problem rather than just its
+size, and is at 99 at the 1.107.0 pin.
 
 The 2026-09-05 rebuild reported 134 failures in areas no document covered and
 ranked them by *area*, which said where the failures were and nothing about
@@ -41,26 +42,31 @@ that shows up in five different areas and in no single area looks big.
 ## Measurement
 
 The ranking comes from a full run of the pinned sass-spec revision against
-the release build. Measured 2026-10-06 on master (`04378ea0`), against
-sass-spec `85d5d7125` and dart-sass 1.105.1:
+the release build. Measured 2026-10-30 with item 31's changes, against
+sass-spec `1e2e5ddaf` and dart-sass 1.107.0:
 
 ```
-14355 runs, 14247 passing, 100 failures, 8 todo, 0 ignored, 0 errors
+14400 runs, 14293 passing, 99 failures, 8 todo, 0 ignored, 0 errors
 ```
 
-The 100 splits 79 in the areas items 01 to 11 claim and 21 in the areas
+The 99 splits 78 in the areas items 01 to 11 claim and 21 in the areas
 items 15 to 24 were drawn from.
 
-Three steps lie between this run and the previous one, 173 on `f55ace41`
-at the `b39c32768` pin, each measured in its item rather than inferred: item
-15 took the suite to 111 (#87); item 30 moved the pin to `85d5d7125`, which
-added 89 runs and 37 failures, all of them the first-class module fixtures,
-for 148 (#116); and item 30's second pull request closed 48, the 37 and
-eleven older ones, for 100 (#117). Nothing that passed on `f55ace41` fails
-now.
+Five steps lie between this run and the previous one, 173 on `f55ace41` at
+the `b39c32768` pin, each measured in its item rather than inferred:
 
-The move to dart-sass 1.105.2 and sass-spec `530e761ec` on 2026-10-20 left
-this tally and the list of failing fixtures unchanged; item 30 records it.
+1. Item 15 took the suite to 111 (#87).
+2. Item 30 moved the pin to `85d5d7125`. That added 89 runs and 37 failures,
+   all of them the first-class module fixtures, for 148 (#116).
+3. Item 30's second pull request closed 48, the 37 and eleven older ones,
+   for 100 (#117).
+4. The move to 1.105.2 and `530e761ec` left the tally and the list of
+   failing fixtures unchanged (#122).
+5. Item 31 moved the pin to `1e2e5ddaf`, which added 45 runs and 25
+   failures, all from 1.106.0, for 125. The same pull request closed those
+   25 and `css/selector/attribute/empty_namespace`, for 99.
+
+Nothing that passed on `f55ace41` fails now.
 
 The previous measurement, kept for the record:
 
@@ -298,12 +304,14 @@ closing a gap the ranking counts, so these are kept out of it as well.
 | [25-baseline-before-dart-sass-1-104.md](25-baseline-before-dart-sass-1-104.md) | 1.103.1 to 1.104.0: negative zero prints as `-0`, and degenerate colour channels become `0`. Also records the baseline measured before the move | landed |
 | [26-pre-module-comment-repeats.md](26-pre-module-comment-repeats.md) | A loud comment above `@use` or `@forward` is written again before every module that loads the registered one, which is what Bulma's five differing lines were. Matched 1.104.0 and cost two fixtures that expect the 1.104.1 fix | landed 2026-09-12; reverted 2026-09-13 with the move to 1.104.1 |
 | [30-dart-sass-1-105.md](30-dart-sass-1-105.md) | 1.104.1 to 1.105.1: first-class modules (`meta.load`, `meta.get-module`, `meta.css`) implemented, `load-css` redefined as `css(load())`, string namespaces looked up as written, two messages reworded, and a crash on merged cross-media extensions fixed on the way. Then 1.105.2, which changes only the Node.js embedded host | moved by #116 on 2026-10-06; module values landed by #117; moved to 1.105.2 by #122 on 2026-10-20 |
+| [31-dart-sass-1-107.md](31-dart-sass-1-107.md) | 1.105.2 to 1.107.0: identifiers hold their contents with escapes resolved, statements keep escapes as written, U+0000, surrogate and out-of-range escapes are U+FFFD in expressions, exponent-like units escape their `e`, and a repeated rest parameter is an error | moved and followed on 2026-10-30 |
 
 ### Landed -- residue only
 
-The residues here sum to 80, re-measured on `04378ea0`: the 79 left in the
-areas items 01 to 11 claim, plus the 1 that items 15, 16, 17, 20, 21, 23 and
-24 left behind in areas drawn from the 284 run's unclaimed 128. The 20 still
+The residues here sum to 79, re-measured on 2026-10-30 with item 31's
+changes: the 78 left in the areas items 01 to 11 claim, plus the 1 that items
+15, 16, 17, 20, 21, 23 and 24 left behind in areas drawn from the 284 run's
+unclaimed 128. The 20 still
 open there belong to items 18, 19 and 22.
 
 These seventeen are done. The counts are what remains in the areas they
@@ -315,7 +323,7 @@ a priority.
 | [01-calculation-functions.md](01-calculation-functions.md) | #12 | 21 | `core_functions/color` 21, all double-precision differences; `values/calculation` is clear. Item 11 took the 35 `attr()` fixtures |
 | [02-css-if-function.md](02-css-if-function.md) | #13 | 1 | `spec/expressions/if` |
 | [03-meta-module.md](03-meta-module.md) | #14 | 26 | `spec/core_functions/meta`: 23 are `*-exists` through `@forward` and `@use ... as *`, two are `content-exists` errors, one is item 30's recorded deviation |
-| [04-selector-unification.md](04-selector-unification.md) | #15 | 6 | `core_functions/selector` 5, `css/selector` 1 -- item 16 took three, 16 more went while item 24 landed, and item 15 took 44 |
+| [04-selector-unification.md](04-selector-unification.md) | #15 | 5 | `core_functions/selector` 5; `css/selector` is clear -- item 16 took three, 16 more went while item 24 landed, item 15 took 44, and item 31's escape port closed `attribute/empty_namespace` |
 | [05-comments-and-arguments.md](05-comments-and-arguments.md) | #16 | 10 | `spec/css/comment`; `spec/callable` is clear. Items 18 and 19 name causes for 2 of the 10 |
 | [06-module-system.md](06-module-system.md) | #17, #18 | 14 | `directives/use` 8, `forward` 5, `import` 1 -- item 16 took one; unchanged since |
 | [07-calculation-long-tail.md](07-calculation-long-tail.md) | #83 for section 1; sections 2 and 3 by other work | 0 | `spec/values/calculation` is clear |
@@ -340,13 +348,14 @@ residue is a rounding question, not a colour-API one.
 
 ## Failure kinds
 
-Across the whole suite the 100 failures split into (2026-10-06, `04378ea0`):
+Across the whole suite the 99 failures split into (2026-10-30, item 31):
 
 - 77 "Expected did not match output" — accent-sass produces different CSS.
-- 13 "Test case should succeed but it did not" — accent-sass rejects valid input.
+- 12 "Test case should succeed but it did not" — accent-sass rejects valid input.
 - 10 "Expected test to fail but it did not" — accent-sass accepts invalid input.
 
-At 173 the split was 143, 14 and 16; at 234 it was 179, 28 and 27.
+At 100 the split was 77, 13 and 10; at 173 it was 143, 14 and 16; at 234 it
+was 179, 28 and 27.
 
 The order flipped on 2026-09-05. On 2026-09-04 *rejects valid input* stood at
 304 and dominated; items 09 and 10 were both drawn from it, and it is now 14.
@@ -370,7 +379,7 @@ fails now.
 
 ## Ground rules for every item
 
-- dart-sass 1.105.2 is the reference (1.105.1 from 2026-10-06, 1.104.1 from 2026-09-13, 1.104.0 from item 25, 1.103.1 before). Verify
+- dart-sass 1.107.0 is the reference (1.105.2 from 2026-10-20, 1.105.1 from 2026-10-06, 1.104.1 from 2026-09-13, 1.104.0 from item 25, 1.103.1 before). Verify
   every new or changed expectation against the real binary before
   committing it; never re-baseline a test to whatever the new code prints.
 - Add regression tests to `crates/lib/tests/` using the `test!` and

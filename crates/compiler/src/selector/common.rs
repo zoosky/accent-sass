@@ -1,5 +1,7 @@
 use std::fmt;
 
+use crate::utils::css_identifier_or_text;
+
 /// The selector namespace.
 ///
 /// If this is `None`, this matches all elements in the default namespace. If
@@ -19,12 +21,17 @@ impl fmt::Display for Namespace {
         match self {
             Self::Empty => write!(f, "|"),
             Self::Asterisk => write!(f, "*|"),
-            Self::Other(namespace) => write!(f, "{}|", namespace),
+            Self::Other(namespace) => write!(f, "{}|", css_identifier_or_text(namespace)),
             Self::None => Ok(()),
         }
     }
 }
 
+/// A [qualified name](https://www.w3.org/TR/css3-namespace/#css-qnames): an
+/// element or attribute name and its namespace.
+///
+/// `ident`, like a named [`Namespace::Other`], holds the name's contents with
+/// escapes resolved. Writing it out escapes it again.
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub(crate) struct QualifiedName {
     pub ident: String,
@@ -34,7 +41,7 @@ pub(crate) struct QualifiedName {
 impl fmt::Display for QualifiedName {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.namespace)?;
-        f.write_str(&self.ident)
+        f.write_str(&css_identifier_or_text(&self.ident))
     }
 }
 

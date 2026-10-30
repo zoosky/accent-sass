@@ -9,7 +9,7 @@ use crate::{
     common::{BinaryOp, Brackets, Identifier, ListSeparator, QuoteKind, UnaryOp, unvendor},
     error::SassResult,
     unit::Unit,
-    utils::{as_hex, is_name_start, opposite_bracket},
+    utils::{as_hex, is_name_start, opposite_bracket, to_css_identifier},
     value::{CalculationName, Number},
 };
 
@@ -282,6 +282,13 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
                     }
                 }
                 Some(Token { kind: '!', .. }) => match parser.toks().peek_n(1) {
+                    // `!\69 mportant` is `!important` too.
+                    Some(Token { kind: '\\', .. })
+                        if matches!(parser.peek_char_or_escape(1)?, (Some('i' | 'I'), true)) =>
+                    {
+                        let expr = Self::parse_important_expr(parser)?;
+                        self.add_single_expression(expr, parser)?;
+                    }
                     Some(Token { kind: '=', .. }) => {
                         parser.toks_mut().next();
                         parser.toks_mut().next();
@@ -478,6 +485,34 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
                         self.add_single_expression(expr, parser)?;
                     }
                 }
+                // An escape starts an identifier, unless it writes the start of
+                // `and` or `or` and the whole operator follows: `\61 nd` is
+                // `and`.
+                Some(Token { kind: '\\', .. }) => {
+                    let operator = match parser.peek_char_or_escape(0)? {
+                        (Some('a'), _) if !parser.is_plain_css() => parser
+                            .scan_identifier("and", false)?
+                            .then_some(BinaryOp::And),
+                        (Some('o'), _) if !parser.is_plain_css() => {
+                            parser.scan_identifier("or", false)?.then_some(BinaryOp::Or)
+                        }
+                        _ => None,
+                    };
+
+                    match operator {
+                        Some(node) => self.add_operator(
+                            Spanned {
+                                node,
+                                span: parser.toks_mut().span_from(start),
+                            },
+                            parser,
+                        )?,
+                        None => {
+                            let expr = self.parse_identifier_like(parser)?;
+                            self.add_single_expression(expr, parser)?;
+                        }
+                    }
+                }
                 Some(Token {
                     kind: 'b'..='z', ..
                 })
@@ -485,7 +520,6 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
                     kind: 'A'..='Z', ..
                 })
                 | Some(Token { kind: '_', .. })
-                | Some(Token { kind: '\\', .. })
                 | Some(Token {
                     kind: '\u{80}'..=std::char::MAX,
                     ..
@@ -966,7 +1000,7 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
         }
 
         let after_hash = parser.toks().cursor();
-        let ident = parser.parse_interpolated_identifier()?;
+        let ident = parser.parse_interpolated_identifier(true)?;
         if is_hex_color(&ident) {
             parser.toks_mut().set_cursor(after_hash);
             let color = self.parse_hex_color_contents(parser)?;
@@ -1134,7 +1168,13 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
             && (!matches!(parser.toks().peek(), Some(Token { kind: '-', .. }))
                 || !matches!(parser.toks().peek_n(1), Some(Token { kind: '-', .. })))
         {
-            Unit::from(parser.parse_identifier(false, true)?)
+            // The unit is stored escaped, the way it has to be written:
+            // `1\31` has the unit `\31 `, and `1px\9` the unit `px\9 `.
+            let unit = parser.parse_identifier(false, true)?;
+            match to_css_identifier(&unit, false) {
+                Ok(escaped) => Unit::from(escaped.into_owned()),
+                Err(..) => Unit::from(unit),
+            }
         } else {
             Unit::None
         };
@@ -1398,15 +1438,27 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
 
         let start = parser.toks().cursor();
 
-        let identifier = parser.parse_interpolated_identifier()?;
+        let identifier = parser.parse_interpolated_identifier(true)?;
 
         let ident_span = parser.toks_mut().span_from(start);
 
-        let plain = identifier.as_plain();
+        // Keywords and function names match the name with its escapes
+        // resolved, so `\74 rue` is `true` and `\72 gb(...)` calls `rgb()`.
+        let plain = identifier.as_plain_identifier();
+        let plain = plain.as_deref();
         let lower = plain.map(str::to_ascii_lowercase);
 
         if let Some(plain) = plain {
-            if plain == "if" && parser.toks().next_char_is('(') {
+            if plain == "\u{FFFD}" && parser.toks().raw_text(start).starts_with("\\0") {
+                // The identifier `\0` on its own stays `\0 ` rather than
+                // becoming U+FFFD, because CSS hacks rely on it.
+                let span = parser.toks_mut().span_from(start);
+                return Ok(AstExpr::String(
+                    StringExpr(Interpolation::new_plain("\\0 ".to_owned()), QuoteKind::None),
+                    span,
+                )
+                .span(span));
+            } else if plain == "if" && parser.toks().next_char_is('(') {
                 if ValueParser::looking_at_css_if(parser)? {
                     return ValueParser::parse_css_if(parser, start);
                 }
@@ -1434,13 +1486,15 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
                     _ => {}
                 }
 
+                // A named color is written as it appears in the source, so
+                // `\62 lue` keeps its escape, as dart-sass's span format does.
                 if let Some(color) = NAMED_COLORS.get_by_name(lower_ref.as_str()) {
                     return Ok(AstExpr::Color(Arc::new(Color::new(
                         color[0],
                         color[1],
                         color[2],
                         color[3],
-                        plain.to_owned(),
+                        parser.toks().raw_text(start),
                     )))
                     .span(parser.toks_mut().span_from(start)));
                 }
@@ -1692,8 +1746,8 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
             _ => return Ok(None),
         }
 
-        let mut contents =
-            parser.parse_interpolated_declaration_value(false, true, true, false, true, true)?;
+        let mut contents = parser
+            .parse_interpolated_declaration_value(true, false, true, true, false, true, true)?;
         // An interpolated calc() reaches this raw-string fallback, but Dart
         // Sass serializes it without the source's leading/trailing whitespace
         // inside the parentheses (`calc( #{x} )` becomes `calc(x)`).
@@ -1802,8 +1856,9 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
     ) -> SassResult<Option<AstExpr>> {
         Ok(
             if ValueParser::contains_calculation_interpolation(parser)? {
-                let mut contents = parser
-                    .parse_interpolated_declaration_value(false, false, true, false, true, true)?;
+                let mut contents = parser.parse_interpolated_declaration_value(
+                    true, false, false, true, false, true, true,
+                )?;
                 // Dart Sass serializes an interpolated calculation without the
                 // source's leading/trailing whitespace inside the parentheses
                 // (`calc( x )` becomes `calc(x)`).
@@ -1998,11 +2053,23 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
     /// error, as it is in Dart Sass.
     fn parse_calculation_identifier(parser: &mut P) -> SassResult<Spanned<AstExpr>> {
         let start = parser.toks().cursor();
-        let contents = parser.parse_interpolated_identifier()?;
+        let contents = parser.parse_interpolated_identifier(true)?;
         let ident_span = parser.toks_mut().span_from(start);
 
-        let ident = match contents.as_plain() {
-            Some(plain) => plain.to_owned(),
+        // Constants and function names match the name with its escapes
+        // resolved; a plain identifier keeps the text it was normalized to.
+        let ident = match contents.as_plain_identifier() {
+            Some(plain)
+                if plain == "\u{FFFD}" && parser.toks().raw_text(start).starts_with("\\0") =>
+            {
+                // `\0` on its own stays `\0 `, as in any other expression.
+                return Ok(AstExpr::String(
+                    StringExpr(Interpolation::new_plain("\\0 ".to_owned()), QuoteKind::None),
+                    ident_span,
+                )
+                .span(ident_span));
+            }
+            Some(plain) => plain,
             None => {
                 return match parser.toks().peek() {
                     Some(Token { kind: '.', .. }) => {
@@ -2024,7 +2091,7 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
         if parser.scan_char('.') {
             return ValueParser::namespaced_expression(
                 Spanned {
-                    node: Identifier::from(&ident),
+                    node: Identifier::from(&*ident),
                     span: ident_span,
                 },
                 start,
@@ -2043,11 +2110,9 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
                 .span(ident_span));
             }
 
-            return Ok(AstExpr::String(
-                StringExpr(Interpolation::new_plain(ident), QuoteKind::None),
-                ident_span,
-            )
-            .span(ident_span));
+            return Ok(
+                AstExpr::String(StringExpr(contents, QuoteKind::None), ident_span).span(ident_span),
+            );
         }
 
         let calculation = ValueParser::try_parse_calculation(parser, &lowercase, start)?;
@@ -2066,8 +2131,8 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
         } else {
             Ok(AstExpr::FunctionCall(FunctionCallExpr {
                 namespace: None,
-                name: Identifier::from(&ident),
-                original_name: ident.clone(),
+                name: Identifier::from(&*ident),
+                original_name: ident.to_string(),
                 arguments: Arc::new(parser.parse_argument_invocation(false, false)?),
                 span: parser.toks_mut().span_from(start),
                 is_custom_function: ident.starts_with("--"),
@@ -2654,9 +2719,9 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
             return Err(("Expected identifier.", parser.toks().current_span()).into());
         }
 
-        let name = parser.parse_interpolated_identifier()?;
+        let name = parser.parse_interpolated_identifier(true)?;
 
-        if let Some(plain) = name.as_plain() {
+        if let Some(plain) = name.as_plain_identifier() {
             if plain.eq_ignore_ascii_case("sass") {
                 parser.expect_char('(')?;
                 parser.whitespace(true)?;
@@ -2687,7 +2752,7 @@ impl<'a, 'c, P: StylesheetParser<'a>> ValueParser<'a, 'c, P> {
                 plain.to_ascii_lowercase().as_str(),
                 "not" | "and" | "or" | "else"
             ) {
-                ValueParser::reject_keyword_call(parser, plain)?;
+                ValueParser::reject_keyword_call(parser, &plain)?;
             }
 
             // A plain identifier that is not a function call is not a term.

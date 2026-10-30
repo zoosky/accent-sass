@@ -1,6 +1,9 @@
 use codemap::Spanned;
 
+use std::borrow::Cow;
+
 use super::AstExpr;
+use crate::utils::resolve_css_escapes;
 
 #[derive(Debug, Clone)]
 pub struct Interpolation {
@@ -70,6 +73,16 @@ impl Interpolation {
                 InterpolationPart::Expr(..) => None,
             }
         }
+    }
+
+    /// Returns this interpolation's text with its CSS escapes resolved, if it
+    /// contains no interpolated expressions and its text is one identifier.
+    ///
+    /// Keyword checks use this rather than [`as_plain`](Self::as_plain), so a
+    /// name written with escapes still matches: `@\6d edia` is a media rule
+    /// and `\75 rl(` a URL, as in dart-sass's `asPlainIdentifier`.
+    pub fn as_plain_identifier(&self) -> Option<Cow<'_, str>> {
+        self.as_plain().and_then(resolve_css_escapes)
     }
 
     pub fn trailing_string(&self) -> &str {

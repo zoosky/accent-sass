@@ -301,7 +301,15 @@ error!(
     "@function foo($a, $a) {
         @return $a;
     }",
-    "Error: Duplicate argument."
+    "Error: Duplicate parameter."
+);
+error!(
+    duplicate_rest_parameter_in_mixin,
+    "@mixin a($b, $b...) {}", "Error: Duplicate parameter."
+);
+error!(
+    duplicate_rest_parameter_in_function,
+    "@function f($a, $b, $a...) {@return 1}", "Error: Duplicate parameter."
 );
 error!(
     variable_keyword_args_is_list,

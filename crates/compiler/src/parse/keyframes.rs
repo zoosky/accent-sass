@@ -100,7 +100,9 @@ impl KeyframesSelectorParser {
             }
         }
 
-        if self.scan_ident_char('e', false)? {
+        // Only a literal `e` starts an exponent. dart-sass read an escaped one
+        // as an exponent too before 1.106.0, so `1\65 1%` was `1e1%`.
+        if self.scan_char('e') || self.scan_char('E') {
             buffer.push('e');
 
             if matches!(

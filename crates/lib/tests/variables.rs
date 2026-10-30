@@ -397,10 +397,9 @@ error!(
     undefined_variable,
     "a {color: $a;}", "Error: Undefined variable."
 );
-error!(
-    invalid_escape,
-    "$\\110000: red;", "Error: Invalid Unicode code point."
-);
+// Since dart-sass 1.106.0 an escape beyond U+10FFFF is U+FFFD, so this
+// declares a variable named U+FFFD.
+test!(invalid_escape, "$\\110000: red;", "");
 error!(
     nothing_after_hash_in_variable_decl,
     "$color: #", "Error: Expected identifier."

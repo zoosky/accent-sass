@@ -6,7 +6,8 @@ use std::{
 use codemap::Span;
 
 use crate::{
-    Token, common::QuoteKind, error::SassResult, parse::BaseParser, utils::is_ident, value::Value,
+    Token, common::QuoteKind, error::SassResult, parse::BaseParser, utils::to_css_identifier,
+    value::Value,
 };
 
 use super::{Namespace, QualifiedName, SelectorParser};
@@ -40,7 +41,10 @@ impl Hash for Attribute {
     }
 }
 
-// todo: rewrite
+/// Consumes an attribute selector's name, with its namespace if it has one.
+///
+/// `[*|a]` is in any namespace, `[|a]` in none, and `[ns|a]` in `ns`. A `|`
+/// followed by `=` is the `|=` operator rather than a namespace separator.
 fn attribute_name(parser: &mut SelectorParser) -> SassResult<QualifiedName> {
     let next = parser
         .toks
@@ -54,6 +58,16 @@ fn attribute_name(parser: &mut SelectorParser) -> SassResult<QualifiedName> {
         return Ok(QualifiedName {
             ident,
             namespace: Namespace::Asterisk,
+        });
+    }
+
+    if next.kind == '|' {
+        parser.toks.next();
+
+        let ident = parser.parse_identifier(false, false)?;
+        return Ok(QualifiedName {
+            ident,
+            namespace: Namespace::Empty,
         });
     }
 
@@ -174,7 +188,12 @@ impl Display for Attribute {
 
         if self.op != AttributeOp::Any {
             f.write_str(self.op.into())?;
-            if is_ident(&self.value) && !self.value.starts_with("--") {
+            // An identifier is written bare when it needs no escapes; one
+            // that starts with `--` is quoted all the same, because IE11 does
+            // not treat it as an identifier.
+            if to_css_identifier(&self.value, false).is_ok_and(|ident| ident == self.value)
+                && !self.value.starts_with("--")
+            {
                 f.write_str(&self.value)?;
 
                 if self.modifier.is_some() {

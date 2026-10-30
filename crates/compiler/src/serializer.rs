@@ -1,4 +1,4 @@
-use std::io::Write;
+use std::{borrow::Cow, io::Write};
 
 use codemap::{CodeMap, Span};
 
@@ -14,7 +14,7 @@ use crate::{
         SelectorList, SimpleSelector,
     },
     unit::Unit,
-    utils::hex_char_for,
+    utils::{css_identifier_or_text, hex_char_for, to_css_identifier},
     value::{
         ArgList, CalculationArg, CalculationName, Number, SassCalculation, SassFunction, SassMap,
         SassModule, SassNumber, Value, fuzzy_equals, fuzzy_greater_than_or_equals, fuzzy_less_than,
@@ -32,6 +32,30 @@ use crate::{
 /// See <https://en.wikipedia.org/wiki/Private_Use_Areas>.
 fn is_private_use(c: char) -> bool {
     matches!(c as u32, 0xE000..=0xF8FF | 0xF0000..=0x10FFFF)
+}
+
+/// Returns whether `unit`, written after a number without escapes, would be
+/// read back as the number's exponent: an `e` or `E` followed by a digit, or
+/// by `-` and a digit.
+///
+/// This is dart-sass's `_isUnitAmbiguousWithExponent`, which 1.106.0 added
+/// so that `1e1e1` prints as `10\65 1` rather than `10e1`.
+fn is_unit_ambiguous_with_exponent(unit: &str) -> bool {
+    let bytes = unit.as_bytes();
+    if bytes.len() < 2 || !matches!(bytes[0], b'e' | b'E') {
+        return false;
+    }
+
+    let next = if bytes[1] == b'-' {
+        match bytes.get(2) {
+            Some(&next) => next,
+            None => return false,
+        }
+    } else {
+        bytes[1]
+    };
+
+    next.is_ascii_digit()
 }
 
 /// Appends `c`'s UTF-8 encoding to `buffer`.
@@ -232,7 +256,8 @@ impl<'a> Serializer<'a> {
             self.buffer.push(b':');
         }
 
-        self.buffer.extend_from_slice(pseudo.name.as_bytes());
+        self.buffer
+            .extend_from_slice(css_identifier_or_text(&pseudo.name).as_bytes());
 
         if pseudo.argument.is_none() && pseudo.selector.is_none() {
             return;
@@ -258,7 +283,8 @@ impl<'a> Serializer<'a> {
             Namespace::Empty => self.buffer.push(b'|'),
             Namespace::Asterisk => self.buffer.extend_from_slice(b"*|"),
             Namespace::Other(namespace) => {
-                self.buffer.extend_from_slice(namespace.as_bytes());
+                self.buffer
+                    .extend_from_slice(css_identifier_or_text(namespace).as_bytes());
                 self.buffer.push(b'|');
             }
             Namespace::None => {}
@@ -267,17 +293,22 @@ impl<'a> Serializer<'a> {
 
     fn write_simple_selector(&mut self, simple: &SimpleSelector) {
         match simple {
+            // Selector names hold their contents with escapes resolved, so
+            // each is escaped again as it is written.
             SimpleSelector::Id(name) => {
                 self.buffer.push(b'#');
-                self.buffer.extend_from_slice(name.as_bytes());
+                self.buffer
+                    .extend_from_slice(css_identifier_or_text(name).as_bytes());
             }
             SimpleSelector::Class(name) => {
                 self.buffer.push(b'.');
-                self.buffer.extend_from_slice(name.as_bytes());
+                self.buffer
+                    .extend_from_slice(css_identifier_or_text(name).as_bytes());
             }
             SimpleSelector::Placeholder(name) => {
                 self.buffer.push(b'%');
-                self.buffer.extend_from_slice(name.as_bytes());
+                self.buffer
+                    .extend_from_slice(css_identifier_or_text(name).as_bytes());
             }
             SimpleSelector::Universal(namespace) => {
                 self.write_namespace(namespace);
@@ -286,7 +317,8 @@ impl<'a> Serializer<'a> {
             SimpleSelector::Pseudo(pseudo) => self.write_pseudo_selector(pseudo),
             SimpleSelector::Type(name) => {
                 self.write_namespace(&name.namespace);
-                self.buffer.extend_from_slice(name.ident.as_bytes());
+                self.buffer
+                    .extend_from_slice(css_identifier_or_text(&name.ident).as_bytes());
             }
             SimpleSelector::Attribute(attr) => write!(&mut self.buffer, "{}", attr).unwrap(),
             // A parent selector normally resolves before serialization. It
@@ -295,6 +327,7 @@ impl<'a> Serializer<'a> {
             SimpleSelector::Parent(suffix) => {
                 self.buffer.push(b'&');
                 if let Some(suffix) = suffix {
+                    let suffix = to_css_identifier(suffix, true).unwrap_or(Cow::Borrowed(suffix));
                     self.buffer.extend_from_slice(suffix.as_bytes());
                 }
             }
@@ -956,8 +989,11 @@ impl<'a> Serializer<'a> {
             self.buffer.push(b' ');
         }
 
+        // The type holds its contents with escapes resolved, so `screen\9` is
+        // `screen` and a tab, written back as `screen\9 `.
         if let Some(media_type) = &query.media_type {
-            self.buffer.extend_from_slice(media_type.as_bytes());
+            self.buffer
+                .extend_from_slice(css_identifier_or_text(media_type).as_bytes());
 
             if !query.conditions.is_empty() {
                 self.buffer.extend_from_slice(b" and ");
@@ -1000,7 +1036,18 @@ impl<'a> Serializer<'a> {
         }
 
         self.write_float(number.num.0);
-        write!(&mut self.buffer, "{}", number.unit)?;
+
+        let unit = number.unit.to_string();
+        if is_unit_ambiguous_with_exponent(&unit) {
+            // `1e1` would read back as ten, so the `e` is escaped: the unit
+            // `e1` is written `\65 1`.
+            self.buffer.extend_from_slice(b"\\65 ");
+            // The first byte is an ASCII `e` or `E`, so this is a character
+            // boundary.
+            self.buffer.extend_from_slice(&unit.as_bytes()[1..]);
+        } else {
+            self.buffer.extend_from_slice(unit.as_bytes());
+        }
 
         Ok(())
     }
