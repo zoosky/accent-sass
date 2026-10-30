@@ -7,11 +7,11 @@ menu:
   visible: true
   order: 4
 description: >-
-  How accent-sass compares to dart-sass 1.105.2: sass-spec results, the
+  How accent-sass compares to dart-sass 1.107.0: sass-spec results, the
   framework corpus, and the known divergences.
 ---
 
-dart-sass is the reference implementation, currently **1.105.2**. A deviation
+dart-sass is the reference implementation, currently **1.107.0**. A deviation
 from it is a bug rather than a dialect, with two declared exceptions: error
 message wording and error spans.
 
@@ -37,25 +37,25 @@ gating.
 
 ### Byte-identical output
 
-All four frameworks compile byte-identically to dart-sass 1.105.2, comments
+All four frameworks compile byte-identically to dart-sass 1.107.0, comments
 included. For USWDS 3.13.0 that is **32,781 lines each, zero differences.**
-Measured 2026-10-20 with `.github/scripts/frameworks.sh`.
+Measured 2026-10-30 with `.github/scripts/frameworks.sh`.
 
 ## The spec suite
 
 The official `sass-spec` suite, run against the release build:
 
 ```
-14355 runs, 14247 passing, 100 failures, 8 todo, 0 ignored, 0 errors
+14400 runs, 14293 passing, 99 failures, 8 todo, 0 ignored, 0 errors
 ```
 
-Measured on macOS 2026-10-20 against sass-spec `530e761ec`, with the flags CI
+Measured on macOS 2026-10-30 against sass-spec `1e2e5ddaf`, with the flags CI
 uses: `--trim-errors --ignore-warning-diffs --ignore-error-diffs`. The Linux CI
-runner reports two fewer passing, 14,245, an offset that is stable across
+runner reports two fewer passing, 14,291, an offset that is stable across
 commits. The job is advisory in CI and publishes the tallies rather than
 gating.
 
-The 100 remaining failures are tracked one work item at a time in
+The 99 remaining failures are tracked one work item at a time in
 [`specs/docs/features/`](https://github.com/zoosky/accent-sass/tree/master/specs/docs/features),
 ranked by how many fixtures each would unlock.
 
@@ -78,6 +78,14 @@ Every one is valid CSS meaning the same thing; the file is simply larger than
 dart-sass's. If byte-for-byte minification matters, run a dedicated minifier
 over the expanded output.
 
+### Strings in custom properties
+
+A quoted string in a custom property is written from its value rather than
+as typed, so its escapes are resolved: `--quote: "\201C"` prints
+`--quote: "“"`, and the stylesheet gains `@charset "UTF-8";`, where dart-sass
+keeps `"\201C"`. Both mean the same character. An escape of a private-use
+character, as icon fonts use, is written back as an escape and matches.
+
 ### Warning and debug formatting
 
 The message text of `@warn` and `@debug` matches dart-sass, including the rule
@@ -93,7 +101,7 @@ What surrounds a `@warn` message does not. This compiler writes
 
 One deprecation is reported so far, `bogus-combinators`: a style rule whose
 selector has a leading, trailing or repeated combinator, and an `@extend`
-inside one. Its banner, message and source frame match dart-sass 1.105.2.
+inside one. Its banner, message and source frame match dart-sass 1.107.0.
 
 The line below the frame does not always. dart-sass writes a stack trace;
 this compiler writes the file, line and column, followed by

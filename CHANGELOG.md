@@ -23,6 +23,33 @@ at `0.13.4` and below are upstream's and are kept for lineage.
   failures.
   [Item 30](https://github.com/zoosky/accent-sass/blob/master/specs/docs/features/30-dart-sass-1-105.md)
   records the move and why the pin stops short of sass-spec main
+- the reference implementation moves from dart-sass 1.105.2 to 1.107.0, and
+  the sass-spec pin from `530e761ec` to `1e2e5ddaf`. The sass-spec tally is
+  14,400 runs and 99 failures; the move alone made it 125.
+  [Item 31](https://github.com/zoosky/accent-sass/blob/master/specs/docs/features/31-dart-sass-1-107.md)
+  records the move and what it took
+- escapes follow dart-sass 1.106.0. An identifier holds its contents with
+  escapes resolved and is escaped again when it is written, and
+  statement-level text keeps escapes as written: `@f\6Fo`, `--\61: b`,
+  `\63 olor: red` and `@keyframes \61` are no longer normalized. In an
+  expression, an escape of U+0000, of a surrogate or of a code point beyond
+  U+10FFFF is U+FFFD, where it was `\0 ` or an error; `\0` on its own stays
+  `\0 `. Keywords match through escapes, so `!\69 mportant`, `true \61 nd
+  false`, `:nth-child(\6f dd)` and `@import \75 rl(x)` now work. A unit that
+  would read back as an exponent is written with an escaped `e`: `1e1e1`
+  prints `10\65 1`
+- an escaped `e` no longer starts an exponent in a keyframe selector, so
+  `1\65 1%` is an error
+- a rest parameter that repeats another parameter's name is an error, and a
+  repeated parameter is reported as `Duplicate parameter.` rather than
+  `Duplicate argument.`
+
+### Fixed
+
+- `"\10FFFF"` keeps the code point it names instead of becoming U+FFFD
+- `[|b=c]`, an attribute selector in no namespace, parses
+- a named color written with escapes keeps them, as dart-sass prints it:
+  `blu\65` stays `blu\65` rather than becoming `blue`
 
 ## [0.17.0] - 2026-10-06
 
