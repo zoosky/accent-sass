@@ -49,9 +49,14 @@ env:
   # The Accent CMS release the site is built with. Pinned rather than "latest"
   # for the reason accent-proust pins it: a template that renders differently
   # after a CMS release should be a change someone made, not a deployment
-  # nobody triggered. This is the newest stable release -- v0.26.0 is at rc.2 --
-  # and the site was verified to build with it.
-  ACCENT_VERSION: v0.25.1
+  # nobody triggered. This is the newest stable release, and the site was
+  # verified to build with it.
+  #
+  # Since v0.26 a broken internal link fails the build. The demo's scripts and
+  # stylesheet live in `docs/static/demo/` so that Accent publishes them
+  # itself; staged after the build, as they once were, they are links to files
+  # the build never wrote.
+  ACCENT_VERSION: v0.27.5
 
 jobs:
   build:
@@ -151,16 +156,18 @@ jobs:
 
       # The demo page itself is rendered by the build above, from
       # `content/demo/default.md` and the theme's `demo` template, so it carries
-      # the site's header and footer. What is copied here is what that page
-      # loads and Accent does not build: its scripts, its stylesheet, and the
-      # 2.8 MB of generated wasm and framework JSON in `vendor/`, which is
-      # deliberately not committed. Placing them in `media/` would move them to
-      # `/media/demo`, away from the page.
+      # the site's header and footer. The build also published its scripts and
+      # stylesheet, from `docs/static/demo/`. What is copied here is the 2.8 MB
+      # of generated wasm and framework JSON in `vendor/`, which is deliberately
+      # not committed, and which Accent cannot publish: its static directory
+      # does not copy a `.wasm` file.
       - name: 'Stage the demo assets beside the page'
         run: |
           grep -q 'class="site-header"' docs/output/demo/index.html
           grep -q 'id="source"' docs/output/demo/index.html
-          cp docs/demo/app.js docs/demo/worker.js docs/demo/styles.css docs/output/demo/
+          test -f docs/output/demo/app.js
+          test -f docs/output/demo/worker.js
+          test -f docs/output/demo/styles.css
           cp -R docs/demo/vendor docs/output/demo/vendor
           test -f docs/output/demo/vendor/pkg/index_bg.wasm
           test -f docs/output/demo/vendor/frameworks/manifest.json

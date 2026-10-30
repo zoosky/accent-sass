@@ -169,18 +169,18 @@
 
       {# Which build a reader is looking at. `accent.version_string` names the
          Accent binary that rendered the page and its git hash, for example
-         `0.25.1 (abc1234)`. The date is when the site was built, which here is
+         `0.27.5 (abc1234)`. The date is when the site was built, which here is
          when a change was last deployed: the Pages workflow rebuilds on every
          change to the docs, the theme, the compiler or CHANGELOG.md. File
          modification dates are not used, because a CI checkout gives every
          file the time of the checkout.
 
-         `site.built_at` is an ISO 8601 timestamp such as `2026-09-13T16:00:14Z`.
-         The `date` filter passes it through unformatted, so the date is its
-         first ten characters, which reads the same under every Accent release.
-         v0.25.1, the release the workflow pins, renders `site.built_at` though
-         its documentation only lists it from v0.26; `site.last_modified` is the
-         fallback if a release ever omits it. #}
+         `site.built_at` is an ISO 8601 timestamp such as `2026-09-13T16:00:14Z`,
+         so the date is its first ten characters. Slicing it reads the same
+         under every Accent release, where the `date` filter does not: v0.25.1
+         passed the timestamp through unformatted, and v0.27 formats it.
+         `site.last_modified` is the fallback if a release ever omits
+         `site.built_at`. #}
       {% set updated = site.built_at or site.last_modified %}
       <p class="build-info">
         Built with Accent CMS {{ accent.version_string }}{% if updated %} · Last updated

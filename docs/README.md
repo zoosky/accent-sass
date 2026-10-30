@@ -18,12 +18,11 @@ From the repository root:
 # The site
 accent build --config docs/config.yaml --output docs/output --clean
 
-# What the demo page loads, which Accent does not build -- see docs/demo/README.md
+# What the demo page loads and Accent cannot publish -- see docs/demo/README.md
 wasm-pack build crates/lib --release --target web --out-name index \
   --out-dir ../../docs/demo/vendor/pkg -- \
   --no-default-features --features wasm-exports,random
 node .github/scripts/demo-bundle.mjs
-cp docs/demo/app.js docs/demo/worker.js docs/demo/styles.css docs/output/demo/
 cp -R docs/demo/vendor docs/output/demo/vendor
 
 # Serve the result the way Pages serves it, under the project path prefix
@@ -53,7 +52,8 @@ port 4460 with hot reload.
 | `content/demo/default.md` | The demo page, which names the theme's `demo` template |
 | `../CHANGELOG.md` | The changelog page, at `/changelog`, through `content.mounts` in `config.yaml` |
 | `themes/sass/` | The theme: templates, stylesheet, and the header script |
-| `demo/` | What the demo page loads: its scripts, its stylesheet, and the generated `vendor/` |
+| `static/` | Accent's static directory, published at the site root: the demo page's scripts and stylesheet, in `static/demo/` |
+| `demo/` | Where the demo's generated `vendor/` is built, and the demo's README |
 | `output/` | **Generated.** What gets deployed |
 
 ## The changelog is mounted, not copied
@@ -64,16 +64,23 @@ from its `# Changelog` heading, and renders it with the `docs` template, so the
 page cannot drift from the file. A relative link inside `CHANGELOG.md` would
 resolve against `/changelog` on the site, so links there are absolute.
 
-## Why the demo's assets are copied rather than placed in `media/`
+## Where the demo's assets come from
 
 The demo page is rendered by Accent like any other page, from
 `content/demo/default.md` and the theme's `demo` template, so it carries the
-site's header, footer, search and theme toggle. What it loads is not content:
-`app.js`, `worker.js`, `styles.css`, and 2.8 MB of generated wasm and
-framework JSON that is deliberately not committed. Accent copies `media/`
-verbatim to `/media/...`, which would put those files at `/media/demo`, away
-from the page. So the workflow builds the site, builds the demo's inputs, and
-copies them beside the rendered page.
+site's header, footer, search and theme toggle. What it loads is not content.
+
+- `app.js`, `worker.js` and `styles.css` are in `static/demo/`. Accent
+  publishes its static directory at the site root, so they land at `/demo/`,
+  beside the page. `media/` would not do: Accent copies it to `/media/...`,
+  away from the page.
+- The 2.8 MB of generated wasm and framework JSON in `demo/vendor/` is
+  deliberately not committed, and Accent's static directory does not copy a
+  `.wasm` file. So the workflow builds the site, builds `vendor/`, and copies
+  it beside the rendered page.
+
+The page's links to its scripts and stylesheet have to resolve at build time:
+since v0.26, Accent fails the build on a broken internal link.
 
 ## The theme
 
