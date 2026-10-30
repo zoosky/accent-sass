@@ -62,8 +62,8 @@ distinct files, so a stylesheet consulted twice appears twice.
 ## Compile a whole framework
 
 A framework is just a large `files` map plus a load path. This is what the demo
-does with USWDS -- 605 stylesheets, about 800 KiB of Sass, compiled to roughly
-33,700 lines of CSS in a few seconds:
+does with USWDS -- 605 stylesheets, about 760 KiB of Sass, compiled to roughly
+32,900 lines of CSS in a few seconds:
 
 ```js
 const files = await fetch("uswds.json").then((r) => r.json());

@@ -61,7 +61,7 @@ figures:
   - value: "0"
     tone: cyan
     label: lines differing across four frameworks
-  - value: "32,781"
+  - value: "32,854"
     tone: gold
     label: lines of USWDS CSS, identical to dart-sass
   - value: "0.62"
@@ -84,7 +84,7 @@ features:
     body: >-
       Bulma, Pico, Foundation and USWDS compile with both engines in CI, and
       any differing colour value fails the job. All four compile
-      byte-identically to dart-sass; for USWDS that is 32,781 lines on both
+      byte-identically to dart-sass; for USWDS that is 32,854 lines on both
       sides, comments included.
   - title: The filesystem is a seam
     body: >-

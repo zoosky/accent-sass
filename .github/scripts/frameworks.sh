@@ -35,7 +35,7 @@ FRAMEWORKS=(
   "bulma|bulma@1.0.4|bulma/bulma.scss|-"
   "pico|@picocss/pico@2.1.1|@picocss/pico/scss/pico.scss|-"
   "foundation|foundation-sites@6.9.0|foundation-sites/assets/foundation.scss|foundation-sites/scss"
-  "uswds|@uswds/uswds@3.13.0|USWDS_ENTRY|@uswds/uswds/packages"
+  "uswds|@uswds/uswds@3.14.0|USWDS_ENTRY|@uswds/uswds/packages"
 )
 
 # The corpus is built inside $WORK, so resolve every tool path before moving
