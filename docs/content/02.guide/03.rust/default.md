@@ -102,7 +102,7 @@ The `macro` feature compiles a stylesheet into your binary during
 
 ```toml
 [dependencies]
-accent-sass = { version = "0.17.0", features = ["macro"] }
+accent-sass = { version = "0.18.0", features = ["macro"] }
 ```
 
 ```rust
