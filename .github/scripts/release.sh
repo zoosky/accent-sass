@@ -312,19 +312,28 @@ wasm-pack build crates/lib --release --target web --out-name index \
   }
 echo "  build: wasm-pack, web target, into $NPM_DIR"
 
+# wasm-pack copies `repository` from Cargo.toml as a plain https URL. `npm
+# publish` rewrites it to the `git+https://....git` form and warns that it
+# auto-corrected package.json, so write that form here. npm 10.7 also reports
+# `Removed invalid "scripts"` for a manifest that has no `scripts` field; that
+# is npm's bug, not this manifest's, and npm 11.12 checks for the field first.
 manifest=$(node -e '
   const fs = require("fs");
   const [file, description, keywords] = process.argv.slice(1);
   const p = JSON.parse(fs.readFileSync(file, "utf8"));
   p.description = description;
   p.keywords = keywords.split(" ");
+  const url = p.repository?.url;
+  if (url && !url.startsWith("git+")) {
+    p.repository.url = "git+" + url.replace(/(\.git)?$/, ".git");
+  }
   fs.writeFileSync(file, JSON.stringify(p, null, 2) + "\n");
   console.log(p.name + " " + p.version);
 ' "$NPM_DIR/package.json" "$NPM_DESCRIPTION" "$NPM_KEYWORDS") \
   || die "could not rewrite $NPM_DIR/package.json"
 [ "$manifest" = "$NPM_PACKAGE $version" ] \
   || die "package.json names '$manifest', expected '$NPM_PACKAGE $version'"
-echo "  package.json: $manifest, with the npm description and keywords"
+echo "  package.json: $manifest, with the npm description, keywords and repository URL"
 
 # `index.js` is an ES module, so the manifest must say so. wasm-pack 0.12
 # leaves `"type": "module"` out of a web build, and the smoke scripts below do
