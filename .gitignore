@@ -4,10 +4,9 @@
 !crates/static/_index.scss
 # ...and the stylesheets CI scripts compile, such as the Foundation probe.
 !.github/scripts/*.scss
-# ...and the browser demo's own stylesheets, which are part of the site rather
-# than build output.
-!docs/demo/**/*.s[ac]ss
-!docs/demo/**/*.css
+# ...and the browser demo's own stylesheet, which is part of the site rather
+# than build output. Accent publishes it from the static directory.
+!docs/static/**/*.css
 # ...and the documentation site's theme, whose stylesheet is its source. Accent
 # compiles it with accent-sass at build time.
 !docs/themes/**/*.s[ac]ss

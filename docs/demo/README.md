@@ -8,17 +8,20 @@ The page itself is rendered by Accent CMS like every other page on the site:
 `../content/demo/default.md` names the theme's `demo` template, which holds the
 interface markup inside the site's header, footer, search and theme toggle.
 
-This directory holds what that page loads and Accent does not build. The Pages
-workflow builds the site, builds `vendor/`, and copies these files beside the
-rendered page.
+What that page loads is in two places. The scripts and the stylesheet are
+committed in `../static/demo/`, Accent's static directory, so the build
+publishes them beside the page. This directory is where `vendor/` is built:
+the wasm package and the framework bundles, which are generated rather than
+committed. Accent does not publish a `.wasm` file, so the Pages workflow
+builds the site and then copies `vendor/` beside the rendered page.
 
 ## What is committed and what is built
 
 | Path | What | Built by |
 |---|---|---|
-| `app.js` | The interface: presets, theme controls, result views | committed |
-| `worker.js` | The compiler, off the main thread | committed |
-| `styles.css` | The page's styling, scoped under `.demo` | committed |
+| `../static/demo/app.js` | The interface: presets, theme controls, result views | committed |
+| `../static/demo/worker.js` | The compiler, off the main thread | committed |
+| `../static/demo/styles.css` | The page's styling, scoped under `.demo` | committed |
 | `vendor/pkg/` | 1.72 MB wasm, 0.62 MB gzipped | `wasm-pack` |
 | `vendor/frameworks/*.json` | 1.16 MB of JSON | `.github/scripts/demo-bundle.mjs` |
 
@@ -42,9 +45,9 @@ node .github/scripts/demo-bundle.mjs
 # 3. Check that the page's own compiles still work
 node .github/scripts/demo-check.mjs
 
-# 4. Build the site, which renders the page, and put the demo's files beside it
+# 4. Build the site, which renders the page and publishes its scripts and
+#    stylesheet, then put the generated files beside it
 accent build --config docs/config.yaml --output docs/output --clean
-cp docs/demo/app.js docs/demo/worker.js docs/demo/styles.css docs/output/demo/
 cp -R docs/demo/vendor docs/output/demo/vendor
 
 # 5. Serve it under the site's path prefix. Opening the file directly does not

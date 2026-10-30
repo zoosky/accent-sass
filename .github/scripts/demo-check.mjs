@@ -31,7 +31,7 @@ initSync(readFileSync(join(vendor, "pkg", "index_bg.wasm")));
 // A bare `@use "bulma/sass"` would compile even if every variable the page
 // offers had been renamed. The configured form is the one that breaks: an
 // unknown name in `@use ... with (...)` is a hard error, so these must stay in
-// step with the defaults in `docs/demo/app.js`.
+// step with the defaults in `docs/static/demo/app.js`.
 const USWDS_CDN = "https://cdn.jsdelivr.net/npm/@uswds/uswds@3.14.0/dist";
 
 const PRESETS = {

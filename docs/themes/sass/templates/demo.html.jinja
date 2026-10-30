@@ -5,11 +5,12 @@
    `app.js` drives it by element id: every `id` below is that script's
    contract, and renaming one breaks the page without an error.
 
-   What the page loads is not content and is not built by Accent: `app.js`,
-   `worker.js`, `styles.css` and the generated `vendor/` directory live in
-   `docs/demo/`, and the Pages workflow copies them beside this page after the
-   build. They are referenced with `url()`, so they take the site's path
-   prefix like every other internal link. #}
+   What the page loads is not content. `app.js`, `worker.js` and `styles.css`
+   live in `docs/static/demo/`, which Accent publishes beside this page. The
+   generated `vendor/` directory is built in `docs/demo/`, and the Pages
+   workflow copies it here after the build. All of them are referenced with
+   `url()`, so they take the site's path prefix like every other internal
+   link. #}
 {% extends "base.html.jinja" %}
 
 {% block head %}
