@@ -1,6 +1,6 @@
 use std::{
     cell::Cell,
-    collections::{BTreeMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet},
     ffi::OsString,
     mem,
     path::{Path, PathBuf},
@@ -250,12 +250,11 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
 
         match character.kind {
             '.' => !matches!(self.toks().peek_n(1), Some(Token { kind: '.', .. })),
-            '!' => match self.toks().peek_n(1) {
-                Some(Token {
-                    kind: 'i' | 'I', ..
-                })
-                | None => true,
-                Some(Token { kind, .. }) => kind.is_ascii_whitespace(),
+            // `!important`, which may be written `!\69 mportant`.
+            '!' => match self.peek_char_or_escape(1) {
+                Ok((Some('i' | 'I') | None, _)) => true,
+                Ok((Some(kind), false)) => kind.is_ascii_whitespace(),
+                Ok((Some(..), true)) | Err(..) => false,
             },
             '(' | '/' | '[' | '\'' | '"' | '#' | '+' | '-' | '\\' | '$' | '&' | '%' => true,
             c => is_name_start(c) || c.is_ascii_digit(),
@@ -267,7 +266,9 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
         self.whitespace(true)?;
 
         let mut arguments = Vec::new();
-        let mut named = HashSet::new();
+        // Each parameter name and where it was declared, so a second
+        // declaration of a name reports the first, as dart-sass does.
+        let mut named: HashMap<Identifier, Span> = HashMap::new();
 
         let mut rest_argument: Option<Identifier> = None;
 
@@ -286,6 +287,13 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
                 self.expect_char('.')?;
                 self.expect_char('.')?;
                 self.whitespace(true)?;
+
+                // dart-sass 1.106.0 rejects a rest parameter that repeats an
+                // earlier name: `$b` in `($b, $b...)` was unreachable before.
+                if let Some(&first) = named.get(&name) {
+                    return Err(("Duplicate parameter.", first).into());
+                }
+
                 rest_argument = Some(name);
 
                 // A rest parameter ends the list, but the list may still carry
@@ -302,9 +310,10 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
                 default: default_value,
             });
 
-            if !named.insert(name) {
-                return Err(("Duplicate argument.", name_span).into());
+            if let Some(&first) = named.get(&name) {
+                return Err(("Duplicate parameter.", first).into());
             }
+            named.insert(name, name_span);
 
             if !self.scan_char(',') {
                 break;
@@ -777,8 +786,8 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
         }
 
         let start = self.toks().cursor();
-        let name = self.parse_interpolated_identifier()?;
-        debug_assert!(name.as_plain() != Some("not"));
+        let name = self.parse_interpolated_identifier(false)?;
+        debug_assert!(name.as_plain_identifier().as_deref() != Some("not"));
 
         if !self.scan_char('(') {
             self.toks_mut().set_cursor(start);
@@ -786,7 +795,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
         }
 
         let value =
-            self.parse_interpolated_declaration_value(true, true, true, true, true, true)?;
+            self.parse_interpolated_declaration_value(false, true, true, true, true, true, true)?;
         self.expect_char(')')?;
 
         Ok(Some(AstSupportsCondition::Function { name, args: value }))
@@ -830,8 +839,10 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
                     buffer.add_char(' ');
                 }
 
-                let identifier = self.parse_interpolated_identifier()?;
-                let name = identifier.as_plain().map(str::to_ascii_lowercase);
+                let identifier = self.parse_interpolated_identifier(false)?;
+                let name = identifier
+                    .as_plain_identifier()
+                    .map(|name| name.to_ascii_lowercase());
                 buffer.add_interpolation(identifier);
 
                 if name.as_deref() != Some("and") && self.scan_char('(') {
@@ -851,7 +862,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
                         }
                     } else {
                         let args = self.parse_interpolated_declaration_value(
-                            true, true, true, true, true, true,
+                            false, true, true, true, true, true, true,
                         );
 
                         buffer.add_char('(');
@@ -883,7 +894,16 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
         }
     }
 
-    fn try_url_contents(&mut self, name: Option<&str>) -> SassResult<Option<Interpolation>> {
+    /// Consumes the parenthesized contents of a raw `url()` if they are one,
+    /// and returns the whole function with `name` before them.
+    ///
+    /// `name` is the function name as written, escapes and all; `None` writes
+    /// `url`. An escape inside the URL is normalized as an expression's would
+    /// be, so `url(\61 .png)` becomes `url(a.png)`.
+    fn try_url_contents(
+        &mut self,
+        name: Option<Interpolation>,
+    ) -> SassResult<Option<Interpolation>> {
         let start = self.toks().cursor();
         if !self.scan_char('(') {
             return Ok(None);
@@ -893,12 +913,15 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
         // Match Ruby Sass's behavior: parse a raw URL() if possible, and if not
         // backtrack and re-parse as a function expression.
         let mut buffer = Interpolation::new();
-        buffer.add_string(name.unwrap_or("url").to_owned());
+        match name {
+            Some(name) => buffer.add_interpolation(name),
+            None => buffer.add_string("url".to_owned()),
+        }
         buffer.add_char('(');
 
         while let Some(next) = self.toks().peek() {
             match next.kind {
-                '\\' => buffer.add_string(self.parse_escape(false)?),
+                '\\' => buffer.add_string(self.normalized_escape(false)?),
                 '!' | '%' | '&' | '*'..='~' | '\u{80}'..=char::MAX => {
                     self.toks_mut().next();
                     buffer.add_char(next.kind);
@@ -950,7 +973,8 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
     }
 
     fn parse_import_argument(&mut self, start: usize) -> SassResult<AstImport> {
-        if self.toks_mut().next_char_is('u') || self.toks_mut().next_char_is('U') {
+        // `url(` may be written with escapes, as in `@import \75 rl(x)`.
+        if matches!(self.peek_char_or_escape(0)?, (Some('u' | 'U'), _)) {
             let url = self.parse_dynamic_url()?;
             self.whitespace(false)?;
             let modifiers = self.try_import_modifiers()?;
@@ -1252,13 +1276,14 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
         // stopping at `{`. Unlike `almost_any_value`, that collapses each run
         // of whitespace to one space: `@apply  (  --bar  )` is written
         // `@apply ( --bar )` (libsass issue 1263).
-        let value: Option<Interpolation> = if !self.toks_mut().next_char_is('!')
-            && !self.at_end_of_statement()
-        {
-            Some(self.parse_interpolated_declaration_value(false, false, true, false, true, false)?)
-        } else {
-            None
-        };
+        let value: Option<Interpolation> =
+            if !self.toks_mut().next_char_is('!') && !self.at_end_of_statement() {
+                Some(self.parse_interpolated_declaration_value(
+                    false, false, false, true, false, true, false,
+                )?)
+            } else {
+                None
+            };
 
         // `@function --a() {result: b}` reaches this method: a `--`-prefixed
         // name makes the rule a plain CSS custom function rather than a Sass
@@ -1266,7 +1291,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
         // flag has to be live while the children are parsed.
         let was_in_plain_css_function = self.flags().in_plain_css_function();
         if name
-            .as_plain()
+            .as_plain_identifier()
             .is_some_and(|name| name.eq_ignore_ascii_case("function"))
         {
             self.flags_mut()
@@ -1353,8 +1378,9 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
             AstExpr::String(StringExpr(text, QuoteKind::None), ..)
                 if text.initial_plain().starts_with("--") =>
             {
-                let text = self
-                    .parse_interpolated_declaration_value(false, false, true, false, true, true)?;
+                let text = self.parse_interpolated_declaration_value(
+                    false, false, false, true, false, true, true,
+                )?;
                 AstExpr::String(
                     StringExpr(text, QuoteKind::None),
                     self.toks_mut().span_from(start),
@@ -1373,7 +1399,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
         let start = self.toks().cursor();
 
         if self.looking_at_interpolated_identifier() {
-            let identifier = self.parse_interpolated_identifier()?;
+            let identifier = self.parse_interpolated_identifier(false)?;
             let ident_span = self.toks_mut().span_from(start);
 
             if identifier
@@ -1385,8 +1411,9 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
             }
 
             if self.scan_char('(') {
-                let arguments =
-                    self.parse_interpolated_declaration_value(true, true, true, true, true, true)?;
+                let arguments = self.parse_interpolated_declaration_value(
+                    false, true, true, true, true, true, true,
+                )?;
                 self.expect_char(')')?;
                 return Ok(AstSupportsCondition::Function {
                     name: identifier,
@@ -1449,7 +1476,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
                 self.toks_mut().set_cursor(name_start);
                 self.flags_mut().set(ContextFlags::IN_PARENS, was_in_parens);
 
-                let identifier = self.parse_interpolated_identifier()?;
+                let identifier = self.parse_interpolated_identifier(false)?;
 
                 // todo: superfluous clone?
                 if let Some(operation) = self.try_supports_operation(&identifier, name_start)? {
@@ -1463,9 +1490,9 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
                 // after all, so we rethrow the declaration-parsing error.
                 let mut contents = Interpolation::new();
                 contents.add_interpolation(identifier);
-                contents.add_interpolation(
-                    self.parse_interpolated_declaration_value(true, true, false, true, true, true)?,
-                );
+                contents.add_interpolation(self.parse_interpolated_declaration_value(
+                    false, true, true, false, true, true, true,
+                )?);
 
                 if self.toks_mut().next_char_is(':') {
                     return Err(e);
@@ -1843,7 +1870,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
         let start = self.toks().cursor();
 
         self.expect_char('@')?;
-        let name = self.parse_interpolated_identifier()?;
+        let name = self.parse_interpolated_identifier(false)?;
 
         // We want to set [_isUseAllowed] to `false` *unless* we're parsing
         // `@charset`, `@forward`, or `@use`. To avoid double-comparing the rule
@@ -1852,7 +1879,9 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
         let was_use_allowed = self.flags().is_use_allowed();
         self.flags_mut().set(ContextFlags::IS_USE_ALLOWED, false);
 
-        match name.as_plain() {
+        // The name is kept as written for an unknown at-rule, but a known one
+        // matches with its escapes resolved: `@\6d edia` is `@media`.
+        match name.as_plain_identifier().as_deref() {
             Some("at-root") => self.parse_at_root_rule(start),
             Some("content") => self.parse_content_rule(start),
             Some("debug") => self.parse_debug_rule(),
@@ -1982,7 +2011,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
             let mut name_buffer = Interpolation::new();
             name_buffer.add_char(self.toks_mut().next().unwrap().kind);
             name_buffer.add_string(self.raw_text(|parser| parser.whitespace(false)));
-            name_buffer.add_interpolation(self.parse_interpolated_identifier()?);
+            name_buffer.add_interpolation(self.parse_interpolated_identifier(false)?);
             name_buffer
         } else if !self.is_plain_css() {
             match self.parse_variable_declaration_or_interpolation()? {
@@ -1992,7 +2021,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
                 }
             }
         } else {
-            self.parse_interpolated_identifier()?
+            self.parse_interpolated_identifier(false)?
         };
 
         self.whitespace(false)?;
@@ -2110,7 +2139,15 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
         Ok(interpolation)
     }
 
-    fn parse_interpolated_identifier_body(&mut self, buffer: &mut Interpolation) -> SassResult<()> {
+    /// Consumes the rest of a possibly interpolated identifier into `buffer`.
+    ///
+    /// See [`parse_interpolated_identifier`](Self::parse_interpolated_identifier)
+    /// for what `expression` changes.
+    fn parse_interpolated_identifier_body(
+        &mut self,
+        buffer: &mut Interpolation,
+        expression: bool,
+    ) -> SassResult<()> {
         while let Some(next) = self.toks().peek() {
             match next.kind {
                 'a'..='z' | 'A'..='Z' | '0'..='9' | '_' | '-' | '\u{80}'..=std::char::MAX => {
@@ -2118,7 +2155,12 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
                     self.toks_mut().next();
                 }
                 '\\' => {
-                    buffer.add_string(self.parse_escape(false)?);
+                    let escape = if expression {
+                        self.normalized_escape(false)?
+                    } else {
+                        self.raw_escape()?
+                    };
+                    buffer.add_string(escape);
                 }
                 '#' if matches!(self.toks().peek_n(1), Some(Token { kind: '{', .. })) => {
                     buffer.add_interpolation(self.parse_single_interpolation()?);
@@ -2130,7 +2172,14 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
         Ok(())
     }
 
-    fn parse_interpolated_identifier(&mut self) -> SassResult<Interpolation> {
+    /// Consumes an identifier that may contain interpolation.
+    ///
+    /// `expression` says whether the identifier belongs to a SassScript
+    /// expression rather than to a statement-level construct. In an
+    /// expression an escape is normalized, because Sass code can observe it:
+    /// `\0xyz` is `\u{FFFD}xyz` and `\61` is `a`. In a statement it is kept
+    /// as written, so `@f\6Fo` and `--a: \61` reach the output unchanged.
+    fn parse_interpolated_identifier(&mut self, expression: bool) -> SassResult<Interpolation> {
         let mut buffer = Interpolation::new();
 
         if self.scan_char('-') {
@@ -2138,7 +2187,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
 
             if self.scan_char('-') {
                 buffer.add_char('-');
-                self.parse_interpolated_identifier_body(&mut buffer)?;
+                self.parse_interpolated_identifier_body(&mut buffer, expression)?;
                 return Ok(buffer);
             }
         }
@@ -2149,7 +2198,12 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
                 self.toks_mut().next();
             }
             Some(Token { kind: '\\', .. }) => {
-                buffer.add_string(self.parse_escape(true)?);
+                let escape = if expression {
+                    self.normalized_escape(true)?
+                } else {
+                    self.raw_escape()?
+                };
+                buffer.add_string(escape);
             }
             Some(Token { kind: '#', .. })
                 if matches!(self.toks().peek_n(1), Some(Token { kind: '{', .. })) =>
@@ -2161,7 +2215,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
             }
         }
 
-        self.parse_interpolated_identifier_body(&mut buffer)?;
+        self.parse_interpolated_identifier_body(&mut buffer, expression)?;
 
         Ok(buffer)
     }
@@ -2240,8 +2294,22 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
         Err(("expected more input.", self.toks().current_span()).into())
     }
 
+    /// Consumes tokens until a top-level `;`, `)`, `]` or `}` and returns
+    /// their text, with interpolation.
+    ///
+    /// `expression` says whether the value belongs to a SassScript expression,
+    /// such as a special function's arguments, rather than to a statement,
+    /// such as a custom property or an unknown at-rule. See
+    /// [`parse_interpolated_identifier`](Self::parse_interpolated_identifier)
+    /// for what that changes.
+    ///
+    /// Each flag is one of dart-sass's named parameters to
+    /// `_interpolatedDeclarationValue`, so the list stays long rather than
+    /// diverging from it.
+    #[allow(clippy::too_many_arguments)]
     fn parse_interpolated_declaration_value(
         &mut self,
+        expression: bool,
         // default=false
         allow_semicolon: bool,
         // default=false
@@ -2276,8 +2344,14 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
 
         while let Some(tok) = self.toks().peek() {
             match tok.kind {
+                // An escape starts an identifier. One that writes `u` may
+                // also start `url(`, as `\75 rl(x)` does.
+                '\\' if matches!(self.peek_char_or_escape(0)?, (Some('u' | 'U'), _)) => {
+                    self.parse_url_or_identifier(&mut buffer)?;
+                    wrote_newline = false;
+                }
                 '\\' => {
-                    buffer.add_string(self.parse_escape(true)?);
+                    buffer.add_interpolation(self.parse_interpolated_identifier(expression)?);
                     wrote_newline = false;
                 }
                 '"' | '\'' => {
@@ -2312,7 +2386,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
                     if matches!(self.toks().peek_n(1), Some(Token { kind: '{', .. })) {
                         // Add a full interpolated identifier to handle cases like
                         // "#{...}--1", since "--1" isn't a valid identifier on its own.
-                        buffer.add_interpolation(self.parse_interpolated_identifier()?);
+                        buffer.add_interpolation(self.parse_interpolated_identifier(expression)?);
                     } else {
                         self.toks_mut().next();
                         buffer.add_char(tok.kind);
@@ -2387,48 +2461,12 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
                     wrote_newline = false;
                 }
                 'u' | 'U' => {
-                    let before_url = self.toks().cursor();
-
-                    // `url()` and `url-prefix()` hold a raw URL, so the `//`
-                    // in a scheme is part of it rather than a silent comment.
-                    // dart-sass matches both names case-sensitively, so
-                    // `URL(` is an ordinary function call. `almost_any_value`
-                    // does the same.
-                    let name = if self.scan_identifier("url-prefix", true)? {
-                        Some("url-prefix")
-                    } else {
-                        self.toks_mut().set_cursor(before_url);
-                        if self.scan_identifier("url", true)? {
-                            Some("url")
-                        } else {
-                            None
-                        }
-                    };
-
-                    let Some(name) = name else {
-                        self.toks_mut().set_cursor(before_url);
-                        buffer.add_char(tok.kind);
-                        self.toks_mut().next();
-                        wrote_newline = false;
-                        continue;
-                    };
-
-                    match self.try_url_contents(Some(name))? {
-                        Some(contents) => {
-                            buffer.add_interpolation(contents);
-                        }
-                        None => {
-                            self.toks_mut().set_cursor(before_url);
-                            buffer.add_char(tok.kind);
-                            self.toks_mut().next();
-                        }
-                    }
-
+                    self.parse_url_or_identifier(&mut buffer)?;
                     wrote_newline = false;
                 }
                 _ => {
                     if self.looking_at_identifier() {
-                        buffer.add_string(self.parse_identifier(false, false)?);
+                        buffer.add_interpolation(self.parse_interpolated_identifier(expression)?);
                     } else {
                         buffer.add_char(tok.kind);
                         self.toks_mut().next();
@@ -2611,7 +2649,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
         }
 
         let variable_or_interpolation = if starts_with_punctuation {
-            VariableDeclOrInterpolation::Interpolation(self.parse_interpolated_identifier()?)
+            VariableDeclOrInterpolation::Interpolation(self.parse_interpolated_identifier(false)?)
         } else {
             self.parse_variable_declaration_or_interpolation()?
         };
@@ -2646,7 +2684,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
         let is_custom_property = name_buffer.initial_plain().starts_with("--");
         let is_css_function_result = self.flags().in_plain_css_function()
             && name_buffer
-                .as_plain()
+                .as_plain_identifier()
                 .is_some_and(|name| name.eq_ignore_ascii_case("result"));
 
         if is_custom_property || is_css_function_result {
@@ -2654,7 +2692,9 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
             let value = if self.at_end_of_statement() {
                 Interpolation::new()
             } else {
-                self.parse_interpolated_declaration_value(false, false, true, false, false, true)?
+                self.parse_interpolated_declaration_value(
+                    false, false, false, true, false, false, true,
+                )?
             };
             let value_span = self.toks_mut().span_from(value_start);
             self.expect_statement_separator(Some(if is_custom_property {
@@ -2854,8 +2894,9 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
         // rule, anything else is syntax no rule accepts.
         if interpolation.contents.is_empty() {
             let unknown_start = self.toks().cursor();
-            let unknown =
-                self.parse_interpolated_declaration_value(false, true, true, false, true, false)?;
+            let unknown = self.parse_interpolated_declaration_value(
+                false, false, true, true, false, true, false,
+            )?;
 
             if unknown.contents.is_empty() {
                 // Empty, like dart-sass's `scanner.error`, so the span moves
@@ -3048,16 +3089,14 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
 
         while let Some(tok) = self.toks().peek() {
             match tok.kind {
+                // An escape starts an identifier, kept as written because this
+                // text is parsed again. One that writes `u` may also start
+                // `url(`.
+                '\\' if matches!(self.peek_char_or_escape(0)?, (Some('u' | 'U'), _)) => {
+                    self.parse_url_or_identifier(&mut buffer)?;
+                }
                 '\\' => {
-                    // Write a literal backslash because this text will be re-parsed.
-                    buffer.add_char(tok.kind);
-                    self.toks_mut().next();
-                    match self.toks_mut().next() {
-                        Some(tok) => buffer.add_char(tok.kind),
-                        None => {
-                            return Err(("expected more input.", self.toks().current_span()).into());
-                        }
-                    }
+                    buffer.add_interpolation(self.parse_interpolated_identifier(false)?);
                 }
                 '"' | '\'' => {
                     buffer.add_interpolation(
@@ -3084,7 +3123,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
                     if matches!(self.toks().peek_n(1), Some(Token { kind: '{', .. })) {
                         // Add a full interpolated identifier to handle cases like
                         // "#{...}--1", since "--1" isn't a valid identifier on its own.
-                        buffer.add_interpolation(self.parse_interpolated_identifier()?);
+                        buffer.add_interpolation(self.parse_interpolated_identifier(false)?);
                     } else {
                         self.toks_mut().next();
                         buffer.add_char(tok.kind);
@@ -3097,41 +3136,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
                     buffer.add_char(self.toks_mut().next().unwrap().kind);
                 }
                 '!' | ';' | '{' | '}' => break,
-                'u' | 'U' => {
-                    let before_url = self.toks().cursor();
-
-                    // `url()` and `url-prefix()` hold a raw URL, so a `//`
-                    // inside them is part of the URL rather than a silent
-                    // comment -- `@-moz-document url-prefix(http://x)` has to
-                    // survive. dart-sass matches both names case-sensitively
-                    // here, so `URL(` is an ordinary function call.
-                    let name = if self.scan_identifier("url-prefix", true)? {
-                        Some("url-prefix")
-                    } else {
-                        self.toks_mut().set_cursor(before_url);
-                        if self.scan_identifier("url", true)? {
-                            Some("url")
-                        } else {
-                            None
-                        }
-                    };
-
-                    let Some(name) = name else {
-                        self.toks_mut().set_cursor(before_url);
-                        self.toks_mut().next();
-                        buffer.add_char(tok.kind);
-                        continue;
-                    };
-
-                    match self.try_url_contents(Some(name))? {
-                        Some(contents) => buffer.add_interpolation(contents),
-                        None => {
-                            self.toks_mut().set_cursor(before_url);
-                            self.toks_mut().next();
-                            buffer.add_char(tok.kind);
-                        }
-                    }
-                }
+                'u' | 'U' => self.parse_url_or_identifier(&mut buffer)?,
                 '(' | '[' => {
                     let bracket = self.toks_mut().next().unwrap().kind;
                     buffer.add_char(bracket);
@@ -3157,7 +3162,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
                 }
                 _ => {
                     if self.looking_at_identifier() {
-                        buffer.add_string(self.parse_identifier(false, false)?);
+                        buffer.add_interpolation(self.parse_interpolated_identifier(false)?);
                     } else {
                         buffer.add_char(self.toks_mut().next().unwrap().kind);
                     }
@@ -3168,38 +3173,68 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
         Ok(buffer)
     }
 
+    /// Consumes an identifier that starts with `u`, written or escaped, and
+    /// adds it to `buffer`. If the identifier is `url` or `url-prefix` and a
+    /// raw URL follows, adds the whole `url(...)` instead.
+    ///
+    /// The name keeps its escapes and is compared with them resolved, so
+    /// `\75 rl(x)` is a URL and is still written `\75 rl(x)`. Both names
+    /// match case-sensitively, as in dart-sass, so `URL(` is an ordinary
+    /// function call. A raw URL also holds a `//` that would otherwise start
+    /// a silent comment, as in `@-moz-document url-prefix(http://x)`.
+    fn parse_url_or_identifier(&mut self, buffer: &mut Interpolation) -> SassResult<()> {
+        let before_url = self.toks().cursor();
+        let identifier = self.parse_interpolated_identifier(false)?;
+        if !matches!(
+            identifier.as_plain_identifier().as_deref(),
+            Some("url" | "url-prefix")
+        ) {
+            buffer.add_interpolation(identifier);
+            return Ok(());
+        }
+
+        match self.try_url_contents(Some(identifier))? {
+            Some(contents) => buffer.add_interpolation(contents),
+            None => {
+                self.toks_mut().set_cursor(before_url);
+                if let Some(tok) = self.toks_mut().next() {
+                    buffer.add_char(tok.kind);
+                }
+            }
+        }
+
+        Ok(())
+    }
+
     fn parse_variable_declaration_or_interpolation(
         &mut self,
     ) -> SassResult<VariableDeclOrInterpolation> {
         if !self.looking_at_identifier() {
             return Ok(VariableDeclOrInterpolation::Interpolation(
-                self.parse_interpolated_identifier()?,
+                self.parse_interpolated_identifier(false)?,
             ));
         }
 
         let start = self.toks().cursor();
 
-        let ident = self.parse_identifier(false, false)?;
-        if self.next_matches(".$") {
-            let namespace_span = self.toks_mut().span_from(start);
-            self.expect_char('.')?;
-            Ok(VariableDeclOrInterpolation::VariableDecl(
-                self.parse_variable_declaration_without_namespace(
-                    Some(Spanned {
-                        node: Identifier::from(ident),
-                        span: namespace_span,
-                    }),
-                    Some(start),
-                )?,
-            ))
-        } else {
-            let mut buffer = Interpolation::new_plain(ident);
-
-            if self.looking_at_interpolated_identifier_body() {
-                buffer.add_interpolation(self.parse_interpolated_identifier()?);
+        // A property name keeps its escapes, so `\63 olor: red` is written
+        // as is. Only a namespace, as in `ns.$a: 1`, is resolved.
+        let identifier = self.parse_interpolated_identifier(false)?;
+        match identifier.as_plain_identifier() {
+            Some(namespace) if self.next_matches(".$") => {
+                let namespace_span = self.toks_mut().span_from(start);
+                self.expect_char('.')?;
+                Ok(VariableDeclOrInterpolation::VariableDecl(
+                    self.parse_variable_declaration_without_namespace(
+                        Some(Spanned {
+                            node: Identifier::from(&*namespace),
+                            span: namespace_span,
+                        }),
+                        Some(start),
+                    )?,
+                ))
             }
-
-            Ok(VariableDeclOrInterpolation::Interpolation(buffer))
+            _ => Ok(VariableDeclOrInterpolation::Interpolation(identifier)),
         }
     }
 
@@ -3375,7 +3410,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
             return Ok(());
         }
 
-        let ident1 = self.parse_interpolated_identifier()?;
+        let ident1 = self.parse_interpolated_identifier(false)?;
 
         if ident1.as_plain().unwrap_or("").eq_ignore_ascii_case("not") {
             // For example, "@media not (...) {"
@@ -3396,7 +3431,7 @@ pub(crate) trait StylesheetParser<'a>: BaseParser + Sized {
 
         buf.add_char(' ');
 
-        let ident2 = self.parse_interpolated_identifier()?;
+        let ident2 = self.parse_interpolated_identifier(false)?;
 
         if ident2.as_plain().unwrap_or("").eq_ignore_ascii_case("and") {
             self.expect_whitespace(false)?;

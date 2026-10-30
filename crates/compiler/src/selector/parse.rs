@@ -463,17 +463,18 @@ impl SelectorParser {
     fn parse_a_n_plus_b(&mut self) -> SassResult<String> {
         let mut buf = String::new();
 
-        match self.toks.peek() {
-            Some(Token { kind: 'e', .. }) | Some(Token { kind: 'E', .. }) => {
+        // `even` and `odd` may be written with escapes, as in `\6f dd`.
+        match self.peek_char_or_escape(0)? {
+            (Some('e' | 'E'), _) => {
                 self.expect_identifier("even", false)?;
                 return Ok("even".to_owned());
             }
-            Some(Token { kind: 'o', .. }) | Some(Token { kind: 'O', .. }) => {
+            (Some('o' | 'O'), _) => {
                 self.expect_identifier("odd", false)?;
                 return Ok("odd".to_owned());
             }
-            Some(t @ Token { kind: '+', .. }) | Some(t @ Token { kind: '-', .. }) => {
-                buf.push(t.kind);
+            (Some(c @ ('+' | '-')), false) => {
+                buf.push(c);
                 self.toks.next();
             }
             _ => {}

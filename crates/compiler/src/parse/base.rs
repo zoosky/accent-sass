@@ -2,7 +2,10 @@ use crate::{
     Token,
     error::SassResult,
     lexer::Lexer,
-    utils::{as_hex, hex_char_for, is_name, is_name_start, opposite_bracket},
+    utils::{
+        MAX_ALLOWED_CHARACTER, as_hex, character_to_escape, is_name, is_name_start,
+        opposite_bracket,
+    },
 };
 
 pub(crate) trait BaseParser {
@@ -144,6 +147,17 @@ pub(crate) trait BaseParser {
         Ok(())
     }
 
+    /// Consumes a plain CSS identifier and returns its contents with escapes
+    /// resolved, so `\61 b` returns `ab`.
+    ///
+    /// Any escaped character may start or continue the identifier, which is
+    /// how `\31 x` and `a\.b` stay single identifiers. Whatever writes the
+    /// result back out as CSS escapes it again, through
+    /// [`to_css_identifier`](crate::utils::to_css_identifier).
+    ///
+    /// If `normalize` is `true`, an underscore becomes a hyphen, whether it
+    /// was written as `_` or as an escape. If `unit` is `true`, a `-` followed
+    /// by a digit or a dot ends the identifier, so `1px-2px` is a subtraction.
     fn parse_identifier(
         &mut self,
         // default=false
@@ -163,20 +177,17 @@ pub(crate) trait BaseParser {
             }
         }
 
-        match self.toks().peek() {
-            Some(Token { kind: '_', .. }) if normalize => {
-                self.toks_mut().next();
-                text.push('-');
-            }
-            Some(Token { kind, .. }) if is_name_start(kind) => {
-                self.toks_mut().next();
-                text.push(kind);
-            }
-            Some(Token { kind: '\\', .. }) => {
-                text.push_str(&self.parse_escape(true)?);
-            }
-            Some(..) | None => {
-                return Err(("Expected identifier.", self.toks().current_span()).into());
+        if self.toks().peek().is_none() {
+            return Err(("Expected identifier.", self.toks().current_span()).into());
+        }
+
+        let start = self.toks().cursor();
+        match self.read_char_or_escape()? {
+            ('_', _) if normalize => text.push('-'),
+            (c, true) => text.push(c),
+            (c, false) if is_name_start(c) => text.push(c),
+            _ => {
+                return Err(("Expected identifier.", self.toks().span_from(start)).into());
             }
         }
 
@@ -185,96 +196,107 @@ pub(crate) trait BaseParser {
         Ok(text)
     }
 
+    /// Consumes the body of a plain CSS identifier, after its first character,
+    /// into `buffer` with escapes resolved.
     fn parse_identifier_body(
         &mut self,
         buffer: &mut String,
         normalize: bool,
         unit: bool,
     ) -> SassResult<()> {
-        while let Some(tok) = self.toks().peek() {
-            if unit && tok.kind == '-' {
-                // Disallow `-` followed by a dot or a digit digit in units.
-                let second = match self.toks().peek_n(1) {
-                    Some(v) => v,
-                    None => break,
-                };
-
-                if second.kind == '.' || second.kind.is_ascii_digit() {
-                    break;
+        loop {
+            match self.peek_char_or_escape(0)? {
+                (None, _) => break,
+                (Some('-'), _) if unit => {
+                    let before_dash = self.toks().cursor();
+                    self.read_char_or_escape()?;
+                    // Disallow `-` followed by a dot or a digit in units.
+                    if matches!(self.toks().peek(), Some(tok) if tok.kind == '.' || tok.kind.is_ascii_digit())
+                    {
+                        self.toks_mut().set_cursor(before_dash);
+                        break;
+                    }
+                    buffer.push('-');
                 }
-
-                self.toks_mut().next();
-                buffer.push('-');
-            } else if normalize && tok.kind == '_' {
-                buffer.push('-');
-                self.toks_mut().next();
-            } else if is_name(tok.kind) {
-                self.toks_mut().next();
-                buffer.push(tok.kind);
-            } else if tok.kind == '\\' {
-                buffer.push_str(&self.parse_escape(false)?);
-            } else {
-                break;
+                (Some('_'), _) if normalize => {
+                    self.read_char_or_escape()?;
+                    buffer.push('-');
+                }
+                (Some(c), true) => {
+                    self.read_char_or_escape()?;
+                    buffer.push(c);
+                }
+                (Some(c), false) if is_name(c) => {
+                    self.read_char_or_escape()?;
+                    buffer.push(c);
+                }
+                _ => break,
             }
         }
 
         Ok(())
     }
 
-    fn parse_escape(&mut self, identifier_start: bool) -> SassResult<String> {
-        let start = self.toks().cursor();
-        self.expect_char('\\')?;
-        let mut value = 0;
-        let first = match self.toks().peek() {
-            Some(t) => t,
-            None => return Err(("Expected expression.", self.toks().current_span()).into()),
-        };
-        if first.kind == '\n' {
-            return Err(("Expected escape sequence.", self.toks().current_span()).into());
-        } else if first.kind.is_ascii_hexdigit() {
-            for _ in 0..6 {
-                let next = match self.toks().peek() {
-                    Some(t) => t,
-                    None => break,
-                };
-                if !next.kind.is_ascii_hexdigit() {
-                    break;
-                }
-                value *= 16;
-                value += as_hex(next.kind);
-                self.toks_mut().next();
+    /// Returns the character `offset` tokens ahead without consuming it.
+    ///
+    /// If that character starts an escape, returns the character the escape
+    /// represents instead of a backslash, and `true` as the second value. This
+    /// lets a keyword check treat `\69` like `i`, as dart-sass's
+    /// `peekCharOrEscape` does.
+    ///
+    /// # Errors
+    ///
+    /// Fails like [`consume_escaped_char`](Self::consume_escaped_char) when
+    /// the backslash escapes a newline.
+    fn peek_char_or_escape(&mut self, offset: usize) -> SassResult<(Option<char>, bool)> {
+        match self.toks().peek_n(offset) {
+            Some(Token { kind: '\\', .. }) => {
+                let start = self.toks().cursor();
+                self.toks_mut().set_cursor(start + offset);
+                let escaped = self.consume_escaped_char();
+                self.toks_mut().set_cursor(start);
+                Ok((Some(escaped?), true))
             }
-            if matches!(
-                self.toks().peek(),
-                Some(Token { kind: ' ', .. })
-                    | Some(Token { kind: '\n', .. })
-                    | Some(Token { kind: '\t', .. })
-            ) {
-                self.toks_mut().next();
-            }
-        } else {
-            value = first.kind as u32;
-            self.toks_mut().next();
+            Some(tok) => Ok((Some(tok.kind), false)),
+            None => Ok((None, false)),
         }
+    }
 
-        let c = std::char::from_u32(value)
-            .ok_or_else(|| ("Invalid Unicode code point.", self.toks().span_from(start)))?;
-        if (identifier_start && is_name_start(c) && !c.is_ascii_digit())
-            || (!identifier_start && is_name(c))
-        {
-            Ok(c.to_string())
-        } else if value <= 0x1F || value == 0x7F || (identifier_start && c.is_ascii_digit()) {
-            let mut buf = String::with_capacity(4);
-            buf.push('\\');
-            if value > 0xF {
-                buf.push(hex_char_for(value >> 4));
+    /// Consumes the next character, or the whole escape sequence if one starts
+    /// here, and returns the character along with whether it was escaped.
+    ///
+    /// Callers check that input remains first; at the end of the input this
+    /// returns U+FFFD as an unescaped character.
+    fn read_char_or_escape(&mut self) -> SassResult<(char, bool)> {
+        match self.toks().peek() {
+            Some(Token { kind: '\\', .. }) => Ok((self.consume_escaped_char()?, true)),
+            Some(tok) => {
+                self.toks_mut().next();
+                Ok((tok.kind, false))
             }
-            buf.push(hex_char_for(value & 0xF));
-            buf.push(' ');
-            Ok(buf)
-        } else {
-            Ok(format!("\\{}", c))
+            None => Ok(('\u{FFFD}', false)),
         }
+    }
+
+    /// Consumes an escape sequence and returns its text exactly as written.
+    ///
+    /// Statement-level constructs keep escapes this way, so `@f\6Fo` stays
+    /// `@f\6Fo`; only SassScript expressions normalize them.
+    fn raw_escape(&mut self) -> SassResult<String> {
+        self.fallible_raw_text(Self::consume_escaped_char)
+    }
+
+    /// Consumes an escape sequence and returns the normalized form an
+    /// expression writes it in: the character itself where an identifier may
+    /// contain it, and an escape otherwise.
+    ///
+    /// If `identifier_start` is `true`, the escape starts an identifier, so a
+    /// digit stays escaped.
+    fn normalized_escape(&mut self, identifier_start: bool) -> SassResult<String> {
+        Ok(character_to_escape(
+            self.consume_escaped_char()?,
+            identifier_start,
+        ))
     }
 
     fn expect_char(&mut self, c: char) -> SassResult<()> {
@@ -377,7 +399,8 @@ pub(crate) trait BaseParser {
                     self.toks_mut().next();
                 }
 
-                if value == 0 || (0xD800..=0xDFFF).contains(&value) || value >= 0x0010_FFFF {
+                if value == 0 || (0xD800..=0xDFFF).contains(&value) || value > MAX_ALLOWED_CHARACTER
+                {
                     Ok('\u{FFFD}')
                 } else {
                     Ok(char::from_u32(value).unwrap())
@@ -390,6 +413,13 @@ pub(crate) trait BaseParser {
         }
     }
 
+    /// Consumes tokens until a top-level `;`, `)`, `]` or `}` and returns
+    /// their text.
+    ///
+    /// Escapes keep the form they were written in, because this text is not
+    /// evaluated as SassScript: `\0xyz` stays `\0xyz`. An escape still starts
+    /// an identifier, though, so `\75 rl(x)` is read as one token rather than
+    /// as a backslash followed by `rl`.
     fn declaration_value(&mut self, allow_empty: bool) -> SassResult<String> {
         let mut buffer = String::new();
 
@@ -399,7 +429,17 @@ pub(crate) trait BaseParser {
         while let Some(tok) = self.toks().peek() {
             match tok.kind {
                 '\\' => {
-                    buffer.push_str(&self.parse_escape(true)?);
+                    let url = if matches!(self.peek_char_or_escape(0)?, (Some('u' | 'U'), _)) {
+                        self.try_parse_url()?
+                    } else {
+                        None
+                    };
+                    match url {
+                        Some(url) => buffer.push_str(&url),
+                        None => buffer.push_str(
+                            &self.fallible_raw_text(|p| p.parse_identifier(false, false))?,
+                        ),
+                    }
                     wrote_newline = false;
                 }
                 '"' | '\'' => {
@@ -480,15 +520,18 @@ pub(crate) trait BaseParser {
                     if let Some(url) = self.try_parse_url()? {
                         buffer.push_str(&url);
                     } else {
-                        buffer.push(tok.kind);
-                        self.toks_mut().next();
+                        buffer.push_str(
+                            &self.fallible_raw_text(|p| p.parse_identifier(false, false))?,
+                        );
                     }
 
                     wrote_newline = false;
                 }
                 c => {
                     if self.looking_at_identifier() {
-                        buffer.push_str(&self.parse_identifier(false, false)?);
+                        buffer.push_str(
+                            &self.fallible_raw_text(|p| p.parse_identifier(false, false))?,
+                        );
                     } else {
                         self.toks_mut().next();
                         buffer.push(c);
@@ -550,7 +593,7 @@ pub(crate) trait BaseParser {
         while let Some(next) = self.toks().peek() {
             match next.kind {
                 '\\' => {
-                    buffer.push_str(&self.parse_escape(false)?);
+                    buffer.push_str(&self.raw_escape()?);
                 }
                 '!' | '#' | '%' | '&' | '*'..='~' | '\u{80}'..=char::MAX => {
                     self.toks_mut().next();

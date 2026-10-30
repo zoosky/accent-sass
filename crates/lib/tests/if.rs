@@ -94,7 +94,7 @@ test!(
 test!(
     uppercase_escaped_if,
     "@\\49 f true {\n  a {\n    color: red;\n  }\n}\n",
-    "@If true {\n  a {\n    color: red;\n  }\n}\n"
+    "@\\49 f true {\n  a {\n    color: red;\n  }\n}\n"
 );
 test!(
     escaped_else,
@@ -104,7 +104,7 @@ test!(
 test!(
     uppercase_escaped_else,
     "@if false {}\n\n@\\45lse {\n  a {\n    color: red;\n  }\n}\n",
-    "@Else {\n  a {\n    color: red;\n  }\n}\n"
+    "@\\45lse {\n  a {\n    color: red;\n  }\n}\n"
 );
 test!(
     uppercase_else,
@@ -212,8 +212,11 @@ test!(
     "/* c */\n"
 );
 error!(
+    // dart-sass 1.107.0 crashes here with a `RangeError`, as in
+    // `error.rs`'s `nothing_after_escape_inside_brackets`. This is the error it
+    // reaches otherwise.
     nothing_after_escape,
-    "@if \\", "Error: Expected expression."
+    "@if \\", "Error: expected \"{\"."
 );
 error!(unclosed_dbl_quote, "@if true \" {}", "Error: Expected \".");
 error!(unclosed_sgl_quote, "@if true ' {}", "Error: Expected '.");

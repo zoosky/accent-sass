@@ -227,7 +227,7 @@ error!(
 );
 error!(
     invalid_escape_sequence_in_declaration,
-    "@for $i from 0 \\110000 o 2 {}", "Error: Invalid Unicode code point."
+    "@for $i from 0 \\110000 o 2 {}", "Error: Expected \"to\" or \"through\"."
 );
 error!(
     invalid_keyword_after_first_number,

@@ -156,8 +156,7 @@ error!(toplevel_hash, "#", "Error: expected \"{\".");
 error!(toplevel_closing_brace, "}", "Error: unmatched \"}\".");
 error!(toplevel_at, "@", "Error: Expected identifier.");
 test!(toplevel_ampersand, "& {}", "");
-// note: dart-sass gives error "Expected escape sequence."
-error!(toplevel_backslash, "\\", "Error: Expected expression.");
+error!(toplevel_backslash, "\\", "Error: expected \"{\".");
 error!(toplevel_var_no_colon, "$r", "Error: expected \":\".");
 error!(bar_in_value, "a {color: a|b;}", "Error: expected \";\".");
 error!(
@@ -277,8 +276,11 @@ error!(
     "\\!\\!", "Error: expected \"{\"."
 );
 error!(
+    // dart-sass 1.107.0 crashes here with a `RangeError`: a backslash at the
+    // end of the input escapes U+FFFD, and its check for the `\0` CSS hack
+    // reads two characters past it. This is the error it reaches otherwise.
     nothing_after_escape_inside_brackets,
-    "a { color: [\\", "Error: Expected expression."
+    "a { color: [\\", "Error: expected \"]\"."
 );
 error!(
     unclosed_bracketed_list,
@@ -286,7 +288,7 @@ error!(
 );
 error!(
     nothing_after_backslash_in_possible_style,
-    "a {a \\", "Error: expected more input."
+    "a {a \\", "Error: expected \"{\"."
 );
 error!(
     nothing_after_bang_in_variable_decl,

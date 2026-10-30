@@ -84,10 +84,10 @@ impl<'a> StylesheetParser<'a> for CssParser<'a> {
         let start = self.toks.cursor();
 
         self.expect_char('@')?;
-        let name = self.parse_interpolated_identifier()?;
+        let name = self.parse_interpolated_identifier(false)?;
         self.whitespace(true)?;
 
-        match name.as_plain() {
+        match name.as_plain_identifier().as_deref() {
             Some("at-root") | Some("content") | Some("debug") | Some("each") | Some("error")
             | Some("extend") | Some("for") | Some("if") | Some("include") | Some("mixin")
             | Some("return") | Some("warn") | Some("while") => self.forbidden_at_rule(start),
@@ -149,7 +149,7 @@ impl<'a> CssParser<'a> {
     fn parse_css_import_rule(&mut self, _start: usize) -> SassResult<AstStmt> {
         let url_start = self.toks.cursor();
 
-        let url = if self.toks.next_char_is('u') || self.toks.next_char_is('U') {
+        let url = if matches!(self.peek_char_or_escape(0)?, (Some('u' | 'U'), _)) {
             self.parse_dynamic_url()?
                 .span(self.toks.span_from(url_start))
         } else {
@@ -176,8 +176,11 @@ impl<'a> CssParser<'a> {
 
     fn parse_identifier_like(&mut self) -> SassResult<Spanned<AstExpr>> {
         let start = self.toks.cursor();
-        let identifier = self.parse_interpolated_identifier()?;
-        let plain = identifier.as_plain().unwrap();
+        // Plain CSS keeps an identifier's escapes as written, but a function
+        // name matches with them resolved: `\72 gb(...)` is `rgb()`.
+        let identifier = self.parse_interpolated_identifier(false)?;
+        let plain = identifier.as_plain_identifier().unwrap_or_default();
+        let plain = &*plain;
 
         let lower = plain.to_ascii_lowercase();
 
@@ -232,7 +235,7 @@ impl<'a> CssParser<'a> {
 
         Ok(
             AstExpr::InterpolatedFunction(Arc::new(InterpolatedFunction {
-                name: identifier,
+                name: Interpolation::new_plain(plain.to_owned()),
                 arguments: ArgumentInvocation {
                     positional: arguments,
                     named: BTreeMap::new(),

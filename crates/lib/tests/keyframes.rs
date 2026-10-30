@@ -259,23 +259,25 @@ test!(
     }",
     "@keyframes foo {\n  1e3% {\n    color: red;\n  }\n}\n"
 );
-test!(
+// Since dart-sass 1.106.0 only a literal `e` starts an exponent in a keyframe
+// selector, so an escaped one leaves `1` without its `%`.
+error!(
     escaped_e,
     "@keyframes foo {
       1\\65 3% {
         color: red;
       }
     }",
-    "@keyframes foo {\n  1e3% {\n    color: red;\n  }\n}\n"
+    "Error: expected \"%\"."
 );
-test!(
+error!(
     uppercase_escaped_e,
     "@keyframes foo {
       1\\45 3% {
         color: red;
       }
     }",
-    "@keyframes foo {\n  1e3% {\n    color: red;\n  }\n}\n"
+    "Error: expected \"%\"."
 );
 test!(
     style_rule_before_keyframes,

@@ -2,7 +2,10 @@ use std::fmt::{self, Write};
 
 use codemap::Span;
 
-use crate::{ast::CssStmt, error::SassResult, lexer::Lexer, parse::MediaQueryParser};
+use crate::{
+    ast::CssStmt, error::SassResult, lexer::Lexer, parse::MediaQueryParser,
+    utils::css_identifier_or_text,
+};
 
 #[derive(Debug, Clone)]
 pub(crate) struct MediaRule {
@@ -234,7 +237,7 @@ impl fmt::Display for MediaQuery {
         }
 
         if let Some(media_type) = &self.media_type {
-            f.write_str(media_type)?;
+            f.write_str(&css_identifier_or_text(media_type))?;
             if !&self.conditions.is_empty() {
                 f.write_str(" and ")?;
             }
