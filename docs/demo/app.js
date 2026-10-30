@@ -34,7 +34,7 @@ const els = {
 };
 
 // USWDS colour settings take the name of a token from its own palette, not a
-// CSS colour. Every value here was compiled against USWDS 3.13.0 before being
+// CSS colour. Every value here was compiled against USWDS 3.14.0 before being
 // offered, because an unknown token name fails the whole build.
 const USWDS_COLORS = [
   "blue-60v",
@@ -52,7 +52,7 @@ const USWDS_COLORS = [
 // published package means the preview renders with the real typeface and
 // icons; leaving them at their defaults would give a frame full of missing
 // assets.
-const USWDS_CDN = "https://cdn.jsdelivr.net/npm/@uswds/uswds@3.13.0/dist";
+const USWDS_CDN = "https://cdn.jsdelivr.net/npm/@uswds/uswds@3.14.0/dist";
 
 const PRESETS = {
   bulma: {
@@ -103,7 +103,7 @@ const PRESETS = {
 
   uswds: {
     label: "USWDS",
-    note: "USWDS 3.13.0: 605 stylesheets, about 800 KiB of Sass, compiled to roughly 33,700 lines of CSS. Expect a few seconds.",
+    note: "USWDS 3.14.0: 605 stylesheets, about 760 KiB of Sass, compiled to roughly 32,900 lines of CSS. Expect a few seconds.",
     controls: [
       {
         name: "primary",
@@ -121,7 +121,7 @@ const PRESETS = {
       },
     ],
     entry: (t) =>
-      `// USWDS 3.13.0, compiled from source in this tab.\n` +
+      `// USWDS 3.14.0, compiled from source in this tab.\n` +
       `// Configure uswds-core first, then forward the framework: that is the\n` +
       `// order USWDS's own theme file uses.\n` +
       `@use "uswds-core" with (\n` +

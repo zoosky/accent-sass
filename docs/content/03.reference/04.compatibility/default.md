@@ -25,7 +25,7 @@ differing colour value fails the job.**
 | Bulma | 1.0.4 | No colour differences |
 | Pico | 2.1.1 | No colour differences |
 | Foundation | 6.9.0 | No colour differences |
-| USWDS | 3.13.0 | No colour differences |
+| USWDS | 3.14.0 | No colour differences |
 
 Foundation gets a second check: a probe stylesheet calls every Sass function
 Foundation documents, one per line, and **any** differing line fails the build.
@@ -38,7 +38,7 @@ gating.
 ### Byte-identical output
 
 All four frameworks compile byte-identically to dart-sass 1.107.0, comments
-included. For USWDS 3.13.0 that is **32,781 lines each, zero differences.**
+included. For USWDS 3.14.0 that is **32,854 lines each, zero differences.**
 Measured 2026-10-30 with `.github/scripts/frameworks.sh`.
 
 ## The spec suite

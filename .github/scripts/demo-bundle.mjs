@@ -38,7 +38,7 @@ const FRAMEWORKS = [
   },
   {
     name: "uswds",
-    spec: "@uswds/uswds@3.13.0",
+    spec: "@uswds/uswds@3.14.0",
     from: "@uswds/uswds/packages",
     to: "uswds",
     loadPaths: ["uswds"],

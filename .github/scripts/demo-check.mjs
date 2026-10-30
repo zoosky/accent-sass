@@ -32,7 +32,7 @@ initSync(readFileSync(join(vendor, "pkg", "index_bg.wasm")));
 // offers had been renamed. The configured form is the one that breaks: an
 // unknown name in `@use ... with (...)` is a hard error, so these must stay in
 // step with the defaults in `docs/demo/app.js`.
-const USWDS_CDN = "https://cdn.jsdelivr.net/npm/@uswds/uswds@3.13.0/dist";
+const USWDS_CDN = "https://cdn.jsdelivr.net/npm/@uswds/uswds@3.14.0/dist";
 
 const PRESETS = {
   bulma: {
@@ -56,8 +56,8 @@ const PRESETS = {
       `  $theme-image-path: "${USWDS_CDN}/img"\n` +
       ");\n" +
       '@forward "uswds";\n',
-    // 32,781 lines, which is what dart-sass 1.104.1 produces for USWDS
-    // 3.13.0. See specs/docs/features/27-uswds-parity.md.
+    // 32,854 lines, which is what dart-sass 1.107.0 produces for USWDS
+    // 3.14.0. See specs/docs/features/27-uswds-parity.md.
     minLines: 32000,
   },
 };
