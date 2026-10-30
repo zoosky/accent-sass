@@ -97,6 +97,11 @@ behind that the crates do not match.
    npm login
    ```
 
+   Use a current `wasm-pack`; CI installs the latest, 0.15.1 at 0.18.0.
+   wasm-pack 0.12 leaves `"type": "module"` out of the package's manifest,
+   and `release.sh` refuses a package without it: Node 20 cannot load one,
+   and later releases load it only by reparsing it as a module.
+
    `release.sh` builds the package into `target/npm/pkg`, not wasm-pack's
    default `crates/lib/pkg`, and checks it before anything is published: the
    manifest names `accent-sass` at the release version, the two smoke
@@ -121,8 +126,8 @@ wasm-pack build crates/lib --release --target web --out-name index \
   --out-dir ../../target/npm/pkg -- --no-default-features --features wasm-exports,random
 (cd target/npm/pkg && npm publish)
 
-git tag -a v0.17.0 -m "v0.17.0"
-git push origin v0.17.0
+git tag -a v0.18.0 -m "v0.18.0"
+git push origin v0.18.0
 ```
 
 ### Publishing only the npm package

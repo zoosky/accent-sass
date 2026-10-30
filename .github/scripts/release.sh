@@ -326,6 +326,19 @@ manifest=$(node -e '
   || die "package.json names '$manifest', expected '$NPM_PACKAGE $version'"
 echo "  package.json: $manifest, with the npm description and keywords"
 
+# `index.js` is an ES module, so the manifest must say so. wasm-pack 0.12
+# leaves `"type": "module"` out of a web build, and the smoke scripts below do
+# not notice on every Node: from 22.7, Node reparses the file as a module after
+# a warning, while Node 20 refuses to load it at all. The 0.18.0 dry run found
+# this with wasm-pack 0.12.1 installed; 0.17.0 had been published with the field.
+module_type=$(node -e '
+  const p = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
+  console.log(p.type ?? "");
+' "$NPM_DIR/package.json") || die "could not read $NPM_DIR/package.json"
+[ "$module_type" = "module" ] \
+  || die "package.json has no \"type\": \"module\"; $(wasm-pack --version) is too old to build this package, so update it"
+echo "  package.json: \"type\": \"module\""
+
 # The two scripts CI runs against the Pages build: the module loads, and the
 # JavaScript API compiles, resolves imports, reports errors and logs.
 for smoke in wasm-smoke.mjs wasm-api-smoke.mjs; do

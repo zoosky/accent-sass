@@ -13,6 +13,17 @@ at `0.13.4` and below are upstream's and are kept for lineage.
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-10-30
+
+The move of the reference from dart-sass 1.105.1 to 1.107.0, and the escape
+handling of dart-sass 1.106.0 that it calls for. A minor rather than a patch
+because escaped identifiers print differently: statement-level text keeps its
+escapes as written, an invalid escape in an expression becomes U+FFFD, and a
+unit that reads like an exponent is escaped. dart-sass calls these changes
+potentially breaking, and while the major version is `0` a breaking change
+bumps the minor. The sass-spec tally at the new pin is 14,400 runs and 99
+failures; the move alone made it 125.
+
 ### Changed
 
 - the reference implementation moves from dart-sass 1.105.1 to 1.105.2, and

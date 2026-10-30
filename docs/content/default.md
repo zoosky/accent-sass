@@ -15,7 +15,7 @@ description: >-
 # data instead of as body prose -- which also means the wording can change
 # without touching a template.
 
-eyebrow: "v0.17.0 - MIT - dart-sass 1.107.0"
+eyebrow: "v0.18.0 - MIT - dart-sass 1.107.0"
 headline: "Sass,"
 headline_accent: "in Rust."
 lead: >-
