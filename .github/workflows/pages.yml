@@ -73,7 +73,7 @@ jobs:
 
       - uses: actions/setup-node@v7
         with:
-          node-version: '24'
+          node-version: '26'
 
       # `curl ... | sh` reports the exit status of `sh`, not of `curl`, and
       # `sh` fed an empty script exits 0. So a failed download installed
