@@ -1,3 +1,9 @@
+---
+uid: 01a1924b-a443-765d-952d-bf43d5bbab44
+alias: s2
+model: feature
+---
+
 # The CSS if() function
 
 Unlocks 164 sass-spec tests, all under `spec/expressions/if`

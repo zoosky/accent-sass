@@ -1,3 +1,9 @@
+---
+uid: 01a1924b-a445-7cd7-bf50-71730b642db8
+alias: s8
+model: feature
+---
+
 # Deprecation warnings and error wording in calculations
 
 Unlocks 57 sass-spec tests under `spec/values/calculation` that the

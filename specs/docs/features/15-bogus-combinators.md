@@ -1,3 +1,9 @@
+---
+uid: 01a1924b-a446-7906-9990-fc2c522fa84d
+alias: s15
+model: feature
+---
+
 # Bogus combinators
 
 **Landed. The suite went from 173 failures to 111.** Sixty-two fixtures

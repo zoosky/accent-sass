@@ -1,3 +1,9 @@
+---
+uid: 01a1924b-a446-7974-88da-232cc2c77c98
+alias: s12
+model: feature
+---
+
 # A browser package with a real API
 
 `wasm32-unknown-unknown` plus wasm-bindgen, packaged for npm. For a
@@ -12,8 +18,8 @@ failure count. Nothing here changes what the compiler accepts or prints.
 
 Gaps 1, 2 and 3 landed in #90 and shipped: the package is on npm as
 `accent-sass` since 0.16.1 (#110, #114), with the [browser
-guide](../../../docs/content/02.guide/04.browser/default.md), the
-[JavaScript API reference](../../../docs/content/03.reference/03.javascript-api/default.md)
+guide](https://github.com/zoosky/accent-sass/blob/master/docs/content/02.guide/04.browser/default.md), the
+[JavaScript API reference](https://github.com/zoosky/accent-sass/blob/master/docs/content/03.reference/03.javascript-api/default.md)
 and the demo. Gap 4, size, was measured on 2026-10-07 and settled without a
 change: every size lever buys its bytes with compile time, and the shipped
 profile is the right point for a compiler that runs while someone edits.
@@ -30,7 +36,7 @@ Imports resolve against a caller-supplied file map, errors arrive as an
 `Error` carrying `message`, `formatted`, `file`, `line` and `column`, and
 `index.d.ts` declares the surface with real types rather than `any`.
 
-The filesystem is [`MemoryFs`](../../../crates/compiler/src/memory_fs.rs), a
+The filesystem is [`MemoryFs`](https://github.com/zoosky/accent-sass/blob/master/crates/compiler/src/memory_fs.rs), a
 public type rather than something private to the binding. That is what makes
 it testable: the bindings only exist on `wasm32-unknown-unknown`, so
 `cargo test` cannot reach them, but it can reach `MemoryFs` through

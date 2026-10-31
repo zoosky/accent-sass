@@ -1,3 +1,9 @@
+---
+uid: 01a1924b-a446-7d53-bd39-b19c3a9341e6
+alias: s14
+model: feature
+---
+
 # A Component Model build, and why not yet
 
 `wasm32-wasip2` plus a WIT interface, so Accent could load this compiler

@@ -1,3 +1,9 @@
+---
+uid: 01a1924b-a448-783a-92e0-a2cfffcf43d0
+alias: s27
+model: feature
+---
+
 # USWDS parity
 
 **Update, 2026-09-13: USWDS 3.13.0 compiles byte-identically to dart-sass

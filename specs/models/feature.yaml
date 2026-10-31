@@ -1,0 +1,9 @@
+name: Feature
+description: One roadmap item of the spec-conformance roadmap, with the identity the federated corpus shares.
+uid:
+  required: true
+alias:
+  grammar: "s{number}"
+  scope: global
+  renumber: retire
+  allocation: local

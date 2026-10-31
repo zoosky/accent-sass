@@ -1,3 +1,9 @@
+---
+uid: 01a1924b-a447-73c4-bb6d-196b4f9a1bb0
+alias: s23
+model: feature
+---
+
 # @font-face bubbling
 
 **Landed. `spec/css/font-face` is down from 5 failures to 1, and the suite
