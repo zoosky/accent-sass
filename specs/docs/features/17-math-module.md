@@ -1,3 +1,9 @@
+---
+uid: 01a1924b-a446-7056-a253-4142e3e9608c
+alias: s17
+model: feature
+---
+
 # The math module
 
 **Landed. `spec/core_functions/math` is clear, and the suite went from 284

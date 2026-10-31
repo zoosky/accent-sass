@@ -1,3 +1,9 @@
+---
+uid: 01a1924b-a445-7c33-8007-a1787da3c14c
+alias: s11
+model: feature
+---
+
 # Special CSS functions
 
 Unlocked the 22 sass-spec tests under `spec/css/functions`, the deepest area

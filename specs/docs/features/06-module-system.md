@@ -1,3 +1,9 @@
+---
+uid: 01a1924b-a444-734c-8b9e-3472973cb24b
+alias: s6
+model: feature
+---
+
 # @use, @forward and @import edge cases
 
 Unlocks 114 sass-spec tests: `spec/directives/use` 46,

@@ -1,3 +1,9 @@
+---
+uid: 01a1924b-a445-7be7-a0de-32129ad562db
+alias: s10
+model: feature
+---
+
 # Newlines in the indented syntax
 
 A newline ends a statement in `.sass`, except where a statement cannot end

@@ -1,3 +1,9 @@
+---
+uid: 01a1924b-a448-7ffb-88c0-aa08f5098be6
+alias: s26
+model: feature
+---
+
 # Repeated comments before `@use` and `@forward`
 
 **Reverted 2026-09-13, when the reference moved to dart-sass 1.104.1.** The

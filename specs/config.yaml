@@ -1,0 +1,14 @@
+# The roadmap corpus as an accent site: identity declarations checked
+# by `accent validate`, and the self-declared origin other repositories
+# import this corpus under.
+site:
+  name: accent-sass roadmap
+  origin: accent-sass
+content:
+  directory: "./docs/features"
+  models_directory: "./models"
+theme:
+  name: plain
+  directory: "./themes"
+llms:
+  enabled: false

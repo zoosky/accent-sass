@@ -1,3 +1,9 @@
+---
+uid: 01a1924b-a447-7ba1-884b-17cee7302e9a
+alias: s20
+model: feature
+---
+
 # string.split
 
 **Landed. `spec/core_functions/string` is down from 8 failures to 1, and the

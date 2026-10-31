@@ -1,3 +1,9 @@
+---
+uid: 01a1924b-a447-7454-8617-8bfd21b7a9f2
+alias: s21
+model: feature
+---
+
 # The empty map as a list
 
 **Landed. `spec/core_functions/list` is down from 9 failures to 1.** All

@@ -1,3 +1,9 @@
+---
+uid: 01a1924b-a448-730a-9440-947594573f47
+alias: s28
+model: feature
+---
+
 # The `@warn` banner, and repeated warnings
 
 Two defects in how `@warn` reaches a user. Neither touches CSS output, and

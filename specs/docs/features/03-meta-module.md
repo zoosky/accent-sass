@@ -1,3 +1,9 @@
+---
+uid: 01a1924b-a444-724e-aad4-3d704112985c
+alias: s3
+model: feature
+---
+
 # sass:meta mixin reflection and load-css strictness
 
 Unlocks 152 sass-spec tests under `spec/core_functions/meta`:

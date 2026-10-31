@@ -1,3 +1,9 @@
+---
+uid: 01a1924b-a447-7ca7-b1fe-0b1abb4eed64
+alias: s22
+model: feature
+---
+
 # A custom property's raw text
 
 6 sass-spec failures in `spec/css/custom_properties`, all one cause: a

@@ -1,3 +1,9 @@
+---
+uid: 01a1924b-a449-7572-af34-151cfd046670
+alias: s29
+model: feature
+---
+
 # Command line: check mode, and the flags that swallow their neighbour
 
 **A delivery item. It closes no sass-spec fixture.**
