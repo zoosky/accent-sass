@@ -103,7 +103,7 @@ jobs:
       # The library check is a Node host, and it uses `node:wasi`.
       - uses: actions/setup-node@v7
         with:
-          node-version: "24"
+          node-version: "26"
 
       - name: Build for wasm32-wasip1
         run: cargo build --release -p accent-sass --target wasm32-wasip1 --features commandline
@@ -214,7 +214,7 @@ jobs:
 
       - uses: actions/setup-node@v7
         with:
-          node-version: "24"
+          node-version: "26"
 
       - name: Build binary
         run: cargo build --release
@@ -258,7 +258,7 @@ jobs:
 
       - uses: actions/setup-node@v7
         with:
-          node-version: "24"
+          node-version: "26"
 
       - name: version info
         run: rustc --version; cargo --version; node --version
