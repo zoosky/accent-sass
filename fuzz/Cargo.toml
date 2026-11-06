@@ -13,7 +13,7 @@ cargo-fuzz = true
 libfuzzer-sys = "0.4"
 
 [dependencies.accent-sass]
-path = ".."
+path = "../crates/lib"
 
 # Prevent this from interfering with workspaces
 [workspace]
